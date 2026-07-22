@@ -1,17 +1,18 @@
-import { chromium, type Browser, type BrowserContext } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import type { CrawledPage } from "../scoring/types";
 
 /**
- * AI crawler user-agents (plus the `*` wildcard) that we treat as
- * "AI bots" when deciding whether robots.txt blocks AI access.
+ * Named AI crawler user-agents we care about when deciding whether robots.txt
+ * blocks AI access. The `*` wildcard group is applied as a fallback only when a
+ * bot has no group naming it specifically (see robotsBlocksAnyAiBot).
  */
-const AI_BOT_AGENTS = [
-  "gptbot",
-  "claudebot",
-  "perplexitybot",
-  "google-extended",
-  "*",
-];
+const AI_BOT_AGENTS = ["gptbot", "claudebot", "perplexitybot", "google-extended"];
+
+/**
+ * Minimum stripped-text length (in chars) of the RAW html for us to consider a
+ * page server-rendered rather than a near-empty JS shell.
+ */
+const SSR_MIN_TEXT_LENGTH = 200;
 
 export interface CrawlOptions {
   /**
@@ -49,7 +50,19 @@ export async function crawl(url: string, opts: CrawlOptions = {}): Promise<Crawl
 
 async function crawlInContext(url: string, context: BrowserContext): Promise<CrawledPage> {
   const page = await context.newPage();
+  try {
+    return await extractPage(url, context, page);
+  } finally {
+    // Close the main page so pages don't accumulate on a reused injected context.
+    await page.close();
+  }
+}
 
+async function extractPage(
+  url: string,
+  context: BrowserContext,
+  page: Page,
+): Promise<CrawledPage> {
   const response = await page.goto(url, { waitUntil: "load" });
   const statusCode = response ? response.status() : 0;
 
@@ -89,7 +102,7 @@ async function crawlInContext(url: string, context: BrowserContext): Promise<Cra
   // Heuristic: strip tags (and <script>/<style>) from the RAW html and treat it
   // as server-rendered if the remaining visible text exceeds a small threshold.
   // This distinguishes real SSR/SSG output from a near-empty JS-only shell.
-  const hasServerRenderedContent = stripTags(html).length > 200;
+  const hasServerRenderedContent = stripTags(html).length > SSR_MIN_TEXT_LENGTH;
 
   const origin = new URL(url).origin;
   const robotsAllowsAiBots = await checkRobotsAllowsAiBots(context, origin);
@@ -187,7 +200,7 @@ async function checkRobotsAllowsAiBots(
   const { status, body } = await fetchViaPage(context, `${origin}/robots.txt`);
   // Missing/erroring robots.txt => nothing is disallowed => allowed.
   if (status !== 200) return true;
-  return !robotsDisallowsRootForAny(body, AI_BOT_AGENTS);
+  return !robotsBlocksAnyAiBot(body, AI_BOT_AGENTS);
 }
 
 async function checkHasLlmsTxt(context: BrowserContext, origin: string): Promise<boolean> {
@@ -201,11 +214,8 @@ interface RobotsGroup {
   hasRules: boolean;
 }
 
-/**
- * Returns true iff robots.txt contains a `Disallow: /` rule in a group that
- * applies to any of the given user-agents. Only an exact root disallow counts.
- */
-function robotsDisallowsRootForAny(robotsTxt: string, agents: string[]): boolean {
+/** Parse robots.txt into user-agent groups (agents lowercased). */
+function parseRobotsGroups(robotsTxt: string): RobotsGroup[] {
   const groups: RobotsGroup[] = [];
   let current: RobotsGroup | null = null;
 
@@ -236,10 +246,32 @@ function robotsDisallowsRootForAny(robotsTxt: string, agents: string[]): boolean
     }
   }
 
-  const wanted = new Set(agents.map((a) => a.toLowerCase()));
-  for (const group of groups) {
-    if (!group.agents.some((a) => wanted.has(a))) continue;
-    if (group.disallows.some((d) => d === "/")) return true;
+  return groups;
+}
+
+/** True if any group in the list has an exact `Disallow: /` (root) rule. */
+function groupsDisallowRoot(groups: RobotsGroup[]): boolean {
+  return groups.some((g) => g.disallows.some((d) => d === "/"));
+}
+
+/**
+ * Most-specific-group-wins. If robots.txt names any of our AI bots specifically,
+ * those named groups govern and the `*` wildcard is ignored entirely (a site that
+ * blocks all via `*` but then explicitly allows GPTBot is NOT reported as blocked).
+ * Only when no AI bot is named at all do we fall back to the `*` group. Returns
+ * true only if the effective groups include an exact `Disallow: /` (root block).
+ */
+function robotsBlocksAnyAiBot(robotsTxt: string, botAgents: string[]): boolean {
+  const groups = parseRobotsGroups(robotsTxt);
+  const named = new Set(botAgents.map((a) => a.toLowerCase()));
+
+  const specificGroups = groups.filter((g) => g.agents.some((a) => named.has(a)));
+  if (specificGroups.length > 0) {
+    // At least one AI bot is addressed by name: only its rules count.
+    return groupsDisallowRoot(specificGroups);
   }
-  return false;
+
+  // No AI bot named: fall back to the wildcard group.
+  const wildcardGroups = groups.filter((g) => g.agents.includes("*"));
+  return groupsDisallowRoot(wildcardGroups);
 }
