@@ -127,7 +127,7 @@ const claudeProvider: CitationProvider = {
 /** Parse the CITED/EVIDENCE trailer out of a free-form model reply. */
 function parseVerdict(text: string): ProviderVerdict {
   const citedMatch = /CITED:\s*(yes|no|unknown)/i.exec(text);
-  const evidenceMatch = /EVIDENCE:\s*(.+)/i.exec(text);
+  const evidenceMatch = /EVIDENCE:\s*([\s\S]+)/i.exec(text);
 
   let cited: boolean | null = null;
   if (citedMatch) {
@@ -217,17 +217,21 @@ export async function checkAiCitations(
     }
   }
 
-  const configuredEngines = engines.filter((e) => e.configured);
-  const anyConfigured = configuredEngines.length > 0;
+  const anyConfigured = engines.some((e) => e.configured);
 
-  // Proportion of configured engines that cite the brand, scaled to 0..100.
-  const brandMentionScore = anyConfigured
-    ? Math.round(
-        (configuredEngines.filter((e) => e.cited === true).length /
-          configuredEngines.length) *
-          100,
-      )
-    : null;
+  // Score only from engines that returned a DEFINITE verdict (true/false).
+  // Engines that failed or are throwing stubs report `cited: null` and are
+  // excluded, so "couldn't check" never masquerades as "not cited". When no
+  // engine produced a definite verdict, the score is null (unknown) and
+  // downstream enrichment leaves the report untouched.
+  const definite = engines.filter((e) => e.cited !== null);
+  const brandMentionScore =
+    definite.length > 0
+      ? Math.round(
+          (definite.filter((e) => e.cited === true).length / definite.length) *
+            100,
+        )
+      : null;
 
   return { configured: anyConfigured, engines, brandMentionScore };
 }

@@ -80,7 +80,7 @@ describe("checkAiCitations", () => {
     expect(result.brandMentionScore).toBe(0);
   });
 
-  it("never throws on API failure — degrades to cited:null", async () => {
+  it("never throws on API failure — degrades to cited:null and score null", async () => {
     vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
     create.mockRejectedValue(new Error("network down"));
 
@@ -90,11 +90,13 @@ describe("checkAiCitations", () => {
     expect(claude.configured).toBe(true);
     expect(claude.cited).toBeNull();
     expect(claude.evidence).toContain("network down");
-    // Configured but nothing cited -> score 0 (not null).
-    expect(result.brandMentionScore).toBe(0);
+    // A failed check is "unknown", not "not cited": score stays null so
+    // enrichment leaves the report untouched rather than zeroing it.
+    expect(result.configured).toBe(true);
+    expect(result.brandMentionScore).toBeNull();
   });
 
-  it("degrades a configured-but-stubbed engine safely", async () => {
+  it("degrades a configured-but-stubbed engine safely (score null, not 0)", async () => {
     vi.stubEnv("PERPLEXITY_API_KEY", "pplx-key");
 
     const result = await checkAiCitations("example.com");
@@ -103,8 +105,23 @@ describe("checkAiCitations", () => {
     expect(pplx.configured).toBe(true);
     expect(pplx.cited).toBeNull();
     expect(pplx.evidence).toContain("not yet implemented");
-    // Perplexity is the only configured engine and it didn't cite -> 0.
+    // Configured but no definite verdict -> unknown, not a punitive 0.
     expect(result.configured).toBe(true);
+    expect(result.brandMentionScore).toBeNull();
+  });
+
+  it("a definite 'no' from a failed engine's peer still scores from the definite one", async () => {
+    // Claude configured + gives a definite false; Perplexity stub throws.
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
+    vi.stubEnv("PERPLEXITY_API_KEY", "pplx-key");
+    create.mockResolvedValue({
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: "CITED: no\nEVIDENCE: none found." }],
+    });
+
+    const result = await checkAiCitations("example.com");
+
+    // Only Claude produced a definite verdict (false) -> 0/1 = 0.
     expect(result.brandMentionScore).toBe(0);
   });
 });
