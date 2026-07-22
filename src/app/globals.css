@@ -18,9 +18,12 @@
   --accent-hover: #1c2fb8;
   --accent-ink: #ffffff;
   --accent-soft: rgba(36, 57, 214, 0.08);
-  --good: #1c9a60;
-  --warn: #bf7d1c;
-  --bad: #cf3a3a;
+  /* Darkened for WCAG AA: small colored text (e.g. the grade badge) sits on
+     the cream --paper; these hit >=4.5:1 there (good 4.76, warn 4.56, bad 4.99).
+     Graphical uses (meter bars, large numeral) only need 3:1. */
+  --good: #157a4a;
+  --warn: #94640f;
+  --bad: #c62828;
   --glow: rgba(36, 57, 214, 0.1);
 }
 
@@ -78,9 +81,16 @@ body {
     linear-gradient(to right, color-mix(in oklab, var(--line) 45%, transparent) 1px, transparent 1px),
     linear-gradient(to bottom, color-mix(in oklab, var(--line) 45%, transparent) 1px, transparent 1px);
   background-size: 100% 100%, 72px 72px, 72px 72px;
-  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Parallax only on larger screens; a fixed multi-layer gradient can cause
+   scroll-repaint jank on mobile. */
+@media (min-width: 768px) {
+  body {
+    background-attachment: fixed;
+  }
 }
 
 /* Focus visibility across the app */

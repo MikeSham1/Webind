@@ -14,8 +14,21 @@ export default function ReportForm() {
   const showError = !isPending && state.status === "error";
   const showResults = !isPending && state.status === "success";
 
+  const statusMessage = isPending
+    ? `Analyzing ${url.trim() || "your site"}…`
+    : state.status === "success"
+      ? "Report ready."
+      : state.status === "error"
+        ? state.error
+        : "";
+
   return (
     <div>
+      {/* Concise live status for screen readers (the visual result region below
+          is not announced to avoid reading the whole report subtree). */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {statusMessage}
+      </p>
       <form action={formAction} className="mx-auto w-full max-w-xl">
         <label htmlFor="url" className="sr-only">
           Website address
@@ -77,8 +90,8 @@ export default function ReportForm() {
         )}
       </form>
 
-      {/* Results region */}
-      <div className="mt-16" aria-live="polite">
+      {/* Results region (announced concisely via the sr-only status above). */}
+      <div className="mt-16">
         {isPending && <ReportSkeleton url={url} />}
         {showResults && <ReportResults report={state.report} />}
       </div>
