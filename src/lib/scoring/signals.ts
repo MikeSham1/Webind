@@ -37,20 +37,19 @@ export function scoreSchema(page: CrawledPage): SignalScore {
   const wanted = ["Organization", "WebSite"];
   const present = new Set(collectJsonLdTypes(page.jsonLdBlocks));
   const missing = wanted.filter((w) => !present.has(w));
+  const allPresent = missing.length === 0;
   const score = Math.round(((wanted.length - missing.length) / wanted.length) * 100);
   return {
     key: "schema",
     label: "Schema Markup",
     score,
     weight: AI_WEIGHTS.schema,
-    reason:
-      missing.length === 0
-        ? "Organization and WebSite JSON-LD schema present."
-        : `Missing JSON-LD schema: ${missing.join(", ")}.`,
-    fix:
-      score === 100
-        ? null
-        : "Add JSON-LD Organization and WebSite schema to the homepage.",
+    reason: allPresent
+      ? "Organization and WebSite JSON-LD schema present."
+      : `Missing JSON-LD schema: ${missing.join(", ")}.`,
+    fix: allPresent
+      ? null
+      : "Add JSON-LD Organization and WebSite schema to the homepage.",
   };
 }
 
@@ -90,9 +89,10 @@ export function scoreFreshness(page: CrawledPage): SignalScore {
   const age = ageInDays(page.lastModified);
   let score: number;
   let reason: string;
-  if (age === null) {
+  if (age === null || age < 0) {
+    // A missing or future-dated timestamp is not evidence of freshness.
     score = 0;
-    reason = "No last-modified date available.";
+    reason = "No reliable last-modified date available.";
   } else if (age < 90) {
     score = 100;
     reason = "Updated within the last 90 days.";
@@ -120,10 +120,15 @@ export function scoreFreshness(page: CrawledPage): SignalScore {
 }
 
 export function scoreEeat(page: CrawledPage): SignalScore {
-  // MVP heuristic: author byline, outbound citations, and content depth.
+  // MVP text heuristics: author byline, outbound citations, and content depth.
+  // These are intentionally coarse and should be replaced once the crawler
+  // emits structured byline / outbound-link fields (see the crawler task).
   const text = page.renderedText;
-  const hasAuthor = /by\s+\w+/i.test(text) || /author/i.test(text);
-  const hasCitations = /https?:\/\//i.test(text) || /http/i.test(text);
+  // Byline: "By <Capitalized Name>" or an explicit "author"/"authored" word.
+  const hasAuthor =
+    /\b[Bb]y\s+[A-Z][a-z]+/.test(text) || /\bauthor(ed| by)?\b/i.test(text);
+  // Citation: an actual URL, not the bare word "http" in prose.
+  const hasCitations = /https?:\/\/\S+/i.test(text);
   const hasDepth = page.wordCount > 600;
   const score =
     (hasAuthor ? 34 : 0) + (hasCitations ? 33 : 0) + (hasDepth ? 33 : 0);

@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import type { CrawledPage } from "./types";
 import {
   scoreSchema,
   scoreAiCrawlability,
@@ -12,29 +11,7 @@ import {
   scoreBacklinks,
   scoreEngagement,
 } from "./signals";
-
-const daysAgo = (n: number) =>
-  new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString();
-
-function makePage(overrides: Partial<CrawledPage> = {}): CrawledPage {
-  return {
-    url: "https://example.com/",
-    fetchedAt: new Date().toISOString(),
-    statusCode: 200,
-    html: "<html></html>",
-    renderedText: "Some visible text",
-    title: "Example Title",
-    metaDescription: "An example meta description.",
-    headings: [{ level: 1, text: "Main" }],
-    jsonLdBlocks: [],
-    wordCount: 700,
-    hasServerRenderedContent: true,
-    robotsAllowsAiBots: true,
-    hasLlmsTxt: true,
-    lastModified: daysAgo(10),
-    ...overrides,
-  };
-}
+import { daysAgo, makePage } from "./test-fixtures";
 
 describe("scoreSchema", () => {
   it("scores 100 with Organization and WebSite present", () => {
@@ -119,6 +96,12 @@ describe("scoreFreshness", () => {
     expect(s.score).toBe(0);
     expect(s.fix).not.toBeNull();
   });
+
+  it("treats a future-dated lastModified as unknown (score 0)", () => {
+    const s = scoreFreshness(makePage({ lastModified: daysAgo(-30) }));
+    expect(s.score).toBe(0);
+    expect(s.fix).not.toBeNull();
+  });
 });
 
 describe("scoreEeat", () => {
@@ -142,6 +125,27 @@ describe("scoreEeat", () => {
     );
     expect(s.score).toBe(0);
     expect(s.fix).not.toBeNull();
+  });
+
+  it("does not treat 'authoritative' prose as an author byline", () => {
+    const s = scoreEeat(
+      makePage({
+        renderedText: "This is an authoritative and authentic guide.",
+        wordCount: 100,
+      }),
+    );
+    // No byline and no citations -> only depth could score, and depth is off.
+    expect(s.score).toBe(0);
+  });
+
+  it("does not treat the bare word 'http' in prose as a citation", () => {
+    const s = scoreEeat(
+      makePage({
+        renderedText: "The HTTP protocol underpins the web.",
+        wordCount: 100,
+      }),
+    );
+    expect(s.score).toBe(0);
   });
 });
 

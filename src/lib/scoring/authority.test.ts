@@ -1,29 +1,16 @@
 import { describe, it, expect } from "vitest";
 import type { CrawledPage } from "./types";
 import { scoreAiAuthority, scoreTraditionalAuthority } from "./authority";
-
-const daysAgo = (n: number) =>
-  new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString();
+import { daysAgo, makePage } from "./test-fixtures";
 
 function optimizedPage(overrides: Partial<CrawledPage> = {}): CrawledPage {
-  return {
-    url: "https://example.com/",
-    fetchedAt: new Date().toISOString(),
-    statusCode: 200,
-    html: "<html></html>",
+  return makePage({
     renderedText:
       "By Jane Doe, author. See sources at https://source.example for more.",
-    title: "Example Title",
-    metaDescription: "An example meta description.",
-    headings: [{ level: 1, text: "Main" }],
     jsonLdBlocks: [{ "@type": "Organization" }, { "@type": "WebSite" }],
-    wordCount: 700,
-    hasServerRenderedContent: true,
-    robotsAllowsAiBots: true,
-    hasLlmsTxt: true,
     lastModified: daysAgo(5),
     ...overrides,
-  };
+  });
 }
 
 describe("scoreAiAuthority", () => {

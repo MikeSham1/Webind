@@ -1,24 +1,15 @@
 import { describe, it, expect } from "vitest";
 import type { CrawledPage } from "./types";
 import { buildReport } from "./report";
+import { makePage } from "./test-fixtures";
 
 // Deficient page with predictable per-signal scores so fix ordering is known.
-const deficientPage: CrawledPage = {
-  url: "https://example.com/",
-  fetchedAt: new Date().toISOString(),
-  statusCode: 200,
-  html: "<html></html>",
+const deficientPage: CrawledPage = makePage({
   renderedText: "This is body text about widgets and gadgets.",
-  title: "Example Title",
-  metaDescription: "An example meta description.",
-  headings: [{ level: 1, text: "Main" }],
   jsonLdBlocks: [],
-  wordCount: 700,
   hasServerRenderedContent: false,
-  robotsAllowsAiBots: true,
-  hasLlmsTxt: true,
   lastModified: null,
-};
+});
 
 describe("buildReport", () => {
   it("returns the url and both authority scores", () => {
@@ -32,13 +23,13 @@ describe("buildReport", () => {
     const r = buildReport(deficientPage);
     // Expected priorities:
     //  eeat 0.30*(100-33)=20.1, topicalAuthority 0.25*(100-28)=18,
-    //  schema 0.15*100=15, freshness 0.15*100=15 (schema precedes on stable tie),
-    //  aiCrawlability 0.15*(100-60)=6.
+    //  schema 0.15*100=15 and freshness 0.15*100=15 tie -> broken by key
+    //  ("freshness" < "schema"), aiCrawlability 0.15*(100-60)=6.
     expect(r.prioritizedFixes).toEqual([
       "Strengthen E-E-A-T: add a visible author byline; cite authoritative outbound sources.",
       "Publish more in-depth, topically-related content to build authority.",
-      "Add JSON-LD Organization and WebSite schema to the homepage.",
       "Update this page; Perplexity decays content in 2-3 months.",
+      "Add JSON-LD Organization and WebSite schema to the homepage.",
       "Improve AI crawlability: server-render key content.",
     ]);
   });

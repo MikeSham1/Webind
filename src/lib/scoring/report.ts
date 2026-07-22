@@ -12,7 +12,9 @@ export function buildReport(page: CrawledPage): ReportResult {
 
   const prioritizedFixes = [...ai.signals, ...traditional.signals]
     .filter((s): s is SignalScore & { fix: string } => s.fix !== null)
-    .sort((a, b) => priority(b) - priority(a))
+    // Rank by priority; break ties by key so ordering is deterministic by
+    // design rather than by array insertion order.
+    .sort((a, b) => priority(b) - priority(a) || a.key.localeCompare(b.key))
     .map((s) => s.fix);
 
   return { url: page.url, ai, traditional, prioritizedFixes };
