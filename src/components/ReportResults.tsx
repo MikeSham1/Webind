@@ -5,6 +5,8 @@ import FixList from "./FixList";
 
 export interface ReportResultsProps {
   report: ReportResult;
+  /** Optional plain-English summary shown above the dials. */
+  narrative?: string;
 }
 
 function hostOf(url: string): string {
@@ -15,7 +17,10 @@ function hostOf(url: string): string {
   }
 }
 
-export default function ReportResults({ report }: ReportResultsProps) {
+export default function ReportResults({
+  report,
+  narrative,
+}: ReportResultsProps) {
   const host = hostOf(report.url);
 
   return (
@@ -28,6 +33,11 @@ export default function ReportResults({ report }: ReportResultsProps) {
         <h2 className="mt-2 font-display text-3xl font-semibold text-ink">
           {host}
         </h2>
+        {narrative && (
+          <p className="mx-auto mt-5 max-w-xl text-[15px] leading-relaxed text-muted">
+            {narrative}
+          </p>
+        )}
       </div>
 
       {/* Dials */}

@@ -2,12 +2,13 @@
 
 import { crawl } from "@/lib/crawler/crawl";
 import { buildReport } from "@/lib/scoring/report";
+import { explainReport } from "@/lib/scoring/explain";
 import type { ReportResult } from "@/lib/scoring/types";
 
 /** Result of a report run, shaped for `useActionState`. */
 export type ReportState =
   | { status: "idle" }
-  | { status: "success"; report: ReportResult }
+  | { status: "success"; report: ReportResult; narrative: string }
   | { status: "error"; error: string; url: string };
 
 export const initialReportState: ReportState = { status: "idle" };
@@ -66,7 +67,11 @@ export async function runReport(
     // TODO: SSRF hardening (block internal IPs) before public launch.
     const page = await crawl(url);
     const report = buildReport(page);
-    return { status: "success", report };
+    // Plain-English summary. Uses Claude when ANTHROPIC_API_KEY is set;
+    // otherwise falls back to a deterministic, network-free narrative.
+    // (Live citation checks are intentionally kept out of the request path.)
+    const narrative = await explainReport(report);
+    return { status: "success", report, narrative };
   } catch {
     return {
       status: "error",

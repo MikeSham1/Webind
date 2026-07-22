@@ -93,7 +93,9 @@ export default function ReportForm() {
       {/* Results region (announced concisely via the sr-only status above). */}
       <div className="mt-16">
         {isPending && <ReportSkeleton url={url} />}
-        {showResults && <ReportResults report={state.report} />}
+        {showResults && (
+          <ReportResults report={state.report} narrative={state.narrative} />
+        )}
       </div>
     </div>
   );
