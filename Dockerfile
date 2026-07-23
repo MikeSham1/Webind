@@ -8,9 +8,12 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Browsers live here in the base image; make Playwright look there.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Install deps (incl. dev deps needed to build) against the lockfile.
+# Install deps (incl. dev deps needed to build). We use `npm install` rather
+# than `npm ci` because the lockfile is generated on Windows and can omit
+# Linux-only optional packages (e.g. @emnapi/*, pulled in by Tailwind's native
+# engine), which makes strict `npm ci` fail in this Linux build.
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm install --no-audit --no-fund
 
 # Build the app.
 COPY . .

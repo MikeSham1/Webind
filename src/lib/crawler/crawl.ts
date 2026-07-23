@@ -17,9 +17,9 @@ const AI_BOT_AGENTS = ["gptbot", "claudebot", "perplexitybot", "google-extended"
 const SSR_MIN_TEXT_LENGTH = 200;
 
 /** Navigation budget for the page under analysis. */
-const NAV_TIMEOUT_MS = 15_000;
+const NAV_TIMEOUT_MS = 25_000;
 /** Tighter budget for the small side-fetches (robots.txt, llms.txt). */
-const AUX_TIMEOUT_MS = 5_000;
+const AUX_TIMEOUT_MS = 10_000;
 
 /** Cap on stored outbound links, so a link-farm page can't balloon the payload. */
 const MAX_OUTBOUND_LINKS = 500;
@@ -179,6 +179,8 @@ async function extractPage(
   page: Page,
   allowed: (url: string) => Promise<boolean>,
 ): Promise<CrawledPage> {
+  // Bounded so a slow/hanging site fails gracefully (caught upstream → friendly
+  // error) instead of tying up the request until a platform timeout.
   const response = await page.goto(url, {
     waitUntil: "load",
     timeout: NAV_TIMEOUT_MS,

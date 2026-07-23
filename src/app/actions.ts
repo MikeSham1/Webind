@@ -5,7 +5,9 @@ import { CrawlerBusyError } from "@/lib/crawler/browser";
 import { BlockedUrlError, normalizeUrl } from "@/lib/crawler/ssrf";
 import { buildReport } from "@/lib/scoring/report";
 import { explainReport } from "@/lib/scoring/explain";
+import { buildOptimizations } from "@/lib/optimize/assets";
 import { attachEmail, saveReportRequest } from "@/lib/leads";
+import type { OptimizationAssets } from "@/lib/optimize/assets";
 import type { ReportResult } from "@/lib/scoring/types";
 
 /** Result of a report run, shaped for `useActionState`. */
@@ -15,6 +17,8 @@ export type ReportState =
       status: "success";
       report: ReportResult;
       narrative: string;
+      /** Ready-to-apply fixes generated from the crawl (deterministic). */
+      optimizations: OptimizationAssets;
       /** DB id of the logged run, or null when persistence is disabled. */
       requestId: string | null;
     }
@@ -54,10 +58,12 @@ export async function runReport(
     // otherwise falls back to a deterministic, network-free narrative.
     // (Live citation checks are intentionally kept out of the request path.)
     const narrative = await explainReport(report);
+    // Deterministic ready-to-apply assets (schema, meta, llms.txt, robots).
+    const optimizations = buildOptimizations(page);
     // Best-effort logging (the preview doubles as a lead funnel). Never blocks
     // or breaks the report — returns null when persistence is disabled.
     const requestId = await saveReportRequest(report);
-    return { status: "success", report, narrative, requestId };
+    return { status: "success", report, narrative, optimizations, requestId };
   } catch (err) {
     // These two carry messages written for a visitor; anything else is an
     // internal failure and gets the generic line so we leak nothing.

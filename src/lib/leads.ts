@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { reportRequests } from "@/lib/db/schema";
+import { reportRequests, type ReportRequest } from "@/lib/db/schema";
 import type { ReportResult } from "@/lib/scoring/types";
 
 /**
@@ -27,6 +27,22 @@ export async function saveReportRequest(
   } catch (err) {
     console.error("saveReportRequest failed:", err);
     return null;
+  }
+}
+
+/** Recent report runs for the dashboard. Empty when persistence is off. */
+export async function listReports(): Promise<ReportRequest[]> {
+  const db = getDb();
+  if (!db) return [];
+  try {
+    return await db
+      .select()
+      .from(reportRequests)
+      .orderBy(desc(reportRequests.createdAt))
+      .limit(50);
+  } catch (err) {
+    console.error("listReports failed:", err);
+    return [];
   }
 }
 

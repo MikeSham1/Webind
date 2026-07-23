@@ -44,7 +44,14 @@ let browserPromise: Promise<Browser> | null = null;
 export function getBrowser(): Promise<Browser> {
   if (!browserPromise) {
     browserPromise = chromium
-      .launch({ headless: true })
+      .launch({
+        headless: true,
+        // --no-sandbox: containers run as root without sandbox capabilities.
+        // --disable-dev-shm-usage: containers have a tiny /dev/shm; without
+        // this Chromium can crash under memory pressure (a hard 500, not a
+        // caught error).
+        args: ["--no-sandbox", "--disable-dev-shm-usage"],
+      })
       .then((browser) => {
         browser.on("disconnected", () => {
           browserPromise = null;

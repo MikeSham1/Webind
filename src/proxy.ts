@@ -26,6 +26,10 @@ export async function proxy(req: NextRequest) {
   }
 
   // Not authenticated (or password unconfigured → fail closed): send to splash.
+  // Proxy runs in the edge runtime, whose nextUrl reflects the public host —
+  // so an absolute redirect here is correct (and the proxy layer rejects a
+  // relative Location). The Node-runtime route handlers, which do see
+  // the internal 0.0.0.0 origin, use relative redirects instead.
   const url = req.nextUrl.clone();
   url.pathname = "/splash";
   url.search = "";
