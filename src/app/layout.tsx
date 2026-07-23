@@ -28,6 +28,8 @@ export const metadata: Metadata = {
   title: "WeBind — AI Authority Report",
   description:
     "See how AI models and search engines rate your website's authority. Get your AI and traditional authority scores in seconds, plus the highest-impact fixes.",
+  // Pre-launch: keep the whole site out of search indexes.
+  robots: { index: false, follow: false, nocache: true },
 };
 
 export default function RootLayout({
