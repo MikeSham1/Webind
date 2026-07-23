@@ -97,6 +97,7 @@ export default function ReportForm() {
           <ReportResults
             report={state.report}
             narrative={state.narrative}
+            optimizations={state.optimizations}
             requestId={state.requestId}
           />
         )}

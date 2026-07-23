@@ -1,13 +1,17 @@
 import type { ReportResult } from "@/lib/scoring/types";
+import type { OptimizationAssets as Assets } from "@/lib/optimize/assets";
 import ScoreDial from "./ScoreDial";
 import SignalBreakdown from "./SignalBreakdown";
 import FixList from "./FixList";
+import OptimizationAssets from "./OptimizationAssets";
 import LeadCapture from "./LeadCapture";
 
 export interface ReportResultsProps {
   report: ReportResult;
   /** Optional plain-English summary shown above the dials. */
   narrative?: string;
+  /** Ready-to-apply generated assets (schema, meta, llms.txt, robots). */
+  optimizations?: Assets;
   /** DB id of the logged run; enables email capture when present. */
   requestId?: string | null;
 }
@@ -23,6 +27,7 @@ function hostOf(url: string): string {
 export default function ReportResults({
   report,
   narrative,
+  optimizations,
   requestId,
 }: ReportResultsProps) {
   const host = hostOf(report.url);
@@ -84,6 +89,9 @@ export default function ReportResults({
         </div>
         <FixList fixes={report.prioritizedFixes} />
       </div>
+
+      {/* Ready-to-apply generated assets */}
+      {optimizations && <OptimizationAssets assets={optimizations} />}
 
       {/* Soft CTA */}
       <div
