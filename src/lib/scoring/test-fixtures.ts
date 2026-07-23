@@ -14,13 +14,19 @@ export function makePage(overrides: Partial<CrawledPage> = {}): CrawledPage {
     renderedText: "Some visible text",
     title: "Example Title",
     metaDescription: "An example meta description.",
+    metaAuthor: "Jane Doe",
     headings: [{ level: 1, text: "Main" }],
     jsonLdBlocks: [],
+    outboundLinks: [
+      "https://en.wikipedia.org/wiki/Widget",
+      "https://www.reuters.com/article",
+    ],
     wordCount: 700,
     hasServerRenderedContent: true,
     robotsAllowsAiBots: true,
     hasLlmsTxt: true,
     lastModified: daysAgo(10),
+    lastModifiedSource: "json-ld",
     ...overrides,
   };
 }

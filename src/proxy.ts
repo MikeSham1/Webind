@@ -4,7 +4,14 @@ import { GATE_COOKIE, gateToken, safeEqual, sitePassword } from "@/lib/gate";
 // Reachable without the password: the splash itself and its auth endpoints.
 const PUBLIC_PATHS = ["/splash", "/api/login", "/api/logout"];
 
-export async function middleware(req: NextRequest) {
+/**
+ * Pre-launch password gate.
+ *
+ * Next.js 16 renamed Middleware to Proxy: the file must be `proxy.ts` and the
+ * export must be `proxy`. The behaviour is unchanged, but the old
+ * `middleware.ts` convention is deprecated, so this is the supported spelling.
+ */
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {

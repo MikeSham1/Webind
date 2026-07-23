@@ -1,3 +1,4 @@
+import Link from "next/link";
 import ReportForm from "@/components/ReportForm";
 
 // Playwright (used by the crawler inside the server action) requires Node.
@@ -8,14 +9,14 @@ export default function Home() {
     <div className="flex min-h-full flex-col">
       {/* Nav */}
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
-        <a href="/" className="flex items-baseline gap-2">
+        <Link href="/" className="flex items-baseline gap-2">
           <span className="font-display text-xl font-semibold tracking-tight text-ink">
             WeBind
           </span>
           <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted">
             Design
           </span>
-        </a>
+        </Link>
         <span className="rounded-full border border-line px-3 py-1 font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
           AI Authority Report
         </span>

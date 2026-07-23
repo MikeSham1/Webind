@@ -1,6 +1,8 @@
 "use server";
 
 import { crawl } from "@/lib/crawler/crawl";
+import { CrawlerBusyError } from "@/lib/crawler/browser";
+import { BlockedUrlError, normalizeUrl } from "@/lib/crawler/ssrf";
 import { buildReport } from "@/lib/scoring/report";
 import { explainReport } from "@/lib/scoring/explain";
 import { attachEmail, saveReportRequest } from "@/lib/leads";
@@ -19,33 +21,6 @@ export type ReportState =
   | { status: "error"; error: string; url: string };
 
 export const initialReportState: ReportState = { status: "idle" };
-
-/**
- * Normalize loose user input into a validated http(s) URL string.
- * Returns null when the value can't be coerced into a safe web URL.
- */
-function normalizeUrl(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-
-  // Be forgiving: default to https:// when the user omits a scheme.
-  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
-
-  let parsed: URL;
-  try {
-    parsed = new URL(withScheme);
-  } catch {
-    return null;
-  }
-
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
-  // Require a dotted hostname so bare words / internal names are rejected early.
-  if (!parsed.hostname.includes(".")) return null;
-
-  return parsed.toString();
-}
 
 /**
  * Server action: crawl the given URL and build its authority report.
@@ -71,7 +46,8 @@ export async function runReport(
   }
 
   try {
-    // TODO: SSRF hardening (block internal IPs) before public launch.
+    // `crawl` re-validates the URL and every redirect hop against the SSRF
+    // guard; this endpoint is anonymous, so the check cannot live at the edge.
     const page = await crawl(url);
     const report = buildReport(page);
     // Plain-English summary. Uses Claude when ANTHROPIC_API_KEY is set;
@@ -82,7 +58,12 @@ export async function runReport(
     // or breaks the report — returns null when persistence is disabled.
     const requestId = await saveReportRequest(report);
     return { status: "success", report, narrative, requestId };
-  } catch {
+  } catch (err) {
+    // These two carry messages written for a visitor; anything else is an
+    // internal failure and gets the generic line so we leak nothing.
+    if (err instanceof BlockedUrlError || err instanceof CrawlerBusyError) {
+      return { status: "error", error: err.message, url };
+    }
     return {
       status: "error",
       error:

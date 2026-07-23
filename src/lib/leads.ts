@@ -30,7 +30,14 @@ export async function saveReportRequest(
   }
 }
 
-/** Attach a lead's email to a previously-saved report run. Never throws. */
+/**
+ * Attach a lead's email to a previously-saved report run. Never throws.
+ *
+ * Returns false when no row matched. An UPDATE that hits zero rows resolves
+ * happily, so returning a bare `true` told visitors with a stale or bogus
+ * requestId "you're on the list" while the lead was silently dropped —
+ * `.returning()` makes the row count the actual answer.
+ */
 export async function attachEmail(
   requestId: string,
   email: string,
@@ -38,11 +45,12 @@ export async function attachEmail(
   const db = getDb();
   if (!db) return false;
   try {
-    await db
+    const updated = await db
       .update(reportRequests)
       .set({ email })
-      .where(eq(reportRequests.id, requestId));
-    return true;
+      .where(eq(reportRequests.id, requestId))
+      .returning({ id: reportRequests.id });
+    return updated.length > 0;
   } catch (err) {
     console.error("attachEmail failed:", err);
     return false;
