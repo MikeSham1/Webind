@@ -91,28 +91,43 @@ describe("scoreFreshness", () => {
     );
   });
 
-  it("scores 0 with null lastModified and offers a fix", () => {
-    const s = scoreFreshness(makePage({ lastModified: null }));
-    expect(s.score).toBe(0);
+  it("scores an unknown date mid-range, not as year-old content", () => {
+    const unknown = scoreFreshness(
+      makePage({ lastModified: null, lastModifiedSource: null }),
+    );
+    const stale = scoreFreshness(makePage({ lastModified: daysAgo(500) }));
+    expect(unknown.score).toBe(40);
+    expect(unknown.score).toBeGreaterThan(stale.score as number);
+    expect(unknown.fix).toMatch(/dateModified|article:modified_time/);
+  });
+
+  it("treats a future-dated lastModified as untrustworthy", () => {
+    const s = scoreFreshness(makePage({ lastModified: daysAgo(-30) }));
+    expect(s.score).toBe(40);
+    expect(s.reason).toMatch(/future/);
     expect(s.fix).not.toBeNull();
   });
 
-  it("treats a future-dated lastModified as unknown (score 0)", () => {
-    const s = scoreFreshness(makePage({ lastModified: daysAgo(-30) }));
-    expect(s.score).toBe(0);
-    expect(s.fix).not.toBeNull();
+  it("names the source the date came from", () => {
+    const s = scoreFreshness(
+      makePage({ lastModified: daysAgo(10), lastModifiedSource: "header" }),
+    );
+    expect(s.reason).toMatch(/Last-Modified header/);
   });
 });
 
 describe("scoreEeat", () => {
+  /** A page with none of the three E-E-A-T sub-signals. */
+  const bare = {
+    metaAuthor: null,
+    jsonLdBlocks: [],
+    outboundLinks: [],
+    renderedText: "short thin page",
+    wordCount: 100,
+  };
+
   it("scores 100 with author, citations and depth", () => {
-    const s = scoreEeat(
-      makePage({
-        renderedText:
-          "By Jane Doe. Read more at https://source.example for details.",
-        wordCount: 700,
-      }),
-    );
+    const s = scoreEeat(makePage());
     expect(s.key).toBe("eeat");
     expect(s.weight).toBe(0.3);
     expect(s.score).toBe(100);
@@ -120,29 +135,69 @@ describe("scoreEeat", () => {
   });
 
   it("scores low when signals absent", () => {
-    const s = scoreEeat(
-      makePage({ renderedText: "short thin page", wordCount: 100 }),
-    );
+    const s = scoreEeat(makePage(bare));
     expect(s.score).toBe(0);
     expect(s.fix).not.toBeNull();
+  });
+
+  it("accepts a JSON-LD author when there is no meta author", () => {
+    const s = scoreEeat(
+      makePage({
+        ...bare,
+        jsonLdBlocks: [{ "@type": "Article", author: { name: "Jane Doe" } }],
+      }),
+    );
+    expect(s.score).toBe(34);
+  });
+
+  it("falls back to a visible byline", () => {
+    const s = scoreEeat(
+      makePage({ ...bare, renderedText: "By Jane Doe\nPublished today." }),
+    );
+    expect(s.score).toBe(34);
   });
 
   it("does not treat 'authoritative' prose as an author byline", () => {
     const s = scoreEeat(
       makePage({
+        ...bare,
         renderedText: "This is an authoritative and authentic guide.",
-        wordCount: 100,
       }),
     );
-    // No byline and no citations -> only depth could score, and depth is off.
     expect(s.score).toBe(0);
   });
 
-  it("does not treat the bare word 'http' in prose as a citation", () => {
+  it("counts real outbound links rather than URLs printed in the text", () => {
+    // Printed URL, no actual links out: this is not evidence of sourcing.
+    const printed = scoreEeat(
+      makePage({
+        ...bare,
+        renderedText: "Read more at https://source.example for details.",
+      }),
+    );
+    expect(printed.score).toBe(0);
+
+    const linked = scoreEeat(
+      makePage({
+        ...bare,
+        outboundLinks: [
+          "https://en.wikipedia.org/wiki/A",
+          "https://www.reuters.com/b",
+        ],
+      }),
+    );
+    expect(linked.score).toBe(33);
+  });
+
+  it("requires more than one distinct host to count as citing sources", () => {
     const s = scoreEeat(
       makePage({
-        renderedText: "The HTTP protocol underpins the web.",
-        wordCount: 100,
+        ...bare,
+        outboundLinks: [
+          "https://partner.example/a",
+          "https://partner.example/b",
+          "https://www.partner.example/c",
+        ],
       }),
     );
     expect(s.score).toBe(0);
@@ -203,33 +258,35 @@ describe("scoreTopicalAuthority", () => {
     expect(thin.key).toBe("topicalAuthority");
     expect(thin.score).toBeGreaterThanOrEqual(0);
     expect(deep.score).toBeLessThanOrEqual(100);
-    expect(deep.score).toBeGreaterThan(thin.score);
+    expect(deep.score).toBeGreaterThan(thin.score as number);
   });
 });
 
-describe("MVP off-page neutral signals", () => {
-  it("scoreBrandMentions is neutral 50", () => {
+describe("off-page signals we cannot measure yet", () => {
+  // These report `null` rather than a neutral 50 so composeScore can drop them
+  // from the denominator instead of flattening the total toward the middle.
+  it("scoreBrandMentions is unmeasured", () => {
     const s = scoreBrandMentions(makePage());
     expect(s.key).toBe("brandMentions");
     expect(s.weight).toBe(0.25);
-    expect(s.score).toBe(50);
+    expect(s.score).toBeNull();
     expect(s.fix).toBeNull();
-    expect(s.reason).toMatch(/off-page/);
+    expect(s.reason).toMatch(/Not measured/);
   });
 
-  it("scoreBacklinks is neutral 50", () => {
+  it("scoreBacklinks is unmeasured", () => {
     const s = scoreBacklinks(makePage());
     expect(s.key).toBe("backlinks");
     expect(s.weight).toBe(0.3);
-    expect(s.score).toBe(50);
+    expect(s.score).toBeNull();
     expect(s.fix).toBeNull();
   });
 
-  it("scoreEngagement is neutral 50", () => {
+  it("scoreEngagement is unmeasured", () => {
     const s = scoreEngagement(makePage());
     expect(s.key).toBe("engagement");
     expect(s.weight).toBe(0.1);
-    expect(s.score).toBe(50);
+    expect(s.score).toBeNull();
     expect(s.fix).toBeNull();
   });
 });

@@ -28,12 +28,27 @@ describe("applyCitations", () => {
     expect(bm.reason).toContain("1 of 1");
     expect(bm.fix).not.toBeNull();
 
+    // Every signal is measured now, so the total is the plain weighted sum.
     const expectedTotal = Math.round(
-      enriched.ai.signals.reduce((sum, s) => sum + s.score * s.weight, 0),
+      enriched.ai.signals.reduce((sum, s) => sum + s.score! * s.weight, 0),
     );
     expect(enriched.ai.total).toBe(expectedTotal);
-    // brandMentions moved 50 -> 80, so the total must have changed.
-    expect(enriched.ai.total).not.toBe(baseReport.ai.total);
+  });
+
+  it("moves the total toward the measured brand-mention score", () => {
+    // The fixture's other AI signals average to 80, so a weak citation result
+    // must pull the total down and a strong one must not push it below.
+    expect(baseReport.ai.total).toBe(80);
+    expect(applyCitations(baseReport, citationResult(20, false)).ai.total).toBe(65);
+    expect(applyCitations(baseReport, citationResult(100, true)).ai.total).toBe(85);
+  });
+
+  it("widens coverage to the full model once brand mentions are measured", () => {
+    // Base report leaves brand mentions (0.25) unmeasured; the citation check
+    // supplies it, so the AI score is now renormalized over the whole model.
+    expect(baseReport.ai.coverage).toBeCloseTo(0.75);
+    const enriched = applyCitations(baseReport, citationResult(80, true));
+    expect(enriched.ai.coverage).toBeCloseTo(1);
   });
 
   it("clears the fix when the brand is fully cited", () => {
@@ -46,7 +61,7 @@ describe("applyCitations", () => {
   it("is pure — the input report is not mutated", () => {
     applyCitations(baseReport, citationResult(80, true));
     const bm = baseReport.ai.signals.find((s) => s.key === "brandMentions")!;
-    expect(bm.score).toBe(50);
+    expect(bm.score).toBeNull();
   });
 
   it("returns the report unchanged when brandMentionScore is null", () => {

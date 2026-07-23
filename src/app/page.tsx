@@ -9,14 +9,14 @@ export default function Home() {
     <div className="flex min-h-full flex-col">
       {/* Nav */}
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
-        <a href="/" className="flex items-baseline gap-2">
+        <Link href="/" className="flex items-baseline gap-2">
           <span className="font-display text-xl font-semibold tracking-tight text-ink">
             WeBind
           </span>
           <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted">
             Design
           </span>
-        </a>
+        </Link>
         <nav className="flex items-center gap-5">
           <Link
             href="/studio"

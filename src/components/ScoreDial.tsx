@@ -53,12 +53,12 @@ export default function ScoreDial({
     const reduce =
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) {
-      setShown(clamped);
-      return;
-    }
-    const duration = 1100;
-    const startAt = performance.now() + delay;
+    // Reduced motion is the same animation with no duration and no delay: it
+    // lands on the final value in the first frame. Folding it into one path
+    // keeps the state update inside the rAF callback, where it belongs —
+    // setting state straight from the effect body triggers a cascading render.
+    const duration = reduce ? 0 : 1100;
+    const startAt = performance.now() + (reduce ? 0 : delay);
     let raf = 0;
     const tick = (now: number) => {
       const elapsed = now - startAt;
@@ -66,7 +66,7 @@ export default function ScoreDial({
         raf = requestAnimationFrame(tick);
         return;
       }
-      const p = Math.min(1, elapsed / duration);
+      const p = duration === 0 ? 1 : Math.min(1, elapsed / duration);
       const eased = 1 - Math.pow(1 - p, 3);
       setShown(Math.round(eased * clamped));
       if (p < 1) raf = requestAnimationFrame(tick);

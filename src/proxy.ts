@@ -4,7 +4,14 @@ import { GATE_COOKIE, gateToken, safeEqual, sitePassword } from "@/lib/gate";
 // Reachable without the password: the splash itself and its auth endpoints.
 const PUBLIC_PATHS = ["/splash", "/api/login", "/api/logout"];
 
-export async function middleware(req: NextRequest) {
+/**
+ * Pre-launch password gate.
+ *
+ * Next.js 16 renamed Middleware to Proxy: the file must be `proxy.ts` and the
+ * export must be `proxy`. The behaviour is unchanged, but the old
+ * `middleware.ts` convention is deprecated, so this is the supported spelling.
+ */
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
@@ -19,9 +26,9 @@ export async function middleware(req: NextRequest) {
   }
 
   // Not authenticated (or password unconfigured → fail closed): send to splash.
-  // Middleware runs in the edge runtime, whose nextUrl reflects the proxy's
-  // public host — so an absolute redirect here is correct (and middleware
-  // rejects a relative Location). The Node-runtime route handlers, which do see
+  // Proxy runs in the edge runtime, whose nextUrl reflects the public host —
+  // so an absolute redirect here is correct (and the proxy layer rejects a
+  // relative Location). The Node-runtime route handlers, which do see
   // the internal 0.0.0.0 origin, use relative redirects instead.
   const url = req.nextUrl.clone();
   url.pathname = "/splash";

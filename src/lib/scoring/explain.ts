@@ -42,16 +42,30 @@ export async function explainReport(report: ReportResult): Promise<string> {
   }
 }
 
+/** Render a 0-1 coverage fraction as a whole percentage. */
+function pct(coverage: number): string {
+  return `${Math.round(coverage * 100)}%`;
+}
+
 /** Serialize the report into a compact prompt of facts Claude may narrate. */
 function buildPrompt(report: ReportResult): string {
   const lines: string[] = [];
   lines.push(`Website: ${report.url}`);
-  lines.push(`AI authority score: ${report.ai.total}/100`);
-  lines.push(`Traditional (search) authority score: ${report.traditional.total}/100`);
+  lines.push(
+    `AI authority score: ${report.ai.total}/100 ` +
+      `(from ${pct(report.ai.coverage)} of the AI model's signals)`,
+  );
+  lines.push(
+    `Traditional (search) authority score: ${report.traditional.total}/100 ` +
+      `(from ${pct(report.traditional.coverage)} of that model's signals)`,
+  );
   lines.push("");
   lines.push("Signal notes:");
   for (const s of [...report.ai.signals, ...report.traditional.signals]) {
-    lines.push(`- ${s.label} (${s.score}/100): ${s.reason}`);
+    // Unmeasured signals are passed through as such so the summary never
+    // implies we checked something we didn't.
+    const value = s.score === null ? "not measured" : `${s.score}/100`;
+    lines.push(`- ${s.label} (${value}): ${s.reason}`);
   }
   const topFixes = report.prioritizedFixes.slice(0, 3);
   if (topFixes.length > 0) {

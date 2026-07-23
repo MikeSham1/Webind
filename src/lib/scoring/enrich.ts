@@ -1,5 +1,6 @@
 import type { ReportResult, SignalScore } from "./types";
 import type { CitationResult } from "./ai-citations";
+import { composeScore } from "./authority";
 
 /**
  * Fold a live citation result into a report as a separate, optional layer.
@@ -7,8 +8,12 @@ import type { CitationResult } from "./ai-citations";
  * Pure: returns a NEW report and never mutates the input. When the citation
  * result carries a real `brandMentionScore`, the `brandMentions` AI signal is
  * replaced with that score (and its reason/fix updated) and `ai.total` is
- * recomputed as round(Σ score*weight). When the score is null, the original
- * report is returned unchanged.
+ * recomposed. This flips brand mentions from unmeasured to measured, so the AI
+ * score's `coverage` rises from 0.75 to 1.0 and the total is renormalized over
+ * the wider base — that is exactly why the recomposition goes through
+ * {@link composeScore} rather than re-deriving the arithmetic here.
+ *
+ * When the score is null, the original report is returned unchanged.
  */
 export function applyCitations(
   report: ReportResult,
@@ -37,10 +42,5 @@ export function applyCitations(
     };
   });
 
-  // Recompose the AI total from the (possibly updated) per-signal weights.
-  const total = Math.round(
-    signals.reduce((sum, s) => sum + s.score * s.weight, 0),
-  );
-
-  return { ...report, ai: { total, signals } };
+  return { ...report, ai: composeScore(signals) };
 }

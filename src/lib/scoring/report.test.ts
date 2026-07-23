@@ -5,10 +5,13 @@ import { makePage } from "./test-fixtures";
 
 // Deficient page with predictable per-signal scores so fix ordering is known.
 const deficientPage: CrawledPage = makePage({
+  metaAuthor: null,
+  outboundLinks: [],
   renderedText: "This is body text about widgets and gadgets.",
   jsonLdBlocks: [],
   hasServerRenderedContent: false,
   lastModified: null,
+  lastModifiedSource: null,
 });
 
 describe("buildReport", () => {
@@ -23,28 +26,49 @@ describe("buildReport", () => {
     const r = buildReport(deficientPage);
     // Expected priorities:
     //  eeat 0.30*(100-33)=20.1, topicalAuthority 0.25*(100-28)=18,
-    //  schema 0.15*100=15 and freshness 0.15*100=15 tie -> broken by key
-    //  ("freshness" < "schema"), aiCrawlability 0.15*(100-60)=6.
+    //  schema 0.15*100=15, freshness 0.15*(100-40)=9,
+    //  aiCrawlability 0.15*(100-60)=6.
     expect(r.prioritizedFixes).toEqual([
-      "Strengthen E-E-A-T: add a visible author byline; cite authoritative outbound sources.",
+      "Strengthen E-E-A-T: add a visible author byline or author metadata; link out to at least 2 authoritative sources.",
       "Publish more in-depth, topically-related content to build authority.",
-      "Update this page; Perplexity decays content in 2-3 months.",
       "Add JSON-LD Organization and WebSite schema to the homepage.",
+      "Publish an explicit update date — JSON-LD `dateModified` or an `article:modified_time` meta tag — so AI engines can verify recency.",
       "Improve AI crawlability: server-render key content.",
     ]);
   });
 
+  it("never emits a fix for a signal it could not measure", () => {
+    const r = buildReport(deficientPage);
+    const unmeasured = [...r.ai.signals, ...r.traditional.signals].filter(
+      (s) => s.score === null,
+    );
+    // The three off-page signals are unmeasured, and none of them may
+    // contribute advice — we have no evidence to base advice on.
+    expect(unmeasured.map((s) => s.key).sort()).toEqual([
+      "backlinks",
+      "brandMentions",
+      "engagement",
+    ]);
+    for (const s of unmeasured) expect(s.fix).toBeNull();
+  });
+
   it("omits fixes entirely when every signal is already good", () => {
-    const good: CrawledPage = {
-      ...deficientPage,
-      renderedText:
-        "By Jane Doe, author. See sources at https://source.example for more.",
+    const good: CrawledPage = makePage({
+      metaAuthor: "Jane Doe",
+      outboundLinks: [
+        "https://en.wikipedia.org/wiki/A",
+        "https://www.reuters.com/b",
+      ],
       jsonLdBlocks: [{ "@type": "Organization" }, { "@type": "WebSite" }],
+      headings: Array.from({ length: 10 }, (_, i) => ({
+        level: i === 0 ? 1 : 2,
+        text: `H${i}`,
+      })),
+      wordCount: 1600,
       hasServerRenderedContent: true,
       lastModified: new Date().toISOString(),
-    };
-    const r = buildReport(good);
-    // Off-page neutral signals (score 50) carry null fixes, so they never appear.
-    for (const fix of r.prioritizedFixes) expect(fix).not.toContain("off-page");
+      lastModifiedSource: "json-ld",
+    });
+    expect(buildReport(good).prioritizedFixes).toEqual([]);
   });
 });

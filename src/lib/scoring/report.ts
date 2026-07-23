@@ -1,8 +1,12 @@
 import type { CrawledPage, ReportResult, SignalScore } from "./types";
 import { scoreAiAuthority, scoreTraditionalAuthority } from "./authority";
 
-/** Ranking priority: high-weight, low-scoring signals surface first. */
+/**
+ * Ranking priority: high-weight, low-scoring signals surface first. Unmeasured
+ * signals rank last (they carry no fix, so they are filtered out before this).
+ */
 function priority(s: SignalScore): number {
+  if (s.score === null) return -1;
   return s.weight * (100 - s.score);
 }
 
