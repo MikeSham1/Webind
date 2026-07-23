@@ -17,5 +17,6 @@ COPY . .
 RUN npm run build
 
 ENV NODE_ENV=production
-# Railway injects PORT; bind to it on all interfaces.
-CMD ["sh", "-c", "npm run start -- -p ${PORT:-3000} -H 0.0.0.0"]
+# On boot: apply DB migrations when a database is configured (best-effort — a
+# migration hiccup must not stop the server), then start bound to Railway's PORT.
+CMD ["sh", "-c", "if [ -n \"$DATABASE_URL\" ]; then npx drizzle-kit migrate || echo 'drizzle migrate failed; continuing'; fi; npm run start -- -p ${PORT:-3000} -H 0.0.0.0"]

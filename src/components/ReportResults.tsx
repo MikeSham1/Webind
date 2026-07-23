@@ -2,11 +2,14 @@ import type { ReportResult } from "@/lib/scoring/types";
 import ScoreDial from "./ScoreDial";
 import SignalBreakdown from "./SignalBreakdown";
 import FixList from "./FixList";
+import LeadCapture from "./LeadCapture";
 
 export interface ReportResultsProps {
   report: ReportResult;
   /** Optional plain-English summary shown above the dials. */
   narrative?: string;
+  /** DB id of the logged run; enables email capture when present. */
+  requestId?: string | null;
 }
 
 function hostOf(url: string): string {
@@ -20,6 +23,7 @@ function hostOf(url: string): string {
 export default function ReportResults({
   report,
   narrative,
+  requestId,
 }: ReportResultsProps) {
   const host = hostOf(report.url);
 
@@ -93,15 +97,21 @@ export default function ReportResults({
           We implement every fix on this list, then monitor your AI and search
           authority as it climbs — done for you.
         </p>
-        <button
-          type="button"
-          className="mt-6 inline-flex h-12 items-center justify-center rounded-full bg-accent px-7 font-sans text-[15px] font-semibold text-accent-ink transition-colors hover:bg-accent-hover"
-        >
-          Optimize with WeBind
-        </button>
-        <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
-          Early access opening soon
-        </p>
+        {requestId ? (
+          <LeadCapture requestId={requestId} />
+        ) : (
+          <>
+            <button
+              type="button"
+              className="mt-6 inline-flex h-12 items-center justify-center rounded-full bg-accent px-7 font-sans text-[15px] font-semibold text-accent-ink transition-colors hover:bg-accent-hover"
+            >
+              Optimize with WeBind
+            </button>
+            <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
+              Early access opening soon
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

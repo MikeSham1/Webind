@@ -94,7 +94,11 @@ export default function ReportForm() {
       <div className="mt-16">
         {isPending && <ReportSkeleton url={url} />}
         {showResults && (
-          <ReportResults report={state.report} narrative={state.narrative} />
+          <ReportResults
+            report={state.report}
+            narrative={state.narrative}
+            requestId={state.requestId}
+          />
         )}
       </div>
     </div>

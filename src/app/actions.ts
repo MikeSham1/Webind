@@ -3,12 +3,19 @@
 import { crawl } from "@/lib/crawler/crawl";
 import { buildReport } from "@/lib/scoring/report";
 import { explainReport } from "@/lib/scoring/explain";
+import { attachEmail, saveReportRequest } from "@/lib/leads";
 import type { ReportResult } from "@/lib/scoring/types";
 
 /** Result of a report run, shaped for `useActionState`. */
 export type ReportState =
   | { status: "idle" }
-  | { status: "success"; report: ReportResult; narrative: string }
+  | {
+      status: "success";
+      report: ReportResult;
+      narrative: string;
+      /** DB id of the logged run, or null when persistence is disabled. */
+      requestId: string | null;
+    }
   | { status: "error"; error: string; url: string };
 
 export const initialReportState: ReportState = { status: "idle" };
@@ -71,7 +78,10 @@ export async function runReport(
     // otherwise falls back to a deterministic, network-free narrative.
     // (Live citation checks are intentionally kept out of the request path.)
     const narrative = await explainReport(report);
-    return { status: "success", report, narrative };
+    // Best-effort logging (the preview doubles as a lead funnel). Never blocks
+    // or breaks the report — returns null when persistence is disabled.
+    const requestId = await saveReportRequest(report);
+    return { status: "success", report, narrative, requestId };
   } catch {
     return {
       status: "error",
@@ -80,4 +90,35 @@ export async function runReport(
       url,
     };
   }
+}
+
+/** State for the lead-capture (email) form. */
+export type LeadState =
+  | { status: "idle" }
+  | { status: "done" }
+  | { status: "error"; error: string };
+
+export const initialLeadState: LeadState = { status: "idle" };
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/** Attach a visitor's email to a logged report run. */
+export async function submitLead(
+  _prev: LeadState,
+  formData: FormData,
+): Promise<LeadState> {
+  const requestId = String(formData.get("requestId") ?? "");
+  const email = String(formData.get("email") ?? "").trim();
+
+  if (!EMAIL_RE.test(email)) {
+    return { status: "error", error: "Please enter a valid email address." };
+  }
+  if (!requestId) {
+    return { status: "error", error: "Something went wrong — please refresh." };
+  }
+
+  const ok = await attachEmail(requestId, email);
+  return ok
+    ? { status: "done" }
+    : { status: "error", error: "Couldn't save that right now — try again." };
 }
