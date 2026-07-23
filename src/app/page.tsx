@@ -24,9 +24,18 @@ export default function Home() {
           >
             Content Studio
           </Link>
-          <span className="rounded-full border border-line px-3 py-1 font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
-            AI Authority Report
-          </span>
+          <Link
+            href="/dashboard"
+            className="font-sans text-sm font-medium text-muted transition-colors hover:text-accent"
+          >
+            Dashboard
+          </Link>
+          <Link
+            href="/login"
+            className="rounded-full border border-line px-4 py-1.5 font-sans text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent"
+          >
+            Log in
+          </Link>
         </nav>
       </header>
 

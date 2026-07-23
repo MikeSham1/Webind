@@ -43,3 +43,28 @@ export const contentDrafts = pgTable("content_drafts", {
 });
 
 export type ContentDraftRow = typeof contentDrafts.$inferSelect;
+
+/** Registered users (email + scrypt password hash). */
+export const users = pgTable("users", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+});
+
+export type UserRow = typeof users.$inferSelect;
+
+/** Server-side sessions; the cookie holds a token whose SHA-256 is stored here. */
+export const sessions = pgTable("sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
