@@ -36,7 +36,13 @@ export async function crawl(url: string, opts: CrawlOptions = {}): Promise<Crawl
   if (opts.context) {
     context = opts.context;
   } else {
-    browser = await chromium.launch({ headless: true });
+    // --no-sandbox: containers run as root without sandbox capabilities.
+    // --disable-dev-shm-usage: containers have a tiny /dev/shm; without this
+    // Chromium can crash under memory pressure (a hard 500, not a caught error).
+    browser = await chromium.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-dev-shm-usage"],
+    });
     context = await browser.newContext();
   }
 
@@ -63,7 +69,9 @@ async function extractPage(
   context: BrowserContext,
   page: Page,
 ): Promise<CrawledPage> {
-  const response = await page.goto(url, { waitUntil: "load" });
+  // Bounded so a slow/hanging site fails gracefully (caught upstream → friendly
+  // error) instead of tying up the request until a platform timeout.
+  const response = await page.goto(url, { waitUntil: "load", timeout: 25000 });
   const statusCode = response ? response.status() : 0;
 
   // RAW served HTML (pre-JS): what SSR judgement is based on.
@@ -182,7 +190,10 @@ async function fetchViaPage(
 ): Promise<{ status: number; body: string }> {
   const page = await context.newPage();
   try {
-    const resp = await page.goto(url, { waitUntil: "domcontentloaded" });
+    const resp = await page.goto(url, {
+      waitUntil: "domcontentloaded",
+      timeout: 10000,
+    });
     if (!resp) return { status: 0, body: "" };
     const body = await resp.text().catch(() => "");
     return { status: resp.status(), body };
