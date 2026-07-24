@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { submitLead, initialLeadState } from "@/app/actions";
+import { submitLead } from "@/app/actions";
+import { initialLeadState } from "@/app/report-state";
 
 /**
  * Email capture shown under the results CTA. Attaches the visitor's email to

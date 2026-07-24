@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { runReport, initialReportState } from "@/app/actions";
+import { runReport } from "@/app/actions";
+import { initialReportState } from "@/app/report-state";
 import ReportResults from "./ReportResults";
 
 export default function ReportForm() {

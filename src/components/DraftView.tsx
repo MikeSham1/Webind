@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { decideDraftAction, initialDecisionState } from "@/app/studio/actions";
+import { decideDraftAction } from "@/app/studio/actions";
+import { initialDecisionState } from "@/app/studio/state";
 import type { ContentDraft, GateResult } from "@/lib/content/types";
 
 const STATUS_STYLES: Record<GateResult["status"], string> = {

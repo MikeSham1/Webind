@@ -2,21 +2,10 @@
 
 import { generateDraft } from "@/lib/content/generate";
 import { saveDraft, setDraftStatus } from "@/lib/content/store";
-import type {
-  ContentDraft,
-  ContentInputs,
-  DraftStatus,
-  PageType,
-} from "@/lib/content/types";
+import type { ContentInputs, DraftStatus, PageType } from "@/lib/content/types";
+import type { DecisionState, StudioState } from "./state";
 
 const PAGE_TYPES: PageType[] = ["landing", "blog", "product", "about", "faq"];
-
-export type StudioState =
-  | { status: "idle" }
-  | { status: "created"; draft: ContentDraft; draftId: string | null }
-  | { status: "error"; error: string };
-
-export const initialStudioState: StudioState = { status: "idle" };
 
 function splitLines(value: string): string[] {
   return value
@@ -71,13 +60,6 @@ export async function createDraftAction(
   const draftId = await saveDraft(inputs, draft); // best-effort
   return { status: "created", draft, draftId };
 }
-
-export type DecisionState =
-  | { status: "idle" }
-  | { status: "done"; decision: DraftStatus }
-  | { status: "error"; error: string };
-
-export const initialDecisionState: DecisionState = { status: "idle" };
 
 /** Approve or reject a saved draft — the mandatory human step. */
 export async function decideDraftAction(

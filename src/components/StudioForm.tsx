@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { createDraftAction, initialStudioState } from "@/app/studio/actions";
+import { createDraftAction } from "@/app/studio/actions";
+import { initialStudioState } from "@/app/studio/state";
 import DraftView from "./DraftView";
 
 const inputClass =
