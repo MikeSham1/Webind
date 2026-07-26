@@ -24,6 +24,25 @@ const AUX_TIMEOUT_MS = 10_000;
 /** Cap on stored outbound links, so a link-farm page can't balloon the payload. */
 const MAX_OUTBOUND_LINKS = 500;
 
+/**
+ * How the crawler identifies itself on the wire.
+ *
+ * A tool that fetches sites on people's behalf should say who it is and where to
+ * learn more, so operators see it in their logs and can allow or deny it in
+ * robots.txt. The default headless-Chrome UA does neither — it is anonymous and
+ * actively misleading, which is a poor look for a product whose whole premise is
+ * scoring whether a site welcomes named AI crawlers. The token is deliberately
+ * one of the names our own robots.txt check looks for, so a site that opts into
+ * AI bots opts this analyzer in too. Override per deployment via env.
+ */
+const DEFAULT_USER_AGENT =
+  "WebindBot/1.0 (+https://webind.design/bot; website authority analyzer)";
+
+export function crawlerUserAgent(): string {
+  const override = process.env.CRAWLER_USER_AGENT?.trim();
+  return override && override.length > 0 ? override : DEFAULT_USER_AGENT;
+}
+
 export interface CrawlOptions {
   /**
    * Test-only injection point. When provided, the crawl runs inside this
@@ -118,26 +137,34 @@ function memoizedGuard(
 }
 
 /**
- * Vet every request the context makes, so an internal host is never contacted
- * for an image, script, or the robots.txt/llms.txt side-fetches.
+ * The single egress point for every request the crawler makes. It does two
+ * things at that choke point: refuses disallowed hosts, and stamps the
+ * crawler's identity onto the requests it does allow.
  *
- * This does NOT cover redirects: Playwright invokes a route handler once per
- * navigation and follows any 3xx transparently, so hop two never reaches this
- * function (verified against a live redirecting server, not assumed). Redirect
- * chains are checked after the fact by {@link assertNavigationAllowed}.
+ * Vetting an internal host here means one is never contacted for an image,
+ * script, or the robots.txt/llms.txt side-fetches. This does NOT cover
+ * redirects: Playwright invokes a route handler once per navigation and follows
+ * any 3xx transparently, so hop two never reaches this function (verified
+ * against a live redirecting server, not assumed). Redirect chains are checked
+ * after the fact by {@link assertNavigationAllowed}; the User-Agent is carried
+ * across hops by the browser's normal header propagation.
  */
 async function installUrlGuard(
   context: BrowserContext,
   allowed: (url: string) => Promise<boolean>,
 ): Promise<void> {
+  const userAgent = crawlerUserAgent();
   await context.route("**/*", async (route) => {
-    if (await allowed(route.request().url())) {
-      // Defer to any handler registered earlier (e.g. a test's fixture routes),
-      // or to the network when there is none.
-      await route.fallback();
+    if (!(await allowed(route.request().url()))) {
+      await route.abort("blockedbyclient");
       return;
     }
-    await route.abort("blockedbyclient");
+    // Identify ourselves on every allowed request. Defer to any handler
+    // registered earlier (e.g. a test's fixture routes), or to the network when
+    // there is none — fallback overrides propagate to both.
+    await route.fallback({
+      headers: { ...route.request().headers(), "user-agent": userAgent },
+    });
   });
 }
 
