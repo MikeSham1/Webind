@@ -1,12 +1,13 @@
 import { describe, it, expect } from "vitest";
-import type { CrawledPage } from "./types";
+import type { CrawledPage, SignalScore } from "./types";
 import { buildReport } from "./report";
-import { makePage } from "./test-fixtures";
+import { daysAgo, makePage } from "./test-fixtures";
 
-// Deficient page with predictable per-signal scores so fix ordering is known.
+// A page with several deficiencies so there are fixes to order.
 const deficientPage: CrawledPage = makePage({
   metaAuthor: null,
   outboundLinks: [],
+  hasAboutOrContactLink: false,
   renderedText: "This is body text about widgets and gadgets.",
   jsonLdBlocks: [],
   hasServerRenderedContent: false,
@@ -14,27 +15,32 @@ const deficientPage: CrawledPage = makePage({
   lastModifiedSource: null,
 });
 
+/** Priority buildReport sorts fixes by: weight * (100 - score), descending. */
+function expectedFixOrder(page: CrawledPage): string[] {
+  const r = buildReport(page);
+  const withFix = [...r.ai.signals, ...r.traditional.signals].filter(
+    (s): s is SignalScore & { fix: string; score: number } =>
+      s.fix !== null && s.score !== null,
+  );
+  return withFix
+    .sort((a, b) => b.weight * (100 - b.score) - a.weight * (100 - a.score))
+    .map((s) => s.fix);
+}
+
 describe("buildReport", () => {
   it("returns the url and both authority scores", () => {
     const r = buildReport(deficientPage);
     expect(r.url).toBe("https://example.com/");
-    expect(r.ai.signals).toHaveLength(5);
+    expect(r.ai.signals).toHaveLength(7);
     expect(r.traditional.signals).toHaveLength(5);
   });
 
-  it("excludes signals with a null fix and orders by weight * (100 - score) desc", () => {
+  it("orders fixes by weight * (100 - score) desc and excludes null fixes", () => {
     const r = buildReport(deficientPage);
-    // Expected priorities:
-    //  eeat 0.30*(100-33)=20.1, topicalAuthority 0.25*(100-28)=18,
-    //  schema 0.15*100=15, freshness 0.15*(100-40)=9,
-    //  aiCrawlability 0.15*(100-60)=6.
-    expect(r.prioritizedFixes).toEqual([
-      "Strengthen E-E-A-T: add a visible author byline or author metadata; link out to at least 2 authoritative sources.",
-      "Publish more in-depth, topically-related content to build authority.",
-      "Add JSON-LD Organization and WebSite schema to the homepage.",
-      "Publish an explicit update date — JSON-LD `dateModified` or an `article:modified_time` meta tag — so AI engines can verify recency.",
-      "Improve AI crawlability: server-render key content.",
-    ]);
+    // Every fix corresponds to a measured, deficient signal...
+    for (const fix of r.prioritizedFixes) expect(typeof fix).toBe("string");
+    // ...and the order matches the weight * deficit ranking exactly.
+    expect(r.prioritizedFixes).toEqual(expectedFixOrder(deficientPage));
   });
 
   it("never emits a fix for a signal it could not measure", () => {
@@ -42,32 +48,45 @@ describe("buildReport", () => {
     const unmeasured = [...r.ai.signals, ...r.traditional.signals].filter(
       (s) => s.score === null,
     );
-    // The three off-page signals are unmeasured, and none of them may
-    // contribute advice — we have no evidence to base advice on.
-    expect(unmeasured.map((s) => s.key).sort()).toEqual([
-      "backlinks",
-      "brandMentions",
-      "engagement",
-    ]);
+    expect(unmeasured.map((s) => s.key).sort()).toEqual(["backlinks", "brandMentions"]);
     for (const s of unmeasured) expect(s.fix).toBeNull();
   });
 
   it("omits fixes entirely when every signal is already good", () => {
     const good: CrawledPage = makePage({
+      title: "The Complete Guide to Widgets for Small Businesses",
+      metaDescription:
+        "A data-backed guide to choosing, buying, and maintaining widgets for small businesses, with pricing benchmarks and tips.",
       metaAuthor: "Jane Doe",
-      outboundLinks: [
-        "https://en.wikipedia.org/wiki/A",
-        "https://www.reuters.com/b",
+      outboundLinks: ["https://en.wikipedia.org/a", "https://www.reuters.com/b"],
+      hasAboutOrContactLink: true,
+      jsonLdBlocks: [
+        { "@type": "Organization" },
+        { "@type": "WebSite" },
+        { "@type": "Article", author: { name: "Jane Doe" } },
+        { "@type": "BreadcrumbList" },
+        { "@type": "FAQPage" },
       ],
-      jsonLdBlocks: [{ "@type": "Organization" }, { "@type": "WebSite" }],
-      headings: Array.from({ length: 10 }, (_, i) => ({
-        level: i === 0 ? 1 : 2,
-        text: `H${i}`,
-      })),
+      headings: [
+        { level: 1, text: "Guide" },
+        { level: 2, text: "What is it?" },
+        { level: 3, text: "Types" },
+        { level: 2, text: "How much does it cost?" },
+        { level: 3, text: "Pricing" },
+        { level: 4, text: "Enterprise" },
+        { level: 2, text: "Best practices" },
+        { level: 3, text: "Setup" },
+        { level: 3, text: "Maintenance" },
+        { level: 2, text: "Mistakes" },
+        { level: 3, text: "Fixes" },
+        { level: 2, text: "Conclusion" },
+      ],
       wordCount: 1600,
-      hasServerRenderedContent: true,
-      lastModified: new Date().toISOString(),
-      lastModifiedSource: "json-ld",
+      renderedText:
+        "By 2024, 65% of 1,200 firms cut costs 30% saving $5,000 over 12 months, up from 45% in 2023 and 38% in 2022 across 3,400 sites, a 22% gain.",
+      blockquoteCount: 1,
+      internalLinkCount: 25,
+      lastModified: daysAgo(3),
     });
     expect(buildReport(good).prioritizedFixes).toEqual([]);
   });

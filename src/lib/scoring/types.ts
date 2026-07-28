@@ -21,6 +21,37 @@ export interface CrawledPage {
   lastModified: string | null; // ISO
   /** Which source `lastModified` came from; null when no date was found. */
   lastModifiedSource: DateSource | null;
+
+  // --- Structure & extractability (what answer engines lift into citations) ---
+  /** Number of <ul>/<ol> lists. */
+  listCount: number;
+  /** Number of <li> items across all lists. */
+  listItemCount: number;
+  /** Number of <table> elements. */
+  tableCount: number;
+  /** Number of <blockquote> elements. */
+  blockquoteCount: number;
+  /** Number of <p> paragraphs. */
+  paragraphCount: number;
+  /** Paragraphs longer than ~120 words — a readability/extractability drag. */
+  longParagraphCount: number;
+
+  // --- On-page technical & trust ---------------------------------------------
+  /** Links to pages on the same host (topical-cluster signal). */
+  internalLinkCount: number;
+  /** Whether the page links to an about/contact/team page (a trust signal). */
+  hasAboutOrContactLink: boolean;
+  /** Total <img> elements and how many carry non-empty alt text. */
+  imageCount: number;
+  imagesWithAlt: number;
+  /** <meta name="viewport"> present (mobile-friendliness signal). */
+  hasViewportMeta: boolean;
+  /** <link rel="canonical"> present. */
+  hasCanonical: boolean;
+  /** Any Open Graph (og:*) meta present. */
+  hasOpenGraph: boolean;
+  /** The <html lang> attribute, or null. */
+  htmlLang: string | null;
 }
 
 export interface SignalScore {

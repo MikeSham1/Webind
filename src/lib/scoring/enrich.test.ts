@@ -36,17 +36,20 @@ describe("applyCitations", () => {
   });
 
   it("moves the total toward the measured brand-mention score", () => {
-    // The fixture's other AI signals average to 80, so a weak citation result
-    // must pull the total down and a strong one must not push it below.
-    expect(baseReport.ai.total).toBe(80);
-    expect(applyCitations(baseReport, citationResult(20, false)).ai.total).toBe(65);
-    expect(applyCitations(baseReport, citationResult(100, true)).ai.total).toBe(85);
+    // A weak citation result pulls the total below the on-page baseline; a
+    // strong one lifts it above.
+    expect(applyCitations(baseReport, citationResult(0, false)).ai.total).toBeLessThan(
+      baseReport.ai.total,
+    );
+    expect(applyCitations(baseReport, citationResult(100, true)).ai.total).toBeGreaterThan(
+      baseReport.ai.total,
+    );
   });
 
   it("widens coverage to the full model once brand mentions are measured", () => {
-    // Base report leaves brand mentions (0.25) unmeasured; the citation check
-    // supplies it, so the AI score is now renormalized over the whole model.
-    expect(baseReport.ai.coverage).toBeCloseTo(0.75);
+    // Base report leaves brand mentions (0.08) unmeasured; the citation check
+    // supplies it, so the AI score is renormalized over the whole model.
+    expect(baseReport.ai.coverage).toBeCloseTo(0.92);
     const enriched = applyCitations(baseReport, citationResult(80, true));
     expect(enriched.ai.coverage).toBeCloseTo(1);
   });

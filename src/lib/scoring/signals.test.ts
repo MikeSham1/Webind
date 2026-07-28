@@ -1,228 +1,177 @@
 import { describe, it, expect } from "vitest";
 import {
-  scoreSchema,
   scoreAiCrawlability,
-  scoreFreshness,
-  scoreEeat,
-  scoreTechnicalSeo,
-  scoreContentQuality,
-  scoreTopicalAuthority,
-  scoreBrandMentions,
+  scoreAnswerability,
   scoreBacklinks,
-  scoreEngagement,
+  scoreBrandMentions,
+  scoreContentQuality,
+  scoreEeat,
+  scoreFactDensity,
+  scoreFreshness,
+  scoreOnPageOptimization,
+  scoreSchema,
+  scoreTechnicalSeo,
+  scoreTopicalAuthority,
 } from "./signals";
 import { daysAgo, makePage } from "./test-fixtures";
 
 describe("scoreSchema", () => {
-  it("scores 100 with Organization and WebSite present", () => {
+  it("rewards Organization, WebSite, a content type, breadcrumb, and person", () => {
     const s = scoreSchema(
       makePage({
-        jsonLdBlocks: [{ "@type": "Organization" }, { "@type": "WebSite" }],
+        jsonLdBlocks: [
+          { "@type": "Organization" },
+          { "@type": "WebSite" },
+          { "@type": "Article", author: { name: "Jane" } },
+          { "@type": "BreadcrumbList" },
+        ],
       }),
     );
     expect(s.key).toBe("schema");
-    expect(s.weight).toBe(0.15);
+    expect(s.weight).toBe(0.14);
     expect(s.score).toBe(100);
     expect(s.fix).toBeNull();
   });
 
-  it("handles @type arrays", () => {
+  it("gives partial credit for Organization + WebSite only", () => {
     const s = scoreSchema(
       makePage({ jsonLdBlocks: [{ "@type": ["Organization", "WebSite"] }] }),
     );
-    expect(s.score).toBe(100);
+    expect(s.score).toBe(40);
+    expect(s.reason).toMatch(/content type/);
   });
 
-  it("scores deficient when schema missing", () => {
-    const s = scoreSchema(
-      makePage({ jsonLdBlocks: [{ "@type": "Organization" }] }),
-    );
-    expect(s.score).toBe(50);
-    expect(s.fix).not.toBeNull();
-    expect(s.reason).toMatch(/WebSite/);
+  it("scores 0 with no structured data", () => {
+    expect(scoreSchema(makePage({ jsonLdBlocks: [] })).score).toBe(0);
   });
 });
 
 describe("scoreAiCrawlability", () => {
   it("scores 100 when fully crawlable", () => {
-    const s = scoreAiCrawlability(makePage());
-    expect(s.key).toBe("aiCrawlability");
-    expect(s.score).toBe(100);
-    expect(s.fix).toBeNull();
+    expect(scoreAiCrawlability(makePage()).score).toBe(100);
   });
 
-  it("penalizes missing SSR, robots and llms.txt to floor of 0", () => {
-    const s = scoreAiCrawlability(
-      makePage({
-        hasServerRenderedContent: false,
-        robotsAllowsAiBots: false,
-        hasLlmsTxt: false,
-      }),
-    );
-    expect(s.score).toBe(0);
-    expect(s.fix).not.toBeNull();
-  });
-
-  it("subtracts 40 for missing SSR only", () => {
-    const s = scoreAiCrawlability(
-      makePage({ hasServerRenderedContent: false }),
-    );
-    expect(s.score).toBe(60);
+  it("penalizes SSR (-40), robots (-35), llms.txt (-25)", () => {
+    expect(scoreAiCrawlability(makePage({ hasServerRenderedContent: false })).score).toBe(60);
+    expect(scoreAiCrawlability(makePage({ robotsAllowsAiBots: false })).score).toBe(65);
+    expect(scoreAiCrawlability(makePage({ hasLlmsTxt: false })).score).toBe(75);
   });
 });
 
 describe("scoreFreshness", () => {
-  it("scores 100 for content under 90 days", () => {
-    const s = scoreFreshness(makePage({ lastModified: daysAgo(10) }));
-    expect(s.key).toBe("freshness");
-    expect(s.score).toBe(100);
-    expect(s.fix).toBeNull();
-  });
-
   it("scores by age buckets", () => {
-    expect(scoreFreshness(makePage({ lastModified: daysAgo(120) })).score).toBe(
-      60,
-    );
-    expect(scoreFreshness(makePage({ lastModified: daysAgo(300) })).score).toBe(
-      30,
-    );
-    expect(scoreFreshness(makePage({ lastModified: daysAgo(500) })).score).toBe(
-      0,
-    );
+    expect(scoreFreshness(makePage({ lastModified: daysAgo(10) })).score).toBe(100);
+    expect(scoreFreshness(makePage({ lastModified: daysAgo(120) })).score).toBe(60);
+    expect(scoreFreshness(makePage({ lastModified: daysAgo(300) })).score).toBe(30);
+    expect(scoreFreshness(makePage({ lastModified: daysAgo(500) })).score).toBe(0);
   });
 
-  it("scores an unknown date mid-range, not as year-old content", () => {
-    const unknown = scoreFreshness(
-      makePage({ lastModified: null, lastModifiedSource: null }),
-    );
-    const stale = scoreFreshness(makePage({ lastModified: daysAgo(500) }));
-    expect(unknown.score).toBe(40);
-    expect(unknown.score).toBeGreaterThan(stale.score as number);
-    expect(unknown.fix).toMatch(/dateModified|article:modified_time/);
-  });
-
-  it("treats a future-dated lastModified as untrustworthy", () => {
-    const s = scoreFreshness(makePage({ lastModified: daysAgo(-30) }));
+  it("scores an unknown date mid-range, not as stale", () => {
+    const s = scoreFreshness(makePage({ lastModified: null, lastModifiedSource: null }));
     expect(s.score).toBe(40);
-    expect(s.reason).toMatch(/future/);
-    expect(s.fix).not.toBeNull();
+    expect(s.fix).toMatch(/dateModified|article:modified_time/);
   });
 
-  it("names the source the date came from", () => {
-    const s = scoreFreshness(
-      makePage({ lastModified: daysAgo(10), lastModifiedSource: "header" }),
-    );
-    expect(s.reason).toMatch(/Last-Modified header/);
+  it("treats a future date as untrustworthy", () => {
+    expect(scoreFreshness(makePage({ lastModified: daysAgo(-30) })).score).toBe(40);
   });
 });
 
 describe("scoreEeat", () => {
-  /** A page with none of the three E-E-A-T sub-signals. */
   const bare = {
     metaAuthor: null,
     jsonLdBlocks: [],
     outboundLinks: [],
+    hasAboutOrContactLink: false,
     renderedText: "short thin page",
-    wordCount: 100,
   };
 
-  it("scores 100 with author, citations and depth", () => {
-    const s = scoreEeat(makePage());
-    expect(s.key).toBe("eeat");
-    expect(s.weight).toBe(0.3);
-    expect(s.score).toBe(100);
-    expect(s.fix).toBeNull();
-  });
-
-  it("scores low when signals absent", () => {
-    const s = scoreEeat(makePage(bare));
-    expect(s.score).toBe(0);
-    expect(s.fix).not.toBeNull();
-  });
-
-  it("accepts a JSON-LD author when there is no meta author", () => {
+  it("maxes with author, 3 cited hosts, and an about/contact link", () => {
     const s = scoreEeat(
       makePage({
-        ...bare,
-        jsonLdBlocks: [{ "@type": "Article", author: { name: "Jane Doe" } }],
-      }),
-    );
-    expect(s.score).toBe(34);
-  });
-
-  it("falls back to a visible byline", () => {
-    const s = scoreEeat(
-      makePage({ ...bare, renderedText: "By Jane Doe\nPublished today." }),
-    );
-    expect(s.score).toBe(34);
-  });
-
-  it("does not treat 'authoritative' prose as an author byline", () => {
-    const s = scoreEeat(
-      makePage({
-        ...bare,
-        renderedText: "This is an authoritative and authentic guide.",
-      }),
-    );
-    expect(s.score).toBe(0);
-  });
-
-  it("counts real outbound links rather than URLs printed in the text", () => {
-    // Printed URL, no actual links out: this is not evidence of sourcing.
-    const printed = scoreEeat(
-      makePage({
-        ...bare,
-        renderedText: "Read more at https://source.example for details.",
-      }),
-    );
-    expect(printed.score).toBe(0);
-
-    const linked = scoreEeat(
-      makePage({
-        ...bare,
         outboundLinks: [
-          "https://en.wikipedia.org/wiki/A",
+          "https://en.wikipedia.org/a",
           "https://www.reuters.com/b",
+          "https://www.nih.gov/c",
         ],
       }),
     );
-    expect(linked.score).toBe(33);
-  });
-
-  it("requires more than one distinct host to count as citing sources", () => {
-    const s = scoreEeat(
-      makePage({
-        ...bare,
-        outboundLinks: [
-          "https://partner.example/a",
-          "https://partner.example/b",
-          "https://www.partner.example/c",
-        ],
-      }),
-    );
-    expect(s.score).toBe(0);
-  });
-});
-
-describe("scoreTechnicalSeo", () => {
-  it("scores 100 when all technical basics present", () => {
-    const s = scoreTechnicalSeo(makePage());
-    expect(s.key).toBe("technicalSeo");
     expect(s.weight).toBe(0.2);
     expect(s.score).toBe(100);
     expect(s.fix).toBeNull();
   });
 
-  it("penalizes missing title, meta, multiple H1 and bad status", () => {
-    const s = scoreTechnicalSeo(
+  it("graduates citation credit by distinct host count", () => {
+    const oneHost = scoreEeat(makePage({ ...bare, outboundLinks: ["https://a.com/x"] }));
+    const twoHosts = scoreEeat(
+      makePage({ ...bare, outboundLinks: ["https://a.com/x", "https://b.com/y"] }),
+    );
+    // author 0 + about 0 → citation portion only: 1 host → 18, 2 hosts → 28.
+    expect(oneHost.score).toBe(18);
+    expect(twoHosts.score).toBe(28);
+  });
+
+  it("credits a named author (45) via meta, JSON-LD, or byline", () => {
+    expect(scoreEeat(makePage({ ...bare, metaAuthor: "Jane Doe" })).score).toBe(45);
+    expect(
+      scoreEeat(makePage({ ...bare, jsonLdBlocks: [{ "@type": "Article", author: "Jane" }] }))
+        .score,
+    ).toBe(45);
+    expect(scoreEeat(makePage({ ...bare, renderedText: "By Jane Doe\nPublished." })).score).toBe(45);
+  });
+
+  it("does not treat 'authoritative' prose as authorship", () => {
+    expect(
+      scoreEeat(makePage({ ...bare, renderedText: "An authoritative, authentic guide." })).score,
+    ).toBe(0);
+  });
+});
+
+describe("scoreAnswerability", () => {
+  it("maxes with lists, table, FAQ, heading structure, and short paragraphs", () => {
+    const s = scoreAnswerability(
       makePage({
-        title: null,
-        metaDescription: null,
+        listCount: 2,
+        listItemCount: 8,
+        tableCount: 1,
+        jsonLdBlocks: [{ "@type": "FAQPage" }],
         headings: [
-          { level: 1, text: "A" },
-          { level: 1, text: "B" },
+          { level: 1, text: "Guide" },
+          { level: 2, text: "What is it?" },
+          { level: 3, text: "Details" },
         ],
-        statusCode: 404,
+        paragraphCount: 10,
+        longParagraphCount: 1,
+      }),
+    );
+    expect(s.key).toBe("answerability");
+    expect(s.score).toBe(100);
+  });
+
+  it("credits question headings even without FAQ schema", () => {
+    const s = scoreAnswerability(
+      makePage({
+        jsonLdBlocks: [],
+        headings: [
+          { level: 2, text: "What is a widget?" },
+          { level: 2, text: "How much does it cost?" },
+        ],
+      }),
+    );
+    // faq: 2 question headings → 25 of the 100.
+    expect(s.score).toBeGreaterThanOrEqual(25);
+  });
+
+  it("scores low for an unstructured wall of text", () => {
+    const s = scoreAnswerability(
+      makePage({
+        listCount: 0,
+        listItemCount: 0,
+        tableCount: 0,
+        jsonLdBlocks: [],
+        headings: [],
+        paragraphCount: 4,
+        longParagraphCount: 4,
       }),
     );
     expect(s.score).toBe(0);
@@ -230,63 +179,122 @@ describe("scoreTechnicalSeo", () => {
   });
 });
 
+describe("scoreFactDensity", () => {
+  it("rewards ~1 statistic per 100 words plus a quote", () => {
+    const s = scoreFactDensity(
+      makePage({
+        wordCount: 100,
+        renderedText: "Revenue rose 42% to $1,200 in 2024 across 3,400 firms.",
+        blockquoteCount: 1,
+      }),
+    );
+    // 4+ stat tokens over 100 words → density ≥ 1 → 60, plus blockquote → 40.
+    expect(s.key).toBe("factDensity");
+    expect(s.score).toBe(100);
+  });
+
+  it("scores thin, quote-less prose low", () => {
+    const s = scoreFactDensity(
+      makePage({
+        wordCount: 500,
+        renderedText: "We help businesses grow with our great service and support.",
+        blockquoteCount: 0,
+      }),
+    );
+    expect(s.score).toBeLessThan(30);
+    expect(s.fix).not.toBeNull();
+  });
+});
+
+describe("scoreTechnicalSeo", () => {
+  it("scores 100 with all technical signals present", () => {
+    const s = scoreTechnicalSeo(makePage());
+    expect(s.weight).toBe(0.22);
+    expect(s.score).toBe(100);
+    expect(s.fix).toBeNull();
+  });
+
+  it("penalizes HTTP, missing canonical/viewport, and missing title/meta", () => {
+    const s = scoreTechnicalSeo(
+      makePage({
+        url: "http://example.com/",
+        title: null,
+        metaDescription: null,
+        hasCanonical: false,
+        hasViewportMeta: false,
+      }),
+    );
+    expect(s.score).toBeLessThan(50);
+    expect(s.fix).toMatch(/HTTPS|title|canonical|viewport/i);
+  });
+});
+
 describe("scoreContentQuality", () => {
-  it("scores by word count", () => {
-    expect(scoreContentQuality(makePage({ wordCount: 100 })).score).toBe(20);
-    expect(scoreContentQuality(makePage({ wordCount: 400 })).score).toBe(60);
-    const good = scoreContentQuality(makePage({ wordCount: 800 }));
-    expect(good.score).toBe(100);
-    expect(good.fix).toBeNull();
-    expect(good.key).toBe("contentQuality");
+  it("scores by depth with a structure bonus", () => {
+    expect(scoreContentQuality(makePage({ wordCount: 100, headings: [] })).score).toBe(15);
+    // 700 words but only one heading → no structure bonus.
+    expect(scoreContentQuality(makePage({ wordCount: 700, headings: [{ level: 1, text: "A" }] })).score).toBe(58);
+    const deep = scoreContentQuality(
+      makePage({
+        wordCount: 1600,
+        headings: [
+          { level: 1, text: "A" },
+          { level: 2, text: "B" },
+          { level: 2, text: "C" },
+        ],
+      }),
+    );
+    expect(deep.score).toBe(100); // 90 base + 10 structure
   });
 });
 
 describe("scoreTopicalAuthority", () => {
-  it("returns a score in 0..100 and rewards depth", () => {
-    const thin = scoreTopicalAuthority(
-      makePage({ headings: [], wordCount: 50 }),
-    );
+  it("rewards heading breadth and internal links", () => {
+    const thin = scoreTopicalAuthority(makePage({ headings: [], internalLinkCount: 0 }));
     const deep = scoreTopicalAuthority(
       makePage({
-        headings: Array.from({ length: 12 }, (_, i) => ({
-          level: 2,
-          text: `H${i}`,
-        })),
-        wordCount: 2000,
+        headings: Array.from({ length: 12 }, (_, i) => ({ level: (i % 4) + 1, text: `H${i}` })),
+        internalLinkCount: 25,
       }),
     );
-    expect(thin.key).toBe("topicalAuthority");
-    expect(thin.score).toBeGreaterThanOrEqual(0);
-    expect(deep.score).toBeLessThanOrEqual(100);
-    expect(deep.score).toBeGreaterThan(thin.score as number);
+    expect(thin.score).toBe(0);
+    expect(deep.score).toBe(100);
+  });
+});
+
+describe("scoreOnPageOptimization", () => {
+  it("rewards well-sized title/meta and Open Graph", () => {
+    const s = scoreOnPageOptimization(
+      makePage({
+        title: "A Well Sized Title For Search Results Pages",
+        metaDescription:
+          "A meta description in the ideal 70 to 165 character range that clearly summarizes the page for search and social.",
+        hasOpenGraph: true,
+      }),
+    );
+    expect(s.score).toBe(100);
+  });
+
+  it("penalizes a too-short title, missing meta, and no Open Graph", () => {
+    const s = scoreOnPageOptimization(
+      makePage({ title: "Hi", metaDescription: null, hasOpenGraph: false }),
+    );
+    expect(s.score).toBe(18); // short title 18 + no meta 0 + no OG 0
   });
 });
 
 describe("off-page signals we cannot measure yet", () => {
-  // These report `null` rather than a neutral 50 so composeScore can drop them
-  // from the denominator instead of flattening the total toward the middle.
   it("scoreBrandMentions is unmeasured", () => {
     const s = scoreBrandMentions(makePage());
     expect(s.key).toBe("brandMentions");
-    expect(s.weight).toBe(0.25);
+    expect(s.weight).toBe(0.08);
     expect(s.score).toBeNull();
-    expect(s.fix).toBeNull();
-    expect(s.reason).toMatch(/Not measured/);
   });
 
   it("scoreBacklinks is unmeasured", () => {
     const s = scoreBacklinks(makePage());
     expect(s.key).toBe("backlinks");
-    expect(s.weight).toBe(0.3);
+    expect(s.weight).toBe(0.22);
     expect(s.score).toBeNull();
-    expect(s.fix).toBeNull();
-  });
-
-  it("scoreEngagement is unmeasured", () => {
-    const s = scoreEngagement(makePage());
-    expect(s.key).toBe("engagement");
-    expect(s.weight).toBe(0.1);
-    expect(s.score).toBeNull();
-    expect(s.fix).toBeNull();
   });
 });

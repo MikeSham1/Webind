@@ -248,23 +248,47 @@ async function extractPage(
         document.querySelectorAll('script[type="application/ld+json"]'),
       ).map((s) => s.textContent ?? "");
 
-      // Outbound links: absolute http(s) hrefs on a host other than our own.
+      // Links: outbound (other hosts, capped) vs. internal (same host), and
+      // whether the page links to an about/contact/team page (a trust signal).
       const here = new URL(location.href);
       const outbound: string[] = [];
+      let internalLinkCount = 0;
+      let hasAboutOrContactLink = false;
+      const trustPath = /(?:^|\/)(about|contact|team|our-story|company)(?:[/?#]|$)/i;
       for (const a of Array.from(document.querySelectorAll("a[href]"))) {
-        if (outbound.length >= maxLinks) break;
         const href = a.getAttribute("href");
         if (!href) continue;
+        let resolved: URL;
         try {
-          const resolved = new URL(href, location.href);
-          if (resolved.protocol !== "http:" && resolved.protocol !== "https:") {
-            continue;
-          }
-          if (resolved.hostname === here.hostname) continue;
-          outbound.push(resolved.toString());
+          resolved = new URL(href, location.href);
         } catch {
-          // Unparseable href — ignore it.
+          continue; // unparseable href
         }
+        if (resolved.protocol !== "http:" && resolved.protocol !== "https:") {
+          continue;
+        }
+        if (resolved.hostname === here.hostname) {
+          internalLinkCount++;
+          if (!hasAboutOrContactLink && trustPath.test(resolved.pathname)) {
+            hasAboutOrContactLink = true;
+          }
+        } else if (outbound.length < maxLinks) {
+          outbound.push(resolved.toString());
+        }
+      }
+
+      // Structure the shapes answer engines lift into citations.
+      const paras = Array.from(document.querySelectorAll("p"));
+      let longParagraphCount = 0;
+      for (const p of paras) {
+        const words = (p.textContent ?? "").trim().split(/\s+/).filter(Boolean).length;
+        if (words > 120) longParagraphCount++;
+      }
+
+      const imgs = Array.from(document.querySelectorAll("img"));
+      let imagesWithAlt = 0;
+      for (const img of imgs) {
+        if ((img.getAttribute("alt") ?? "").trim()) imagesWithAlt++;
       }
 
       // Machine-readable dates, most trustworthy source first.
@@ -287,6 +311,20 @@ async function extractPage(
         outbound,
         metaDates,
         timeDates,
+        internalLinkCount,
+        hasAboutOrContactLink,
+        listCount: document.querySelectorAll("ul,ol").length,
+        listItemCount: document.querySelectorAll("li").length,
+        tableCount: document.querySelectorAll("table").length,
+        blockquoteCount: document.querySelectorAll("blockquote").length,
+        paragraphCount: paras.length,
+        longParagraphCount,
+        imageCount: imgs.length,
+        imagesWithAlt,
+        hasViewportMeta: !!document.querySelector('meta[name="viewport"]'),
+        hasCanonical: !!document.querySelector('link[rel="canonical"]'),
+        hasOpenGraph: !!document.querySelector('meta[property^="og:"]'),
+        htmlLang: document.documentElement.getAttribute("lang"),
       };
     },
     { maxLinks: MAX_OUTBOUND_LINKS },
@@ -330,6 +368,20 @@ async function extractPage(
     hasLlmsTxt,
     lastModified,
     lastModifiedSource,
+    listCount: dom.listCount,
+    listItemCount: dom.listItemCount,
+    tableCount: dom.tableCount,
+    blockquoteCount: dom.blockquoteCount,
+    paragraphCount: dom.paragraphCount,
+    longParagraphCount: dom.longParagraphCount,
+    internalLinkCount: dom.internalLinkCount,
+    hasAboutOrContactLink: dom.hasAboutOrContactLink,
+    imageCount: dom.imageCount,
+    imagesWithAlt: dom.imagesWithAlt,
+    hasViewportMeta: dom.hasViewportMeta,
+    hasCanonical: dom.hasCanonical,
+    hasOpenGraph: dom.hasOpenGraph,
+    htmlLang: dom.htmlLang,
   };
 }
 

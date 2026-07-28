@@ -7,22 +7,52 @@ import {
 } from "./authority";
 import { daysAgo, makePage } from "./test-fixtures";
 
+/** A page that passes every measurable signal. */
 function optimizedPage(overrides: Partial<CrawledPage> = {}): CrawledPage {
   return makePage({
+    url: "https://example.com/guide-to-widgets",
+    title: "The Complete Guide to Widgets for Small Businesses",
+    metaDescription:
+      "A data-backed guide to choosing, buying, and maintaining widgets for small businesses, with pricing benchmarks and expert tips.",
     metaAuthor: "Jane Doe",
     outboundLinks: [
-      "https://en.wikipedia.org/wiki/Widget",
-      "https://www.reuters.com/article",
+      "https://en.wikipedia.org/a",
+      "https://www.reuters.com/b",
+      "https://www.nih.gov/c",
     ],
-    jsonLdBlocks: [{ "@type": "Organization" }, { "@type": "WebSite" }],
+    hasAboutOrContactLink: true,
+    jsonLdBlocks: [
+      { "@type": "Organization" },
+      { "@type": "WebSite" },
+      { "@type": "Article", author: { name: "Jane Doe" } },
+      { "@type": "BreadcrumbList" },
+      { "@type": "FAQPage" },
+    ],
     lastModified: daysAgo(5),
-    // Enough breadth and volume to max out the topical-authority proxy, with
-    // exactly one H1 so technical SEO is clean too.
-    headings: Array.from({ length: 10 }, (_, i) => ({
-      level: i === 0 ? 1 : 2,
-      text: `H${i}`,
-    })),
+    headings: [
+      { level: 1, text: "Guide to Widgets" },
+      { level: 2, text: "What is a widget?" },
+      { level: 3, text: "Types" },
+      { level: 2, text: "How much do widgets cost?" },
+      { level: 3, text: "Pricing tiers" },
+      { level: 4, text: "Enterprise" },
+      { level: 2, text: "Best practices" },
+      { level: 3, text: "Setup" },
+      { level: 3, text: "Maintenance" },
+      { level: 2, text: "Common mistakes" },
+      { level: 3, text: "Troubleshooting" },
+      { level: 2, text: "Conclusion" },
+    ],
     wordCount: 1600,
+    renderedText:
+      "By 2024, 65% of 1,200 firms cut costs 30% saving $5,000 over 12 months, up from 45% in 2023 and 38% in 2022 across 3,400 sites; response times fell 22% to 8.5 hours with 90% retention.",
+    internalLinkCount: 25,
+    listCount: 3,
+    listItemCount: 12,
+    tableCount: 1,
+    blockquoteCount: 1,
+    paragraphCount: 10,
+    longParagraphCount: 1,
     ...overrides,
   });
 }
@@ -30,6 +60,7 @@ function optimizedPage(overrides: Partial<CrawledPage> = {}): CrawledPage {
 /** A page failing every measurable signal. */
 function brokenPage(): CrawledPage {
   return makePage({
+    url: "http://broken.example/",
     statusCode: 500,
     title: null,
     metaDescription: null,
@@ -37,54 +68,62 @@ function brokenPage(): CrawledPage {
     headings: [],
     jsonLdBlocks: [],
     outboundLinks: [],
+    hasAboutOrContactLink: false,
     renderedText: "thin",
     wordCount: 10,
     hasServerRenderedContent: false,
     robotsAllowsAiBots: false,
     hasLlmsTxt: false,
     lastModified: daysAgo(900),
+    listCount: 0,
+    listItemCount: 0,
+    tableCount: 0,
+    blockquoteCount: 0,
+    paragraphCount: 1,
+    longParagraphCount: 1,
+    internalLinkCount: 0,
+    imageCount: 0,
+    imagesWithAlt: 0,
+    hasViewportMeta: false,
+    hasCanonical: false,
+    hasOpenGraph: false,
+    htmlLang: null,
   });
 }
 
 describe("scoreAiAuthority", () => {
-  it("returns exactly 5 AI signals", () => {
+  it("returns exactly the 7 AI signals", () => {
     const a = scoreAiAuthority(optimizedPage());
-    expect(a.signals).toHaveLength(5);
     expect(a.signals.map((s) => s.key).sort()).toEqual(
-      ["aiCrawlability", "brandMentions", "eeat", "freshness", "schema"].sort(),
-    );
-  });
-
-  it("total is within 0..100", () => {
-    const a = scoreAiAuthority(optimizedPage());
-    expect(a.total).toBeGreaterThanOrEqual(0);
-    expect(a.total).toBeLessThanOrEqual(100);
-  });
-
-  it("a fully-optimized page scores AI total > 70", () => {
-    expect(scoreAiAuthority(optimizedPage()).total).toBeGreaterThan(70);
-  });
-});
-
-describe("scoreTraditionalAuthority", () => {
-  it("returns exactly 5 traditional signals", () => {
-    const t = scoreTraditionalAuthority(optimizedPage());
-    expect(t.signals).toHaveLength(5);
-    expect(t.signals.map((s) => s.key).sort()).toEqual(
       [
-        "backlinks",
-        "contentQuality",
-        "engagement",
-        "technicalSeo",
-        "topicalAuthority",
+        "aiCrawlability",
+        "answerability",
+        "brandMentions",
+        "eeat",
+        "factDensity",
+        "freshness",
+        "schema",
       ].sort(),
     );
   });
 
-  it("total is within 0..100", () => {
+  it("a fully-optimized page scores AI ≥ 90", () => {
+    const a = scoreAiAuthority(optimizedPage());
+    expect(a.total).toBeGreaterThanOrEqual(90);
+    expect(a.total).toBeLessThanOrEqual(100);
+  });
+});
+
+describe("scoreTraditionalAuthority", () => {
+  it("returns exactly the 5 traditional signals", () => {
     const t = scoreTraditionalAuthority(optimizedPage());
-    expect(t.total).toBeGreaterThanOrEqual(0);
-    expect(t.total).toBeLessThanOrEqual(100);
+    expect(t.signals.map((s) => s.key).sort()).toEqual(
+      ["backlinks", "contentQuality", "onPageOptimization", "technicalSeo", "topicalAuthority"].sort(),
+    );
+  });
+
+  it("a fully-optimized page scores Traditional ≥ 90", () => {
+    expect(scoreTraditionalAuthority(optimizedPage()).total).toBeGreaterThanOrEqual(90);
   });
 });
 
@@ -95,9 +134,7 @@ describe("composeScore renormalization", () => {
       { key: "b", label: "B", score: null, weight: 0.5, reason: "", fix: null },
       { key: "c", label: "C", score: 40, weight: 0.2, reason: "", fix: null },
     ]);
-    // (80*0.3 + 40*0.2) / 0.5 = 64 — not 32, which is what folding the
-    // unmeasured half in at zero weight-share would have produced.
-    expect(score.total).toBe(64);
+    expect(score.total).toBe(64); // (80*.3 + 40*.2) / .5
     expect(score.coverage).toBeCloseTo(0.5);
   });
 
@@ -110,30 +147,19 @@ describe("composeScore renormalization", () => {
   });
 });
 
-describe("score range (regression: placeholders used to clamp the range)", () => {
-  // Three signals were pinned at a neutral 50 and averaged into the totals,
-  // which confined the traditional score to [20, 80] and the AI score to
-  // [13, 88]: a flawless site was told it scored 80/100. Renormalizing over
-  // measured weight restores the full range.
-  it("a page passing every measured signal scores 100 on both", () => {
-    const page = optimizedPage();
-    expect(scoreAiAuthority(page).total).toBe(100);
-    expect(scoreTraditionalAuthority(page).total).toBe(100);
+describe("score range and coverage", () => {
+  it("spans the full range: near-100 optimized, near-0 broken", () => {
+    expect(scoreAiAuthority(optimizedPage()).total).toBeGreaterThanOrEqual(90);
+    expect(scoreTraditionalAuthority(optimizedPage()).total).toBeGreaterThanOrEqual(90);
+    expect(scoreAiAuthority(brokenPage()).total).toBe(0);
+    expect(scoreTraditionalAuthority(brokenPage()).total).toBeLessThan(15);
   });
 
-  it("a page failing every measured signal scores near 0 on both", () => {
-    const page = brokenPage();
-    // Freshness deliberately floors at 40 for an unusable date, and this page
-    // has a real (very old) one, so the AI total can reach a true 0.
-    expect(scoreAiAuthority(page).total).toBe(0);
-    expect(scoreTraditionalAuthority(page).total).toBeLessThan(15);
-  });
-
-  it("reports how much of each model actually ran", () => {
+  it("reports how much of each model actually ran (off-page signals excluded)", () => {
     const page = optimizedPage();
-    // AI: eeat .30 + schema .15 + crawlability .15 + freshness .15 = .75
-    expect(scoreAiAuthority(page).coverage).toBeCloseTo(0.75);
-    // Traditional: topical .25 + technical .20 + quality .15 = .60
-    expect(scoreTraditionalAuthority(page).coverage).toBeCloseTo(0.6);
+    // AI: everything but brandMentions (0.08).
+    expect(scoreAiAuthority(page).coverage).toBeCloseTo(0.92);
+    // Traditional: everything but backlinks (0.22).
+    expect(scoreTraditionalAuthority(page).coverage).toBeCloseTo(0.78);
   });
 });

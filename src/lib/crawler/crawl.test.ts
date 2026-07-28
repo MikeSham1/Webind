@@ -21,6 +21,9 @@ const HTML = `<!doctype html>
     <meta name="description" content="We build the best widgets." />
     <meta name="author" content="Jane Doe" />
     <meta property="article:modified_time" content="2024-03-01T00:00:00Z" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta property="og:title" content="Acme Widgets" />
+    <link rel="canonical" href="http://acme.test/" />
     <script type="application/ld+json">
       [
         {"@context":"https://schema.org","@type":"Organization","name":"Acme"},
@@ -48,6 +51,10 @@ const HTML = `<!doctype html>
       <a href="https://en.wikipedia.org/wiki/Gadget">Wikipedia again</a>.
       See our <a href="/about">about page</a> and <a href="mailto:hi@acme.test">email us</a>.
     </p>
+    <ul><li>Durable</li><li>Affordable</li><li>Fast</li></ul>
+    <table><tbody><tr><td>Model</td><td>Price</td></tr></tbody></table>
+    <blockquote>"These widgets changed our operations," said an expert.</blockquote>
+    <img src="/widget.png" alt="A durable widget" />
     <time datetime="2019-05-05T00:00:00Z">May 2019</time>
   </body>
 </html>`;
@@ -133,6 +140,20 @@ describe("crawl", () => {
       expect(page.robotsAllowsAiBots).toBe(true);
       expect(page.hasLlmsTxt).toBe(true);
       expect(page.metaAuthor).toBe("Jane Doe");
+      // Structure & on-page signals extracted for scoring.
+      expect(page.listCount).toBe(1);
+      expect(page.listItemCount).toBe(3);
+      expect(page.tableCount).toBe(1);
+      expect(page.blockquoteCount).toBe(1);
+      expect(page.paragraphCount).toBeGreaterThanOrEqual(2);
+      expect(page.internalLinkCount).toBe(1); // /about (mailto + externals excluded)
+      expect(page.hasAboutOrContactLink).toBe(true);
+      expect(page.imageCount).toBe(1);
+      expect(page.imagesWithAlt).toBe(1);
+      expect(page.hasViewportMeta).toBe(true);
+      expect(page.hasCanonical).toBe(true);
+      expect(page.hasOpenGraph).toBe(true);
+      expect(page.htmlLang).toBe("en");
       // External links only, deduped; same-origin and non-http hrefs dropped.
       expect(page.outboundLinks.sort()).toEqual([
         "https://en.wikipedia.org/wiki/Gadget",
