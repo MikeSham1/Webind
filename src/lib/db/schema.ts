@@ -1,4 +1,12 @@
-import { integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import type { ReportResult } from "../scoring/types";
 import type {
   ContentInputs,
@@ -15,6 +23,8 @@ export const reportRequests = pgTable("report_requests", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
+  // Owner when the run was made while logged in; null for anonymous lead-gen.
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
   url: text("url").notNull(),
   email: text("email"),
   aiTotal: integer("ai_total"),
@@ -33,6 +43,8 @@ export const contentDrafts = pgTable("content_drafts", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
+  // Owner when created while logged in; null for anonymous (gated-preview) drafts.
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
   topic: text("topic").notNull(),
   targetUrl: text("target_url"),
   inputs: jsonb("inputs").$type<ContentInputs>(),
@@ -52,6 +64,7 @@ export const users = pgTable("users", {
     .defaultNow(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  isAdmin: boolean("is_admin").notNull().default(false),
 });
 
 export type UserRow = typeof users.$inferSelect;

@@ -1,7 +1,8 @@
 "use server";
 
 import { generateDraft } from "@/lib/content/generate";
-import { saveDraft, setDraftStatus } from "@/lib/content/store";
+import { saveDraft, setAnyDraftStatus, setDraftStatus } from "@/lib/content/store";
+import { getCurrentUser } from "@/lib/auth";
 import type { ContentInputs, DraftStatus, PageType } from "@/lib/content/types";
 import type { DecisionState, StudioState } from "./state";
 
@@ -57,7 +58,8 @@ export async function createDraftAction(
     };
   }
   const draft = generateDraft(inputs);
-  const draftId = await saveDraft(inputs, draft); // best-effort
+  const user = await getCurrentUser();
+  const draftId = await saveDraft(inputs, draft, user?.id ?? null); // best-effort
   return { status: "created", draft, draftId };
 }
 
@@ -76,8 +78,21 @@ export async function decideDraftAction(
       error: "This draft wasn't saved (database off), so there's nothing to update.",
     };
   }
-  const ok = await setDraftStatus(draftId, status);
+
+  const user = await getCurrentUser();
+  if (!user) {
+    return { status: "error", error: "Log in to approve or reject this draft." };
+  }
+
+  // Admins can moderate any draft; everyone else only their own.
+  const ok = user.isAdmin
+    ? await setAnyDraftStatus(draftId, status)
+    : await setDraftStatus(draftId, user.id, status);
+
   return ok
     ? { status: "done", decision: status }
-    : { status: "error", error: "Couldn't save your decision — try again." };
+    : {
+        status: "error",
+        error: "Couldn't save your decision — the draft may not be yours.",
+      };
 }

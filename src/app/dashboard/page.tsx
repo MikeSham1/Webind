@@ -3,8 +3,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { logoutAction } from "@/app/account/actions";
 import { getCurrentUser } from "@/lib/auth";
-import { listDrafts } from "@/lib/content/store";
-import { listReports } from "@/lib/leads";
+import { listAllDrafts, listDraftsForUser } from "@/lib/content/store";
+import { listAllReports, listReportsForUser } from "@/lib/leads";
 
 export const metadata: Metadata = {
   title: "Dashboard — WeBind",
@@ -31,32 +31,37 @@ const STATUS_STYLE: Record<string, string> = {
 export default async function DashboardPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  const isAdmin = user.isAdmin;
 
-  const [reports, drafts] = await Promise.all([listReports(), listDrafts()]);
+  const [reports, drafts] = await Promise.all([
+    isAdmin ? listAllReports() : listReportsForUser(user.id),
+    isAdmin ? listAllDrafts() : listDraftsForUser(user.id),
+  ]);
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-12">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-6">
         <div>
-          <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted">
-            Dashboard
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted">
+              Dashboard
+            </p>
+            {isAdmin && (
+              <span className="rounded-full border border-accent/40 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">
+                Admin
+              </span>
+            )}
+          </div>
           <h1 className="mt-1 font-display text-3xl font-semibold text-ink">
-            Your workspace
+            {isAdmin ? "Admin workspace" : "Your workspace"}
           </h1>
           <p className="mt-1 text-sm text-muted">{user.email}</p>
         </div>
         <div className="flex items-center gap-4">
-          <Link
-            href="/"
-            className="font-sans text-sm font-medium text-muted hover:text-accent"
-          >
+          <Link href="/" className="font-sans text-sm font-medium text-muted hover:text-accent">
             New report
           </Link>
-          <Link
-            href="/studio"
-            className="font-sans text-sm font-medium text-muted hover:text-accent"
-          >
+          <Link href="/studio" className="font-sans text-sm font-medium text-muted hover:text-accent">
             Content Studio
           </Link>
           <form action={logoutAction}>
@@ -73,7 +78,7 @@ export default async function DashboardPage() {
       {/* Reports */}
       <section className="mt-10">
         <h2 className="font-display text-xl font-semibold text-ink">
-          Recent authority reports
+          {isAdmin ? "All authority reports" : "Your authority reports"}
         </h2>
         {reports.length === 0 ? (
           <EmptyState
@@ -88,7 +93,7 @@ export default async function DashboardPage() {
                   <Th>Site</Th>
                   <Th>AI</Th>
                   <Th>Traditional</Th>
-                  <Th>Lead</Th>
+                  <Th>Lead email</Th>
                   <Th>Date</Th>
                 </tr>
               </thead>
@@ -111,7 +116,7 @@ export default async function DashboardPage() {
       {/* Content drafts */}
       <section className="mt-12">
         <h2 className="font-display text-xl font-semibold text-ink">
-          Content drafts
+          {isAdmin ? "All content drafts" : "Your content drafts"}
         </h2>
         {drafts.length === 0 ? (
           <EmptyState
@@ -126,18 +131,25 @@ export default async function DashboardPage() {
                   <Th>Topic</Th>
                   <Th>Status</Th>
                   <Th>Date</Th>
+                  <Th />
                 </tr>
               </thead>
               <tbody>
                 {drafts.map((d) => (
                   <tr key={d.id} className="border-t border-line">
                     <Td className="font-medium text-ink">{d.topic}</Td>
-                    <Td
-                      className={`font-medium ${STATUS_STYLE[d.status] ?? "text-muted"}`}
-                    >
+                    <Td className={`font-medium ${STATUS_STYLE[d.status] ?? "text-muted"}`}>
                       {d.status.replace("_", " ")}
                     </Td>
                     <Td className="text-muted">{fmtDate(d.createdAt)}</Td>
+                    <Td>
+                      <Link
+                        href={`/dashboard/drafts/${d.id}`}
+                        className="font-medium text-accent hover:underline"
+                      >
+                        Open
+                      </Link>
+                    </Td>
                   </tr>
                 ))}
               </tbody>
@@ -149,7 +161,7 @@ export default async function DashboardPage() {
   );
 }
 
-function Th({ children }: { children: React.ReactNode }) {
+function Th({ children }: { children?: React.ReactNode }) {
   return <th className="px-4 py-3">{children}</th>;
 }
 
