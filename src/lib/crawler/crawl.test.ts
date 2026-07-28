@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import { chromium, type Browser, type BrowserContext, type Route } from "playwright";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { crawl } from "./crawl";
+import { crawl, crawlerUserAgent } from "./crawl";
 import { BlockedUrlError } from "./ssrf";
 
 /**
@@ -275,6 +275,41 @@ describe("crawl", () => {
     }
   }, 30000);
 
+  it("identifies itself with the crawler User-Agent on every request", async () => {
+    // Capture the UA the server sees for the page and both side-fetches, so a
+    // regression to anonymous headless Chrome on any of them is caught.
+    const seen = new Map<string, string>();
+    const record = (url: string, route: Route) => {
+      const path = new URL(url).pathname;
+      seen.set(path, route.request().headers()["user-agent"] ?? "");
+    };
+    const context = await routedContext(async (url, route) => {
+      record(url, route);
+      if (url.endsWith("/robots.txt")) {
+        await route.fulfill({ status: 200, contentType: "text/plain", body: "" });
+        return true;
+      }
+      if (url.endsWith("/llms.txt")) {
+        await route.fulfill({ status: 200, contentType: "text/plain", body: "# Acme\n" });
+        return true;
+      }
+      return false; // main page falls through to the default HTML fixture
+    });
+
+    try {
+      await crawl("http://acme.test/", { context, ...offline });
+      const ua = crawlerUserAgent();
+      expect(ua).toMatch(/WebindBot/);
+      expect(seen.get("/")).toBe(ua);
+      expect(seen.get("/robots.txt")).toBe(ua);
+      expect(seen.get("/llms.txt")).toBe(ua);
+      // Not the stock headless-Chrome identity.
+      expect(seen.get("/")).not.toMatch(/HeadlessChrome/);
+    } finally {
+      await context.close();
+    }
+  }, 30000);
+
   /**
    * Redirects cannot be exercised through `context.route`: Playwright invokes a
    * route handler once per navigation and follows 3xx transparently, so hop two
@@ -338,5 +373,28 @@ describe("crawl", () => {
         await context.close();
       }
     }, 30000);
+  });
+});
+
+describe("crawlerUserAgent", () => {
+  afterEach(() => {
+    delete process.env.CRAWLER_USER_AGENT;
+  });
+
+  it("defaults to a branded, self-describing token with a contact URL", () => {
+    delete process.env.CRAWLER_USER_AGENT;
+    const ua = crawlerUserAgent();
+    expect(ua).toMatch(/WebindBot/);
+    expect(ua).toMatch(/https?:\/\//); // points somewhere operators can look
+  });
+
+  it("honors a non-empty env override", () => {
+    process.env.CRAWLER_USER_AGENT = "CustomBot/2.0 (+https://example.com)";
+    expect(crawlerUserAgent()).toBe("CustomBot/2.0 (+https://example.com)");
+  });
+
+  it("ignores a blank override and falls back to the default", () => {
+    process.env.CRAWLER_USER_AGENT = "   ";
+    expect(crawlerUserAgent()).toMatch(/WebindBot/);
   });
 });
