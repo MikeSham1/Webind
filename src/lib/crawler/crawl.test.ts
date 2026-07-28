@@ -374,6 +374,56 @@ describe("crawl", () => {
       }
     }, 30000);
   });
+
+  it("ignores a Last-Modified header that's really the CDN cache's regeneration time", async () => {
+    // Verified against almodre.com (fronted by a Cloudways cache): its
+    // Last-Modified sat within 3 seconds of Date - Age on every request, i.e.
+    // it's stamped at cache regeneration, not content edit. A page with no
+    // other date evidence must fall to "no date found", not score as fresh.
+    const NO_DATE_HTML = `<!doctype html>
+<html><head><title>Static Co</title></head>
+<body><h1>Static Co</h1><p>${BODY_TEXT.repeat(20)}</p></body></html>`;
+
+    const context = await browser.newContext();
+    await context.route("**/*", async (route) => {
+      const url = route.request().url();
+      if (url.endsWith("/robots.txt")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "text/plain",
+          body: "User-agent: *\nDisallow:\n",
+        });
+        return;
+      }
+      if (url.endsWith("/llms.txt")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "text/plain",
+          body: "# Static Co\n",
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html",
+        headers: {
+          date: "Tue, 28 Jul 2026 19:11:27 GMT",
+          age: "4359",
+          // == date - age: the cache's own regeneration instant.
+          "last-modified": "Tue, 28 Jul 2026 17:58:48 GMT",
+        },
+        body: NO_DATE_HTML,
+      });
+    });
+
+    try {
+      const page = await crawl("http://static.test/", { context, ...offline });
+      expect(page.lastModified).toBeNull();
+      expect(page.lastModifiedSource).toBeNull();
+    } finally {
+      await context.close();
+    }
+  }, 30000);
 });
 
 describe("crawlerUserAgent", () => {

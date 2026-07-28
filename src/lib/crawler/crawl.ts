@@ -218,7 +218,10 @@ async function extractPage(
 
   // RAW served HTML (pre-JS): what SSR judgement is based on.
   const html = response ? await response.text() : "";
-  const headerDate = toIso(response?.headers()["last-modified"] ?? null);
+  const responseHeaders = response?.headers() ?? {};
+  const headerDate = isCacheRegenerationArtifact(responseHeaders)
+    ? null
+    : toIso(responseHeaders["last-modified"] ?? null);
 
   // Visible text after render.
   const renderedText = await page.innerText("body").catch(() => "");
@@ -419,6 +422,32 @@ function toIso(header: string | null): string | null {
   if (!header) return null;
   const date = new Date(header);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+/** How close `Last-Modified` must sit to the cache's own creation instant to count as an artifact of it, not real evidence. */
+const CACHE_ARTIFACT_TOLERANCE_MS = 60_000;
+
+/**
+ * True when a response's `Last-Modified` is really the CDN cache's own
+ * regeneration timestamp rather than evidence of the origin content's age.
+ *
+ * Confirmed against a live site (almodre.com, fronted by a Cloudways cache):
+ * `Last-Modified` sat within 3 seconds of `Date - Age` — i.e. the instant the
+ * cache last regenerated — so every cache refresh made the page look freshly
+ * edited even though nothing on it had changed. `Age` is how long the cache has
+ * held the response, so `Date - Age` reconstructs that instant; when
+ * `Last-Modified` lands on it too, the two headers are describing the same
+ * event and it is not trustworthy freshness evidence.
+ */
+function isCacheRegenerationArtifact(headers: Record<string, string>): boolean {
+  const lastModified = new Date(headers["last-modified"] ?? "").getTime();
+  const responseDate = new Date(headers["date"] ?? "").getTime();
+  const age = Number(headers["age"]);
+  if (Number.isNaN(lastModified) || Number.isNaN(responseDate) || !Number.isFinite(age) || age < 0) {
+    return false;
+  }
+  const cacheCreatedAt = responseDate - age * 1000;
+  return Math.abs(lastModified - cacheCreatedAt) < CACHE_ARTIFACT_TOLERANCE_MS;
 }
 
 interface FetchedResource {
