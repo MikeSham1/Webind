@@ -7,6 +7,7 @@ import { buildReport } from "@/lib/scoring/report";
 import { explainReport } from "@/lib/scoring/explain";
 import { buildOptimizations } from "@/lib/optimize/assets";
 import { attachEmail, saveReportRequest } from "@/lib/leads";
+import { getCurrentUser } from "@/lib/auth";
 import type { LeadState, ReportState } from "./report-state";
 
 /**
@@ -35,7 +36,9 @@ export async function runReport(
   try {
     // `crawl` re-validates the URL and every redirect hop against the SSRF
     // guard; this endpoint is anonymous, so the check cannot live at the edge.
-    const page = await crawl(url);
+    // The session lookup depends only on cookies, not on the crawl, so it runs
+    // alongside it instead of adding its own round-trip to the request.
+    const [page, user] = await Promise.all([crawl(url), getCurrentUser()]);
     const report = buildReport(page);
     // Plain-English summary. Uses Claude when ANTHROPIC_API_KEY is set;
     // otherwise falls back to a deterministic, network-free narrative.
@@ -43,9 +46,10 @@ export async function runReport(
     const narrative = await explainReport(report);
     // Deterministic ready-to-apply assets (schema, meta, llms.txt, robots).
     const optimizations = buildOptimizations(page);
-    // Best-effort logging (the preview doubles as a lead funnel). Never blocks
-    // or breaks the report — returns null when persistence is disabled.
-    const requestId = await saveReportRequest(report);
+    // Best-effort logging (the preview doubles as a lead funnel). Owned by the
+    // visitor when they're logged in, anonymous otherwise. Never blocks or
+    // breaks the report — returns null when persistence is disabled.
+    const requestId = await saveReportRequest(report, user?.id ?? null);
     return { status: "success", report, narrative, optimizations, requestId };
   } catch (err) {
     // These two carry messages written for a visitor; anything else is an

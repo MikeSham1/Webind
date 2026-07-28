@@ -11,6 +11,7 @@ const SESSION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 export interface AuthUser {
   id: string;
   email: string;
+  isAdmin: boolean;
 }
 
 function sha256(value: string): string {
@@ -34,7 +35,7 @@ export async function createUser(
     const [row] = await db
       .insert(users)
       .values({ email: email.trim().toLowerCase(), passwordHash: hashPassword(password) })
-      .returning({ id: users.id, email: users.email });
+      .returning({ id: users.id, email: users.email, isAdmin: users.isAdmin });
     return { ok: true, user: row };
   } catch {
     // Most likely the unique-email constraint.
@@ -55,7 +56,7 @@ export async function verifyCredentials(
     .where(eq(users.email, email.trim().toLowerCase()))
     .limit(1);
   if (!row || !verifyPassword(password, row.passwordHash)) return null;
-  return { id: row.id, email: row.email };
+  return { id: row.id, email: row.email, isAdmin: row.isAdmin };
 }
 
 /** Create a session row and set its token as an httpOnly cookie. */
@@ -85,7 +86,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   if (!token) return null;
 
   const [row] = await db
-    .select({ id: users.id, email: users.email })
+    .select({ id: users.id, email: users.email, isAdmin: users.isAdmin })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))
     .where(and(eq(sessions.tokenHash, sha256(token)), gt(sessions.expiresAt, new Date())))
