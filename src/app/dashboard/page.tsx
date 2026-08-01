@@ -61,6 +61,9 @@ export default async function DashboardPage() {
           <Link href="/" className="font-sans text-sm font-medium text-muted hover:text-accent">
             New report
           </Link>
+          <Link href="/visibility" className="font-sans text-sm font-medium text-muted hover:text-accent">
+            Keyword Visibility
+          </Link>
           <Link href="/studio" className="font-sans text-sm font-medium text-muted hover:text-accent">
             Content Studio
           </Link>
