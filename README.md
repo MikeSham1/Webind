@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# WeBind
 
-## Getting Started
+An AI-era authority platform. The front door is a free **AI Authority Report**:
+enter a URL and get two 0–100 scores (AI Authority + Traditional Authority) with
+plain-English explanations and a prioritized fix list. Signed-in users also get
+**Keyword Visibility** — see whether AI answer engines surface your brand for the
+queries your customers actually type — and a **Content Studio** for generating
+grounded, human-approved content.
 
-First, run the development server:
+Built with Next.js 16 (App Router) + React 19, TypeScript, Tailwind, Playwright
+(crawling), Drizzle + Postgres (persistence), and the Anthropic SDK.
+
+## Getting started
 
 ```bash
+npm install
+npx playwright install chromium   # the crawler needs a browser
+cp .env.example .env.local        # then fill in what you need
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). Every environment variable
+is optional — the app runs without any of them and degrades gracefully (see
+[.env.example](.env.example) for what each one enables).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command | Does |
+|---|---|
+| `npm run dev` | Start the dev server |
+| `npm run build` / `npm run start` | Production build / serve |
+| `npm test` | Run the Vitest suite |
+| `npm run lint` | ESLint |
+| `npm run db:generate` / `db:migrate` | Drizzle migrations |
 
-## Learn More
+## Layout
 
-To learn more about Next.js, take a look at the following resources:
+- `src/lib/scoring/` — the pure, deterministic scoring core (fully unit-tested)
+- `src/lib/crawler/` — Playwright crawler + SSRF guard + browser pool
+- `src/lib/visibility/` — keyword visibility across AI answer engines
+- `src/lib/content/`, `src/lib/optimize/` — Content Studio + optimization assets
+- `src/app/` — App Router pages and server actions
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [AGENTS.md](AGENTS.md) for contributor notes (this is Next.js 16 — read the
+bundled docs before writing framework code).
