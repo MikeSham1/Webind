@@ -12,7 +12,7 @@ export default function OptimizationAssets({ assets }: { assets: Assets }) {
       <div className="reveal rounded-2xl border border-line bg-surface p-6 text-center">
         <p className="font-sans text-[15px] text-muted">
           No technical fixes to generate — your schema, meta, llms.txt, and AI
-          crawler access already look good. 🎉
+          crawler access already look good.
         </p>
       </div>
     );

@@ -2,8 +2,9 @@
 
 import { useActionState, useState } from "react";
 import { decideDraftAction } from "@/app/studio/actions";
-import { initialDecisionState } from "@/app/studio/state";
-import type { ContentDraft, GateResult } from "@/lib/content/types";
+import { initialDecisionState, type DecisionState } from "@/app/studio/state";
+import type { ContentDraft, DraftStatus, GateResult } from "@/lib/content/types";
+import PublishBar, { type PublicationSnapshot } from "./PublishBar";
 
 const STATUS_STYLES: Record<GateResult["status"], string> = {
   pass: "text-good border-good/40",
@@ -22,11 +23,25 @@ const STATUS_LABEL: Record<GateResult["status"], string> = {
 export default function DraftView({
   draft,
   draftId,
+  initialStatus = "pending_review",
+  wordPressConnected = false,
+  initialPublication = null,
 }: {
   draft: ContentDraft;
   draftId: string | null;
+  /** Status this draft was saved with, e.g. reloading an already-approved draft from the dashboard. */
+  initialStatus?: DraftStatus;
+  wordPressConnected?: boolean;
+  initialPublication?: PublicationSnapshot | null;
 }) {
   const [copied, setCopied] = useState(false);
+  const [decisionState, decisionFormAction, isDeciding] = useActionState(
+    decideDraftAction,
+    initialDecisionState,
+  );
+
+  const currentStatus: DraftStatus =
+    decisionState.status === "done" ? decisionState.decision : initialStatus;
 
   async function copy() {
     try {
@@ -81,7 +96,21 @@ export default function DraftView({
         </pre>
       </div>
 
-      <DecisionBar draftId={draftId} blocked={draft.gates.blocked} />
+      <DecisionBar
+        draftId={draftId}
+        blocked={draft.gates.blocked}
+        state={decisionState}
+        formAction={decisionFormAction}
+        isPending={isDeciding}
+      />
+
+      {draftId && currentStatus === "approved" && (
+        <PublishBar
+          draftId={draftId}
+          wordPressConnected={wordPressConnected}
+          initialPublication={initialPublication}
+        />
+      )}
     </section>
   );
 }
@@ -89,15 +118,16 @@ export default function DraftView({
 function DecisionBar({
   draftId,
   blocked,
+  state,
+  formAction,
+  isPending,
 }: {
   draftId: string | null;
   blocked: boolean;
+  state: DecisionState;
+  formAction: (formData: FormData) => void;
+  isPending: boolean;
 }) {
-  const [state, formAction, isPending] = useActionState(
-    decideDraftAction,
-    initialDecisionState,
-  );
-
   if (!draftId) {
     return (
       <p className="rounded-xl border border-line bg-surface px-4 py-3 text-sm text-muted">

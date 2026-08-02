@@ -8,7 +8,11 @@ import DraftView from "./DraftView";
 const inputClass =
   "mt-1.5 w-full rounded-lg border border-line-strong bg-paper px-3 py-2.5 font-sans text-[15px] text-ink placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
 
-export default function StudioForm() {
+export default function StudioForm({
+  wordPressConnected,
+}: {
+  wordPressConnected: boolean;
+}) {
   const [state, formAction, isPending] = useActionState(
     createDraftAction,
     initialStudioState,
@@ -116,7 +120,11 @@ export default function StudioForm() {
       </form>
 
       {state.status === "created" && (
-        <DraftView draft={state.draft} draftId={state.draftId} />
+        <DraftView
+          draft={state.draft}
+          draftId={state.draftId}
+          wordPressConnected={wordPressConnected}
+        />
       )}
     </div>
   );

@@ -57,20 +57,36 @@ export default async function DashboardPage() {
           </h1>
           <p className="mt-1 text-sm text-muted">{user.email}</p>
         </div>
-        <div className="flex items-center gap-4">
-          <Link href="/" className="font-sans text-sm font-medium text-muted hover:text-accent">
+        <div className="flex flex-wrap items-center gap-4">
+          <Link
+            href="/"
+            className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
+          >
             New report
           </Link>
+<<<<<<< Updated upstream
           <Link href="/visibility" className="font-sans text-sm font-medium text-muted hover:text-accent">
             Keyword Visibility
           </Link>
           <Link href="/studio" className="font-sans text-sm font-medium text-muted hover:text-accent">
+=======
+          <Link
+            href="/studio"
+            className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
+          >
+>>>>>>> Stashed changes
             Content Studio
+          </Link>
+          <Link
+            href="/dashboard/settings"
+            className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
+          >
+            Settings
           </Link>
           <form action={logoutAction}>
             <button
               type="submit"
-              className="rounded-full border border-line-strong px-4 py-1.5 font-sans text-sm font-medium text-ink hover:border-bad hover:text-bad"
+              className="whitespace-nowrap rounded-full border border-line-strong px-4 py-1.5 font-sans text-sm font-medium text-ink hover:border-bad hover:text-bad"
             >
               Log out
             </button>
@@ -98,6 +114,7 @@ export default async function DashboardPage() {
                   <Th>Traditional</Th>
                   <Th>Lead email</Th>
                   <Th>Date</Th>
+                  <Th />
                 </tr>
               </thead>
               <tbody>
@@ -108,6 +125,14 @@ export default async function DashboardPage() {
                     <Td>{r.traditionalTotal ?? "—"}</Td>
                     <Td className="text-muted">{r.email ?? "—"}</Td>
                     <Td className="text-muted">{fmtDate(r.createdAt)}</Td>
+                    <Td>
+                      <Link
+                        href={`/dashboard/reports/${r.id}`}
+                        className="font-medium text-accent hover:underline"
+                      >
+                        Open
+                      </Link>
+                    </Td>
                   </tr>
                 ))}
               </tbody>

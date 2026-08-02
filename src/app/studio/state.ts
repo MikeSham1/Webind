@@ -16,3 +16,11 @@ export type DecisionState =
   | { status: "error"; error: string };
 
 export const initialDecisionState: DecisionState = { status: "idle" };
+
+export type PublishState =
+  | { status: "idle" }
+  | { status: "published"; viewUrl: string; editUrl: string }
+  | { status: "rolled_back" }
+  | { status: "error"; error: string };
+
+export const initialPublishState: PublishState = { status: "idle" };

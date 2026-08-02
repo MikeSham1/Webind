@@ -27,6 +27,8 @@ import {
   verifyCredentials,
 } from "@/lib/auth";
 import {
+  getReportById,
+  getReportForUser,
   listAllReports,
   listReportsForUser,
   saveReportRequest,
@@ -40,6 +42,17 @@ import {
 import { generateDraft } from "@/lib/content/generate";
 import { seedAccounts } from "./seed";
 import type { ReportResult } from "@/lib/scoring/types";
+import {
+  deleteWordPressConnection,
+  getWordPressConnectionStatus,
+  getWordPressCredentials,
+  saveWordPressConnection,
+} from "@/lib/integrations/connections";
+import {
+  getPublicationForDraft,
+  recordPublished,
+  recordRolledBack,
+} from "@/lib/integrations/publications";
 
 const report = (url: string): ReportResult => ({
   url,
@@ -91,16 +104,23 @@ describe("accounts + sessions (real Postgres via PGlite)", () => {
 describe("report ownership", () => {
   it("scopes reports to their owner; admin sees anonymous ones too", async () => {
     const owner = await createUser("reporter@example.com", "password123");
-    if (!owner.ok) throw new Error("setup failed");
+    const other = await createUser("otherreporter@example.com", "password123");
+    if (!owner.ok || !other.ok) throw new Error("setup failed");
 
-    await saveReportRequest(report("https://owned.com"), owner.user.id);
+    const id = await saveReportRequest(report("https://owned.com"), owner.user.id);
     await saveReportRequest(report("https://anon.com"), null);
+    if (!id) throw new Error("setup failed");
 
     const mine = await listReportsForUser(owner.user.id);
     expect(mine.map((r) => r.url)).toEqual(["https://owned.com"]);
 
     const all = await listAllReports();
     expect(all.some((r) => r.url === "https://anon.com")).toBe(true);
+
+    // A different user cannot fetch it directly; the owner and an admin can.
+    expect(await getReportForUser(id, other.user.id)).toBeNull();
+    expect((await getReportForUser(id, owner.user.id))?.url).toBe("https://owned.com");
+    expect((await getReportById(id))?.url).toBe("https://owned.com");
   });
 });
 
@@ -132,6 +152,71 @@ describe("draft ownership + moderation", () => {
 
     // Admin override reaches any draft.
     expect(await setAnyDraftStatus(id, "rejected")).toBe(true);
+  });
+});
+
+describe("WordPress connection", () => {
+  it("stores credentials encrypted, and fails closed without the key", async () => {
+    const owner = await createUser("wpuser@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+
+    vi.stubEnv("CREDENTIALS_KEY", Buffer.alloc(32, 3).toString("base64"));
+    const creds = { siteUrl: "https://acme.example", username: "editor", appPassword: "abcd 1234 efgh 5678" };
+    expect(await saveWordPressConnection(owner.user.id, creds)).toBe(true);
+
+    const status = await getWordPressConnectionStatus(owner.user.id);
+    expect(status).toEqual({ siteUrl: creds.siteUrl, username: creds.username });
+
+    const decrypted = await getWordPressCredentials(owner.user.id);
+    expect(decrypted).toEqual(creds);
+
+    // Without the key configured, the row exists but the secret is unusable.
+    vi.unstubAllEnvs();
+    expect(await getWordPressCredentials(owner.user.id)).toBeNull();
+    expect(await getWordPressConnectionStatus(owner.user.id)).toEqual({
+      siteUrl: creds.siteUrl,
+      username: creds.username,
+    });
+
+    expect(await deleteWordPressConnection(owner.user.id)).toBe(true);
+    expect(await getWordPressConnectionStatus(owner.user.id)).toBeNull();
+  });
+});
+
+describe("publications (WordPress apply + rollback)", () => {
+  it("tracks publish → rollback → republish for a draft", async () => {
+    const owner = await createUser("publisher@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+    const inputs = {
+      topic: "Managed IT",
+      pageType: "landing" as const,
+      audience: "smbs",
+      tone: "professional",
+      keyFacts: ["24/7 helpdesk"],
+    };
+    const draftId = await saveDraft(inputs, generateDraft(inputs), owner.user.id);
+    if (!draftId) throw new Error("setup failed");
+
+    expect(await getPublicationForDraft(draftId)).toBeNull();
+
+    const page = { postId: 7, viewUrl: "https://acme.example/managed-it/", editUrl: "https://acme.example/wp-admin/post.php?post=7&action=edit" };
+    expect(await recordPublished(draftId, owner.user.id, page)).toBe(true);
+
+    let row = await getPublicationForDraft(draftId);
+    expect(row?.status).toBe("published");
+    expect(row?.wpPostId).toBe(7);
+    expect(row?.rolledBackAt).toBeNull();
+
+    expect(await recordRolledBack(draftId)).toBe(true);
+    row = await getPublicationForDraft(draftId);
+    expect(row?.status).toBe("rolled_back");
+    expect(row?.rolledBackAt).not.toBeNull();
+
+    // Republishing the same draft updates the existing row rather than duplicating it.
+    expect(await recordPublished(draftId, owner.user.id, page)).toBe(true);
+    row = await getPublicationForDraft(draftId);
+    expect(row?.status).toBe("published");
+    expect(row?.rolledBackAt).toBeNull();
   });
 });
 

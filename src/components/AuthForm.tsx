@@ -16,11 +16,16 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
 
   return (
     <div className="w-full max-w-sm">
-      <h1 className="font-display text-3xl font-semibold text-ink">
+      <p className="font-mono text-xs uppercase tracking-[0.2em] text-accent">
+        {isLogin ? "Welcome back" : "Get started"}
+      </p>
+      <h1 className="mt-2 font-display text-3xl font-semibold text-ink">
         {isLogin ? "Log in" : "Create your account"}
       </h1>
       <p className="mt-2 text-sm text-muted">
-        {isLogin ? "Welcome back to WeBind." : "Start tracking your authority with WeBind."}
+        {isLogin
+          ? "Pick up where you left off."
+          : "Track your authority scores and content drafts in one place."}
       </p>
 
       <form

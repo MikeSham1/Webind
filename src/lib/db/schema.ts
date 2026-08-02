@@ -81,3 +81,54 @@ export const sessions = pgTable("sessions", {
   tokenHash: text("token_hash").notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
+
+/**
+ * A user's WordPress site, connected via a WP Application Password (not a full
+ * account password — the user generates it in their own WP admin under Users →
+ * Profile, and can revoke it there without touching their login). One site per
+ * user in this first version. `encryptedAppPassword` is AES-256-GCM ciphertext
+ * (see src/lib/integrations/crypto.ts) — never stored or logged in the clear.
+ */
+export const wordpressConnections = pgTable("wordpress_connections", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  userId: uuid("user_id")
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: "cascade" }),
+  siteUrl: text("site_url").notNull(),
+  username: text("username").notNull(),
+  encryptedAppPassword: text("encrypted_app_password").notNull(),
+});
+
+export type WordPressConnectionRow = typeof wordpressConnections.$inferSelect;
+
+/**
+ * One-click-apply record: a Content Studio draft pushed to a WordPress page.
+ * `status` mirrors the WP page's own publish/draft status, so "roll back" is
+ * always a non-destructive toggle on the customer's own site — nothing WeBind
+ * does here can delete a page or lose content.
+ */
+export const publications = pgTable("publications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  draftId: uuid("draft_id")
+    .notNull()
+    .unique()
+    .references(() => contentDrafts.id, { onDelete: "cascade" }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  wpPostId: integer("wp_post_id").notNull(),
+  wpViewUrl: text("wp_view_url").notNull(),
+  wpEditUrl: text("wp_edit_url").notNull(),
+  status: text("status").$type<"published" | "rolled_back">().notNull(),
+  publishedAt: timestamp("published_at", { withTimezone: true }).notNull(),
+  rolledBackAt: timestamp("rolled_back_at", { withTimezone: true }),
+});
+
+export type PublicationRow = typeof publications.$inferSelect;

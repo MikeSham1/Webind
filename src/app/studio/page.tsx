@@ -1,13 +1,22 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import StudioForm from "@/components/StudioForm";
+import { getCurrentUser } from "@/lib/auth";
+import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
 
 export const metadata: Metadata = {
   title: "Content Studio — WeBind",
   robots: { index: false, follow: false, nocache: true },
 };
 
-export default function StudioPage() {
+export const dynamic = "force-dynamic";
+
+export default async function StudioPage() {
+  const user = await getCurrentUser();
+  const wordPressConnected = user
+    ? (await getWordPressConnectionStatus(user.id)) !== null
+    : false;
+
   return (
     <main className="mx-auto w-full max-w-3xl px-6 py-14">
       <div className="mb-10">
@@ -29,7 +38,7 @@ export default function StudioPage() {
           for your approval — nothing is finalized automatically.
         </p>
       </div>
-      <StudioForm />
+      <StudioForm wordPressConnected={wordPressConnected} />
     </main>
   );
 }

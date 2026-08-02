@@ -8,8 +8,8 @@ export default function Home() {
   return (
     <div className="flex min-h-full flex-col">
       {/* Nav */}
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
-        <Link href="/" className="flex items-baseline gap-2">
+      <header className="mx-auto flex w-full max-w-6xl flex-col items-center gap-4 px-6 py-6 sm:flex-row sm:justify-between">
+        <Link href="/" className="flex items-baseline gap-2 whitespace-nowrap">
           <span className="font-display text-xl font-semibold tracking-tight text-ink">
             WeBind
           </span>
@@ -20,19 +20,19 @@ export default function Home() {
         <nav className="flex items-center gap-5">
           <Link
             href="/studio"
-            className="font-sans text-sm font-medium text-muted transition-colors hover:text-accent"
+            className="whitespace-nowrap font-sans text-sm font-medium text-muted transition-colors hover:text-accent"
           >
             Content Studio
           </Link>
           <Link
             href="/dashboard"
-            className="font-sans text-sm font-medium text-muted transition-colors hover:text-accent"
+            className="whitespace-nowrap font-sans text-sm font-medium text-muted transition-colors hover:text-accent"
           >
             Dashboard
           </Link>
           <Link
             href="/login"
-            className="rounded-full border border-line px-4 py-1.5 font-sans text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent"
+            className="whitespace-nowrap rounded-full border border-line px-4 py-1.5 font-sans text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent"
           >
             Log in
           </Link>

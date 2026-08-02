@@ -4,6 +4,8 @@ import { notFound, redirect } from "next/navigation";
 import DraftView from "@/components/DraftView";
 import { getCurrentUser } from "@/lib/auth";
 import { getDraftById, getDraftForUser } from "@/lib/content/store";
+import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
+import { getPublicationForDraft } from "@/lib/integrations/publications";
 import type { ContentDraft, GateReport } from "@/lib/content/types";
 
 export const metadata: Metadata = {
@@ -41,6 +43,16 @@ export default async function DraftDetailPage({
     gates: row.gates ?? EMPTY_GATES,
   };
 
+  // WordPress connection and any publish record belong to the draft's owner,
+  // not necessarily the viewer — an admin reviewing someone else's draft must
+  // see (and publish to) that owner's site, never their own.
+  const [wordPressConnected, publication] = await Promise.all([
+    row.userId
+      ? getWordPressConnectionStatus(row.userId).then((status) => status !== null)
+      : Promise.resolve(false),
+    getPublicationForDraft(row.id),
+  ]);
+
   return (
     <main className="mx-auto w-full max-w-3xl px-6 py-12">
       <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
@@ -59,7 +71,17 @@ export default async function DraftDetailPage({
         </span>
       </div>
 
-      <DraftView draft={draft} draftId={row.id} />
+      <DraftView
+        draft={draft}
+        draftId={row.id}
+        initialStatus={row.status}
+        wordPressConnected={wordPressConnected}
+        initialPublication={
+          publication
+            ? { viewUrl: publication.wpViewUrl, editUrl: publication.wpEditUrl, status: publication.status }
+            : null
+        }
+      />
     </main>
   );
 }
