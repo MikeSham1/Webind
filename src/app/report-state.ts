@@ -16,6 +16,8 @@ export type ReportState =
       optimizations: OptimizationAssets;
       /** DB id of the logged run, or null when persistence is disabled. */
       requestId: string | null;
+      /** Whether the signed-in visitor has a GitHub repo connected (Settings). */
+      githubConnected: boolean;
     }
   | { status: "error"; error: string; url: string };
 
@@ -28,3 +30,11 @@ export type LeadState =
   | { status: "error"; error: string };
 
 export const initialLeadState: LeadState = { status: "idle" };
+
+/** State for the "open a PR" action (Phase 3 one-click apply for code fixes). */
+export type PrState =
+  | { status: "idle" }
+  | { status: "opened"; prUrl: string; prNumber: number }
+  | { status: "error"; error: string };
+
+export const initialPrState: PrState = { status: "idle" };

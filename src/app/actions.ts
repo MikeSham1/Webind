@@ -6,9 +6,15 @@ import { BlockedUrlError, normalizeUrl } from "@/lib/crawler/ssrf";
 import { buildReport } from "@/lib/scoring/report";
 import { explainReport } from "@/lib/scoring/explain";
 import { buildOptimizations } from "@/lib/optimize/assets";
-import { attachEmail, saveReportRequest } from "@/lib/leads";
+import { attachEmail, getReportById, getReportForUser, saveReportRequest } from "@/lib/leads";
 import { getCurrentUser } from "@/lib/auth";
-import type { LeadState, ReportState } from "./report-state";
+import {
+  getGitHubConnectionStatus,
+  getGitHubCredentials,
+} from "@/lib/integrations/githubConnections";
+import { getPrForReport, recordPrOpened } from "@/lib/integrations/codeFixes";
+import { openFixPullRequest, type FixFile } from "@/lib/integrations/github";
+import type { LeadState, PrState, ReportState } from "./report-state";
 
 /**
  * Server action: crawl the given URL and build its authority report.
@@ -49,8 +55,13 @@ export async function runReport(
     // Best-effort logging (the preview doubles as a lead funnel). Owned by the
     // visitor when they're logged in, anonymous otherwise. Never blocks or
     // breaks the report — returns null when persistence is disabled.
-    const requestId = await saveReportRequest(report, user?.id ?? null);
-    return { status: "success", report, narrative, optimizations, requestId };
+    // `optimizations` is stored too, so a signed-in user's saved report still
+    // has its ready-to-apply fixes (and the "open a PR" action) on revisit.
+    const requestId = await saveReportRequest(report, user?.id ?? null, optimizations);
+    const githubConnected = user
+      ? (await getGitHubConnectionStatus(user.id)) !== null
+      : false;
+    return { status: "success", report, narrative, optimizations, requestId, githubConnected };
   } catch (err) {
     // These two carry messages written for a visitor; anything else is an
     // internal failure and gets the generic line so we leak nothing.
@@ -87,4 +98,91 @@ export async function submitLead(
   return ok
     ? { status: "done" }
     : { status: "error", error: "Couldn't save that right now — try again." };
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Open a pull request on the report owner's connected GitHub repo, adding or
+ * updating llms.txt and robots.txt — the two ready-to-apply assets that are
+ * genuinely standalone files (schema/meta are HTML snippets meant for an
+ * unknown template, not something safe to commit blindly). A PR already open
+ * for this report is reported as-is rather than opened twice.
+ *
+ * Always the report's own owner, not whoever clicks the button — mirrors the
+ * same fix applied to WordPress publishing, for the same reason: an admin
+ * reviewing someone else's report must never open a PR on the admin's own
+ * unrelated repo.
+ */
+export async function openFixPrAction(
+  _prev: PrState,
+  formData: FormData,
+): Promise<PrState> {
+  const requestId = String(formData.get("requestId") ?? "");
+  if (!requestId) {
+    return { status: "error", error: "This report wasn't saved, so there's nothing to open a PR for." };
+  }
+
+  const user = await getCurrentUser();
+  if (!user) return { status: "error", error: "Log in to open a pull request." };
+
+  const reportRow = user.isAdmin
+    ? await getReportById(requestId)
+    : await getReportForUser(requestId, user.id);
+  if (!reportRow) return { status: "error", error: "Couldn't find that report." };
+  if (!reportRow.userId) {
+    return { status: "error", error: "This report has no owner to open a PR on behalf of." };
+  }
+
+  const existing = await getPrForReport(requestId);
+  if (existing) {
+    return { status: "opened", prUrl: existing.prUrl, prNumber: existing.prNumber };
+  }
+
+  const files: FixFile[] = [];
+  for (const asset of reportRow.optimizations?.assets ?? []) {
+    if (asset.key === "llmstxt") files.push({ path: "llms.txt", content: asset.content });
+    if (asset.key === "robots") files.push({ path: "robots.txt", content: asset.content });
+  }
+  if (files.length === 0) {
+    return {
+      status: "error",
+      error: "Nothing file-shaped to open a PR for — llms.txt and robots.txt already look good.",
+    };
+  }
+
+  const creds = await getGitHubCredentials(reportRow.userId);
+  if (!creds) return { status: "error", error: "Connect GitHub in Settings before opening a PR." };
+
+  const host = hostOf(reportRow.url);
+  const branchName = `webind/ai-crawlability-${requestId.slice(0, 8)}`;
+  const result = await openFixPullRequest(creds, files, {
+    title: `WeBind: AI crawlability fixes for ${host}`,
+    body: [
+      `Opened from a WeBind Authority Report for ${reportRow.url}.`,
+      "",
+      "Adds or updates:",
+      ...files.map((f) => `- ${f.path}`),
+      "",
+      "Review before merging — nothing here is finalized without your approval.",
+    ].join("\n"),
+    branchName,
+  });
+  if (!result.ok) return { status: "error", error: result.error };
+
+  const recorded = await recordPrOpened(requestId, reportRow.userId, result);
+  if (!recorded) {
+    return {
+      status: "error",
+      error: "PR opened, but couldn't save the record — refresh to check its status.",
+    };
+  }
+
+  return { status: "opened", prUrl: result.prUrl, prNumber: result.prNumber };
 }

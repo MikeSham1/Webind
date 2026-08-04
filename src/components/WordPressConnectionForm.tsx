@@ -5,7 +5,7 @@ import {
   connectWordPressAction,
   disconnectWordPressAction,
 } from "@/app/dashboard/settings/actions";
-import { initialConnectionState } from "@/app/dashboard/settings/state";
+import { initialWordPressConnectionState } from "@/app/dashboard/settings/state";
 
 const inputClass =
   "mt-1.5 w-full rounded-lg border border-line-strong bg-paper px-3 py-2.5 font-sans text-[15px] text-ink placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
@@ -17,7 +17,7 @@ export default function WordPressConnectionForm({
 }) {
   const [state, formAction, isPending] = useActionState(
     connectWordPressAction,
-    initialConnectionState,
+    initialWordPressConnectionState,
   );
 
   const connected =

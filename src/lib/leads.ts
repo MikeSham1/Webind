@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { reportRequests, type ReportRequest } from "@/lib/db/schema";
 import type { ReportResult } from "@/lib/scoring/types";
+import type { OptimizationAssets } from "@/lib/optimize/assets";
 
 type Database = NonNullable<ReturnType<typeof getDb>>;
 
@@ -23,13 +24,17 @@ async function withDb<T>(
 
 /**
  * Persist a report run. `userId` is the owner when the run was made while
- * logged in, or null for anonymous lead-gen runs. Returns the new row id, or
+ * logged in, or null for anonymous lead-gen runs. `optimizations` is stored
+ * alongside so the ready-to-apply fixes (and the "open a PR" action built on
+ * them) are still there when a signed-in user revisits this report later, not
+ * just in the client state right after running it. Returns the new row id, or
  * null when persistence is disabled (no DATABASE_URL) or the write fails —
  * never throws, so a database hiccup can't break the user's report.
  */
 export async function saveReportRequest(
   report: ReportResult,
   userId: string | null = null,
+  optimizations: OptimizationAssets | null = null,
 ): Promise<string | null> {
   return withDb("saveReportRequest", null, async (db) => {
     const [row] = await db
@@ -40,6 +45,7 @@ export async function saveReportRequest(
         aiTotal: report.ai.total,
         traditionalTotal: report.traditional.total,
         report,
+        optimizations,
       })
       .returning({ id: reportRequests.id });
     return row?.id ?? null;

@@ -5,8 +5,22 @@ import type {
   OptimizationAsset,
   OptimizationAssets as Assets,
 } from "@/lib/optimize/assets";
+import OpenPrBar, { type PrSnapshot } from "./OpenPrBar";
 
-export default function OptimizationAssets({ assets }: { assets: Assets }) {
+const FILE_SHAPED_KEYS = new Set(["llmstxt", "robots"]);
+
+export default function OptimizationAssets({
+  assets,
+  requestId = null,
+  githubConnected = false,
+  initialPr = null,
+}: {
+  assets: Assets;
+  /** DB id of the logged report run; enables the "open a PR" action when present. */
+  requestId?: string | null;
+  githubConnected?: boolean;
+  initialPr?: PrSnapshot | null;
+}) {
   if (assets.assets.length === 0) {
     return (
       <div className="reveal rounded-2xl border border-line bg-surface p-6 text-center">
@@ -17,6 +31,8 @@ export default function OptimizationAssets({ assets }: { assets: Assets }) {
       </div>
     );
   }
+
+  const hasFileAssets = assets.assets.some((a) => FILE_SHAPED_KEYS.has(a.key));
 
   return (
     <div className="reveal">
@@ -33,6 +49,15 @@ export default function OptimizationAssets({ assets }: { assets: Assets }) {
           <AssetCard key={asset.key} asset={asset} />
         ))}
       </div>
+      {requestId && hasFileAssets && (
+        <div className="mt-4">
+          <OpenPrBar
+            requestId={requestId}
+            githubConnected={githubConnected}
+            initialPr={initialPr}
+          />
+        </div>
+      )}
     </div>
   );
 }

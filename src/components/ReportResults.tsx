@@ -5,6 +5,7 @@ import SignalBreakdown from "./SignalBreakdown";
 import FixList from "./FixList";
 import OptimizationAssets from "./OptimizationAssets";
 import LeadCapture from "./LeadCapture";
+import type { PrSnapshot } from "./OpenPrBar";
 
 export interface ReportResultsProps {
   report: ReportResult;
@@ -12,8 +13,10 @@ export interface ReportResultsProps {
   narrative?: string;
   /** Ready-to-apply generated assets (schema, meta, llms.txt, robots). */
   optimizations?: Assets;
-  /** DB id of the logged run; enables email capture when present. */
+  /** DB id of the logged run; enables email capture and the "open a PR" action when present. */
   requestId?: string | null;
+  githubConnected?: boolean;
+  initialPr?: PrSnapshot | null;
 }
 
 function hostOf(url: string): string {
@@ -29,6 +32,8 @@ export default function ReportResults({
   narrative,
   optimizations,
   requestId,
+  githubConnected = false,
+  initialPr = null,
 }: ReportResultsProps) {
   const host = hostOf(report.url);
 
@@ -91,7 +96,14 @@ export default function ReportResults({
       </div>
 
       {/* Ready-to-apply generated assets */}
-      {optimizations && <OptimizationAssets assets={optimizations} />}
+      {optimizations && (
+        <OptimizationAssets
+          assets={optimizations}
+          requestId={requestId}
+          githubConnected={githubConnected}
+          initialPr={initialPr}
+        />
+      )}
 
       {/* Soft CTA */}
       <div

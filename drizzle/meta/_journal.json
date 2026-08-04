@@ -43,6 +43,13 @@
       "when": 1785349029170,
       "tag": "0005_lowly_mojo",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785805429387,
+      "tag": "0006_glorious_krista_starr",
+      "breakpoints": true
     }
   ]
 }

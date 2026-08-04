@@ -4,14 +4,19 @@ import { revalidatePath } from "next/cache";
 import { normalizeUrl } from "@/lib/crawler/ssrf";
 import { getCurrentUser } from "@/lib/auth";
 import { deleteWordPressConnection, saveWordPressConnection } from "@/lib/integrations/connections";
-import { testConnection } from "@/lib/integrations/wordpress";
-import type { ConnectionState } from "./state";
+import { testConnection as testWordPressConnection } from "@/lib/integrations/wordpress";
+import {
+  deleteGitHubConnection,
+  saveGitHubConnection,
+} from "@/lib/integrations/githubConnections";
+import { testConnection as testGitHubConnection } from "@/lib/integrations/github";
+import type { GitHubConnectionState, WordPressConnectionState } from "./state";
 
 /** Connect (or replace) the user's WordPress site. Verifies the credentials before saving. */
 export async function connectWordPressAction(
-  _prev: ConnectionState,
+  _prev: WordPressConnectionState,
   formData: FormData,
-): Promise<ConnectionState> {
+): Promise<WordPressConnectionState> {
   const user = await getCurrentUser();
   if (!user) return { status: "error", error: "Log in to connect a WordPress site." };
 
@@ -32,7 +37,7 @@ export async function connectWordPressAction(
     };
   }
 
-  const verified = await testConnection({ siteUrl, username, appPassword });
+  const verified = await testWordPressConnection({ siteUrl, username, appPassword });
   if (!verified.ok) return { status: "error", error: verified.error };
 
   const saved = await saveWordPressConnection(user.id, { siteUrl, username, appPassword });
@@ -50,5 +55,45 @@ export async function connectWordPressAction(
 export async function disconnectWordPressAction(): Promise<void> {
   const user = await getCurrentUser();
   if (user) await deleteWordPressConnection(user.id);
+  revalidatePath("/dashboard/settings");
+}
+
+/** Connect (or replace) the user's GitHub repo. Verifies the token before saving. */
+export async function connectGitHubAction(
+  _prev: GitHubConnectionState,
+  formData: FormData,
+): Promise<GitHubConnectionState> {
+  const user = await getCurrentUser();
+  if (!user) return { status: "error", error: "Log in to connect a GitHub repo." };
+
+  const owner = String(formData.get("owner") ?? "").trim();
+  const repo = String(formData.get("repo") ?? "").trim();
+  const token = String(formData.get("token") ?? "").trim();
+
+  if (!owner || !repo) {
+    return { status: "error", error: "Enter the repo owner and name, e.g. acme / site." };
+  }
+  if (!token) {
+    return { status: "error", error: "Enter a Personal Access Token." };
+  }
+
+  const verified = await testGitHubConnection({ owner, repo, token });
+  if (!verified.ok) return { status: "error", error: verified.error };
+
+  const saved = await saveGitHubConnection(user.id, { owner, repo, token });
+  if (!saved) {
+    return {
+      status: "error",
+      error: "Couldn't save that connection — is a database configured?",
+    };
+  }
+
+  revalidatePath("/dashboard/settings");
+  return { status: "connected", owner, repo };
+}
+
+export async function disconnectGitHubAction(): Promise<void> {
+  const user = await getCurrentUser();
+  if (user) await deleteGitHubConnection(user.id);
   revalidatePath("/dashboard/settings");
 }

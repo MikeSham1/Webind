@@ -53,6 +53,13 @@ import {
   recordPublished,
   recordRolledBack,
 } from "@/lib/integrations/publications";
+import {
+  deleteGitHubConnection,
+  getGitHubConnectionStatus,
+  getGitHubCredentials,
+  saveGitHubConnection,
+} from "@/lib/integrations/githubConnections";
+import { getPrForReport, recordPrOpened } from "@/lib/integrations/codeFixes";
 
 const report = (url: string): ReportResult => ({
   url,
@@ -217,6 +224,52 @@ describe("publications (WordPress apply + rollback)", () => {
     row = await getPublicationForDraft(draftId);
     expect(row?.status).toBe("published");
     expect(row?.rolledBackAt).toBeNull();
+  });
+});
+
+describe("GitHub connection", () => {
+  it("stores the token encrypted, and fails closed without the key", async () => {
+    const owner = await createUser("ghuser@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+
+    vi.stubEnv("CREDENTIALS_KEY", Buffer.alloc(32, 5).toString("base64"));
+    const creds = { owner: "acme", repo: "site", token: "ghp_abcd1234" };
+    expect(await saveGitHubConnection(owner.user.id, creds)).toBe(true);
+
+    const status = await getGitHubConnectionStatus(owner.user.id);
+    expect(status).toEqual({ owner: creds.owner, repo: creds.repo });
+
+    const decrypted = await getGitHubCredentials(owner.user.id);
+    expect(decrypted).toEqual(creds);
+
+    vi.unstubAllEnvs();
+    expect(await getGitHubCredentials(owner.user.id)).toBeNull();
+    expect(await getGitHubConnectionStatus(owner.user.id)).toEqual({
+      owner: creds.owner,
+      repo: creds.repo,
+    });
+
+    expect(await deleteGitHubConnection(owner.user.id)).toBe(true);
+    expect(await getGitHubConnectionStatus(owner.user.id)).toBeNull();
+  });
+});
+
+describe("code fix PRs", () => {
+  it("tracks the PR opened for a report", async () => {
+    const owner = await createUser("prowner@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+
+    const reportId = await saveReportRequest(report("https://fixme.com"), owner.user.id);
+    if (!reportId) throw new Error("setup failed");
+
+    expect(await getPrForReport(reportId)).toBeNull();
+
+    const pr = { prNumber: 12, prUrl: "https://github.com/acme/site/pull/12", branchName: "webind/fix-1" };
+    expect(await recordPrOpened(reportId, owner.user.id, pr)).toBe(true);
+
+    const row = await getPrForReport(reportId);
+    expect(row?.prNumber).toBe(12);
+    expect(row?.prUrl).toBe(pr.prUrl);
   });
 });
 

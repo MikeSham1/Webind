@@ -8,6 +8,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import type { ReportResult } from "../scoring/types";
+import type { OptimizationAssets as OptimizationAssetsData } from "../optimize/assets";
 import type {
   ContentInputs,
   DraftStatus,
@@ -17,6 +18,9 @@ import type {
 /**
  * Every free-report run is logged here (the preview doubles as a lead funnel).
  * `email` is filled in later if the visitor opts into the follow-up.
+ * `optimizations` is stored alongside the report (not just held in client
+ * state) so the ready-to-apply fixes — and the "open a PR" action built on
+ * them — are still there when a signed-in user revisits a past report.
  */
 export const reportRequests = pgTable("report_requests", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -30,6 +34,7 @@ export const reportRequests = pgTable("report_requests", {
   aiTotal: integer("ai_total"),
   traditionalTotal: integer("traditional_total"),
   report: jsonb("report").$type<ReportResult>(),
+  optimizations: jsonb("optimizations").$type<OptimizationAssetsData>(),
 });
 
 export type ReportRequest = typeof reportRequests.$inferSelect;
@@ -132,3 +137,53 @@ export const publications = pgTable("publications", {
 });
 
 export type PublicationRow = typeof publications.$inferSelect;
+
+/**
+ * A user's GitHub repo, connected via a fine-grained Personal Access Token
+ * (Settings → Developer settings → Personal access tokens in the user's own
+ * GitHub account, scoped to just this repo's Contents + Pull requests
+ * permissions) — not a full account credential, and revocable independently.
+ * One repo per user in this first version. `encryptedToken` is AES-256-GCM
+ * ciphertext (see src/lib/integrations/crypto.ts).
+ */
+export const githubConnections = pgTable("github_connections", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  userId: uuid("user_id")
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: "cascade" }),
+  repoOwner: text("repo_owner").notNull(),
+  repoName: text("repo_name").notNull(),
+  encryptedToken: text("encrypted_token").notNull(),
+});
+
+export type GitHubConnectionRow = typeof githubConnections.$inferSelect;
+
+/**
+ * One-click-apply record for Phase 3: a report's deterministic, file-shaped
+ * fixes (llms.txt, robots.txt — never arbitrary template code) opened as a
+ * pull request. Unlike WordPress publishing there is no separate "roll back"
+ * action here: a PR is already a reversible, human-reviewed proposal — closing
+ * it (or not merging it) is the rollback, done by the user on GitHub itself.
+ */
+export const codeFixPrs = pgTable("code_fix_prs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  reportRequestId: uuid("report_request_id")
+    .notNull()
+    .unique()
+    .references(() => reportRequests.id, { onDelete: "cascade" }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  prNumber: integer("pr_number").notNull(),
+  prUrl: text("pr_url").notNull(),
+  branchName: text("branch_name").notNull(),
+});
+
+export type CodeFixPrRow = typeof codeFixPrs.$inferSelect;
