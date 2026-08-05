@@ -64,17 +64,16 @@ export default async function DashboardPage() {
           >
             New report
           </Link>
-<<<<<<< Updated upstream
-          <Link href="/visibility" className="font-sans text-sm font-medium text-muted hover:text-accent">
+          <Link
+            href="/visibility"
+            className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
+          >
             Keyword Visibility
           </Link>
-          <Link href="/studio" className="font-sans text-sm font-medium text-muted hover:text-accent">
-=======
           <Link
             href="/studio"
             className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
           >
->>>>>>> Stashed changes
             Content Studio
           </Link>
           <Link
