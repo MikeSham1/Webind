@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { checkKeywordVisibility, MAX_KEYWORDS } from "./check";
-import { parseVerdict, type VisibilityProvider } from "./providers";
+import { detectVisibility, type VisibilityProvider } from "./providers";
 
 /** A configured stub provider whose probe returns a fixed verdict. */
 function stub(
@@ -116,34 +116,39 @@ describe("checkKeywordVisibility", () => {
   });
 });
 
-describe("parseVerdict", () => {
-  it("parses a well-formed trailer", () => {
-    const v = parseVerdict(
-      "Some analysis.\nPRESENT: yes\nPROMINENCE: 85\nCOMPETITORS: WidgetCo, gadgetpro.io\nEVIDENCE: Cited by two industry roundups.",
+describe("detectVisibility (unbiased)", () => {
+  const ctx = { domain: "acme.com", brandName: "Acme" };
+
+  it("marks present with high prominence when the brand ranks first", () => {
+    const v = detectVisibility(
+      "Here are the best options...\nSOURCES: Acme, WidgetCo, gadgetpro.io",
+      ctx,
     );
     expect(v.present).toBe(true);
-    expect(v.prominence).toBe(85);
+    expect(v.prominence).toBeGreaterThanOrEqual(70);
     expect(v.competitors).toEqual(["WidgetCo", "gadgetpro.io"]);
-    expect(v.evidence).toBe("Cited by two industry roundups.");
   });
 
-  it("treats 'unknown' as null and ignores prominence when absent", () => {
-    const v = parseVerdict("PRESENT: unknown\nPROMINENCE: n/a\nCOMPETITORS: none\nEVIDENCE: Couldn't tell.");
-    expect(v.present).toBeNull();
-    expect(v.prominence).toBeNull();
-    expect(v.competitors).toEqual([]);
-  });
-
-  it("drops prominence when the brand is not present", () => {
-    const v = parseVerdict("PRESENT: no\nPROMINENCE: 40\nCOMPETITORS: RivalCo\nEVIDENCE: Rival dominates.");
+  it("marks not-present and captures the competitors that surfaced instead", () => {
+    const v = detectVisibility("Try these.\nSOURCES: RivalCo, othersite.io", ctx);
     expect(v.present).toBe(false);
-    expect(v.prominence).toBeNull(); // prominence only meaningful when present
-    expect(v.competitors).toEqual(["RivalCo"]);
+    expect(v.prominence).toBeNull();
+    expect(v.competitors).toEqual(["RivalCo", "othersite.io"]);
   });
 
-  it("falls back to the whole text when there is no trailer", () => {
-    const v = parseVerdict("The model wandered off without a verdict.");
-    expect(v.present).toBeNull();
-    expect(v.evidence).toMatch(/wandered off/);
+  it("detects the brand by domain match, not just name", () => {
+    const v = detectVisibility("SOURCES: widgetco.com, acme.com", ctx);
+    expect(v.present).toBe(true);
+    expect(v.competitors).toEqual(["widgetco.com"]);
+  });
+
+  it("detects a prose mention even with no SOURCES line", () => {
+    const v = detectVisibility("Acme is a strong choice here.", ctx);
+    expect(v.present).toBe(true);
+    expect(v.prominence).toBe(35);
+  });
+
+  it("returns unknown when nothing came back", () => {
+    expect(detectVisibility("", ctx).present).toBeNull();
   });
 });

@@ -55,19 +55,16 @@ const claudeProvider: VisibilityProvider = {
   async probe(keyword, ctx) {
     const client = new Anthropic();
 
+    // Unbiased probe: answer the user's real query WITHOUT naming the brand we
+    // are measuring, so the model isn't primed to surface it. The brand is then
+    // detected deterministically in the answer (see detectVisibility).
     const prompt =
       `A user asks an AI assistant: "${keyword}".\n\n` +
-      `Using web search, determine how a well-grounded answer to that query ` +
-      `would treat the brand "${ctx.brandName}" (website: ${ctx.domain}). ` +
-      `Judge whether that brand would be surfaced or recommended, how central ` +
-      `it would be to the answer, and which other brands, products, or sources ` +
-      `an answer would most likely cite instead. Base this on real, ` +
-      `independent coverage — ignore the brand's own marketing pages.\n\n` +
-      `End your reply with EXACTLY these four lines:\n` +
-      `PRESENT: yes | no | unknown\n` +
-      `PROMINENCE: <0-100, or n/a>\n` +
-      `COMPETITORS: <comma-separated brands or domains cited instead, or none>\n` +
-      `EVIDENCE: <one short sentence naming the strongest source or gap>`;
+      `Using web search, answer exactly as you would for that user — recommend ` +
+      `the best brands, products, or sources based on real, independent ` +
+      `coverage. Then, on a FINAL line, list the specific brands, products, or ` +
+      `websites your answer recommends or cites, most important first:\n` +
+      `SOURCES: <comma-separated brands or domains, in order, or none>`;
 
     // Server-side web search runs an internal loop; a "pause_turn" means we
     // must resend to let it continue. Bound the continuations.
@@ -100,45 +97,69 @@ const claudeProvider: VisibilityProvider = {
       .map((b) => b.text)
       .join("\n");
 
-    return parseVerdict(text);
+    return detectVisibility(text, ctx);
   },
 };
 
-/** Parse the PRESENT/PROMINENCE/COMPETITORS/EVIDENCE trailer from a reply. */
-export function parseVerdict(text: string): ProbeVerdict {
-  const presentMatch = /PRESENT:\s*(yes|no|unknown)/i.exec(text);
-  const prominenceMatch = /PROMINENCE:\s*(\d{1,3}|n\/?a)/i.exec(text);
-  const competitorsMatch = /COMPETITORS:\s*(.+)/i.exec(text);
-  const evidenceMatch = /EVIDENCE:\s*([\s\S]+)/i.exec(text);
+/**
+ * Deterministically judge visibility from an UNBIASED answer: parse the ranked
+ * SOURCES the model recommended, then detect the target brand/domain in that
+ * list (or in the prose). Prominence comes from the brand's rank, competitors
+ * are the other recommendations. Because the probe never named the brand, a
+ * "present" verdict reflects the model surfacing it on its own.
+ */
+export function detectVisibility(text: string, ctx: ProbeContext): ProbeVerdict {
+  const sourcesMatch = /SOURCES:\s*([^\n]*)/i.exec(text);
+  const answer = sourcesMatch ? text.slice(0, sourcesMatch.index) : text;
+  const sources = (sourcesMatch?.[1] ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((s) => !/^none\b/i.test(s))
+    .slice(0, 12);
 
-  let present: boolean | null = null;
-  if (presentMatch) {
-    const v = presentMatch[1].toLowerCase();
-    if (v === "yes") present = true;
-    else if (v === "no") present = false;
-  }
+  const brand = ctx.brandName.trim().toLowerCase();
+  const domain = ctx.domain.trim().toLowerCase().replace(/^www\./, "");
+  const hostCore = domain.split(".")[0];
+  const matches = (s: string): boolean => {
+    const l = s.toLowerCase();
+    return (
+      (brand.length > 2 && l.includes(brand)) ||
+      l.includes(domain) ||
+      (hostCore.length > 2 && l.includes(hostCore))
+    );
+  };
+
+  const rank = sources.findIndex(matches);
+  const inAnswer = matches(answer);
+  const gotAnything = sources.length > 0 || answer.trim().length > 0;
+
+  let present: boolean | null;
+  if (rank >= 0 || inAnswer) present = true;
+  else if (gotAnything) present = false;
+  else present = null;
 
   let prominence: number | null = null;
-  if (present === true && prominenceMatch && !/n/i.test(prominenceMatch[1])) {
-    const n = Number(prominenceMatch[1]);
-    if (Number.isFinite(n)) prominence = Math.min(100, Math.max(0, n));
+  if (present) {
+    prominence =
+      rank >= 0 ? Math.round(100 - (rank * 90) / Math.max(sources.length, 1)) : 35;
   }
 
-  let competitors: string[] = [];
-  if (competitorsMatch) {
-    const raw = competitorsMatch[1].split("\n")[0].trim();
-    if (raw && !/^none\b/i.test(raw)) {
-      competitors = raw
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .slice(0, 8);
-    }
-  }
+  const competitors = sources.filter((_, i) => i !== rank).slice(0, 8);
 
-  const evidence = evidenceMatch
-    ? evidenceMatch[1].split("\n")[0].trim()
-    : text.trim() || "No answer returned.";
+  let evidence: string;
+  if (present) {
+    evidence =
+      rank >= 0
+        ? `Recommended at rank ${rank + 1} of ${sources.length}.`
+        : "Named in the answer but not among the ranked recommendations.";
+  } else if (present === false) {
+    evidence = sources.length
+      ? `Not recommended; ${sources.slice(0, 3).join(", ")} surfaced instead.`
+      : "The answer recommended nothing identifiable.";
+  } else {
+    evidence = "No answer returned.";
+  }
 
   return { present, prominence, competitors, evidence };
 }
