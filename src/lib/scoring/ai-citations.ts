@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { logInfo, logWarn } from "../log";
 
 /**
  * Live AI-citation checking.
@@ -89,6 +90,10 @@ const claudeProvider: CitationProvider = {
 
     // Server-side web search runs an internal loop; a "pause_turn" means we
     // must resend to let it continue. Bound the continuations.
+    const startedAt = Date.now();
+    let inputTokens = 0;
+    let outputTokens = 0;
+
     const messages: Anthropic.MessageParam[] = [
       { role: "user", content: prompt },
     ];
@@ -100,6 +105,8 @@ const claudeProvider: CitationProvider = {
       tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 5 }],
       messages,
     });
+    inputTokens += response.usage?.input_tokens ?? 0;
+    outputTokens += response.usage?.output_tokens ?? 0;
 
     for (let i = 0; i < 4 && response.stop_reason === "pause_turn"; i++) {
       messages.push({ role: "assistant", content: response.content });
@@ -113,7 +120,18 @@ const claudeProvider: CitationProvider = {
         ],
         messages,
       });
+      inputTokens += response.usage?.input_tokens ?? 0;
+      outputTokens += response.usage?.output_tokens ?? 0;
     }
+
+    logInfo("ai_call.ok", {
+      provider: "anthropic",
+      purpose: "citation_check",
+      model: MODEL,
+      inputTokens,
+      outputTokens,
+      durationMs: Date.now() - startedAt,
+    });
 
     const text = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
@@ -208,6 +226,11 @@ export async function checkAiCitations(
         evidence: verdict.evidence,
       });
     } catch (err) {
+      logWarn("ai_call.error", {
+        provider: provider.engine,
+        purpose: "citation_check",
+        error: errorMessage(err),
+      });
       engines.push({
         engine: provider.engine,
         configured: true,

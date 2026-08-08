@@ -1,8 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { GATE_COOKIE, gateToken, safeEqual, sitePassword } from "@/lib/gate";
 
-// Reachable without the password: the splash itself and its auth endpoints.
-const PUBLIC_PATHS = ["/splash", "/api/login", "/api/logout"];
+// Reachable without the password: the splash itself, its auth endpoints, and
+// the container-orchestration health checks (Railway can't send our gate
+// cookie, and a redirect-to-splash would defeat the point of a health probe —
+// neither endpoint reveals anything sensitive).
+const PUBLIC_PATHS = ["/splash", "/api/login", "/api/logout", "/api/health", "/api/ready"];
 
 /**
  * Pre-launch password gate.

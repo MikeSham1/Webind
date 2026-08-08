@@ -19,6 +19,7 @@ import { markdownToHtml, stripLeadingTitle } from "@/lib/integrations/markdown";
 import { createPage, setPageStatus } from "@/lib/integrations/wordpress";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import { getClientIp } from "@/lib/requestIp";
+import { logInfo, logWarn } from "@/lib/log";
 import type { ContentInputs, DraftStatus, PageType } from "@/lib/content/types";
 import type { DecisionState, PublishState, StudioState } from "./state";
 
@@ -175,16 +176,21 @@ export async function publishDraftAction(
   const page = existing
     ? await setPageStatus(creds, existing.wpPostId, "publish", contentHtml)
     : await createPage(creds, { title, contentHtml });
-  if (!page.ok) return { status: "error", error: page.error };
+  if (!page.ok) {
+    logWarn("publish.error", { draftId, userId: draft.userId, error: page.error });
+    return { status: "error", error: page.error };
+  }
 
   const recorded = await recordPublished(draftId, draft.userId, page);
   if (!recorded) {
+    logWarn("publish.record_failed", { draftId, userId: draft.userId, postId: page.postId });
     return {
       status: "error",
       error: "Published, but couldn't save the record — refresh to check its status.",
     };
   }
 
+  logInfo("publish.ok", { draftId, userId: draft.userId, postId: page.postId, wasUpdate: !!existing });
   return { status: "published", viewUrl: page.viewUrl, editUrl: page.editUrl };
 }
 
@@ -222,8 +228,12 @@ export async function rollbackPublicationAction(
   if (!creds) return { status: "error", error: "WordPress isn't connected anymore." };
 
   const result = await setPageStatus(creds, publication.wpPostId, "draft");
-  if (!result.ok) return { status: "error", error: result.error };
+  if (!result.ok) {
+    logWarn("rollback.error", { draftId, userId: draft.userId, error: result.error });
+    return { status: "error", error: result.error };
+  }
 
+  logInfo("rollback.ok", { draftId, userId: draft.userId, postId: publication.wpPostId });
   await recordRolledBack(draftId);
   return { status: "rolled_back" };
 }

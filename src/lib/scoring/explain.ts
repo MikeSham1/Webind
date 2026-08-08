@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { logInfo, logWarn } from "../log";
 import type { ReportResult } from "./types";
 
 /**
@@ -16,10 +17,12 @@ export async function explainReport(report: ReportResult): Promise<string> {
     return fallbackNarrative(report);
   }
 
+  const startedAt = Date.now();
+  const model = "claude-opus-4-8";
   try {
     const client = new Anthropic();
     const response = await client.messages.create({
-      model: "claude-opus-4-8",
+      model,
       max_tokens: 600,
       system:
         "You explain website authority reports to non-technical business " +
@@ -30,6 +33,17 @@ export async function explainReport(report: ReportResult): Promise<string> {
       messages: [{ role: "user", content: buildPrompt(report) }],
     });
 
+    // Token counts, not a dollar figure -- pricing changes over time and this
+    // stays accurate; multiply by whatever the current per-token rate is.
+    logInfo("ai_call.ok", {
+      provider: "anthropic",
+      purpose: "explain_report",
+      model,
+      inputTokens: response.usage?.input_tokens,
+      outputTokens: response.usage?.output_tokens,
+      durationMs: Date.now() - startedAt,
+    });
+
     const text = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
       .map((b) => b.text)
@@ -37,7 +51,14 @@ export async function explainReport(report: ReportResult): Promise<string> {
       .trim();
 
     return text || fallbackNarrative(report);
-  } catch {
+  } catch (err) {
+    logWarn("ai_call.error", {
+      provider: "anthropic",
+      purpose: "explain_report",
+      model,
+      durationMs: Date.now() - startedAt,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return fallbackNarrative(report);
   }
 }

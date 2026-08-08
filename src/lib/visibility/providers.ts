@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { logInfo } from "../log";
 import type { AnswerEngine } from "./types";
 
 /**
@@ -68,6 +69,10 @@ const claudeProvider: VisibilityProvider = {
 
     // Server-side web search runs an internal loop; a "pause_turn" means we
     // must resend to let it continue. Bound the continuations.
+    const startedAt = Date.now();
+    let inputTokens = 0;
+    let outputTokens = 0;
+
     const messages: Anthropic.MessageParam[] = [
       { role: "user", content: prompt },
     ];
@@ -79,6 +84,8 @@ const claudeProvider: VisibilityProvider = {
       tools: [WEB_SEARCH_TOOL],
       messages,
     });
+    inputTokens += response.usage?.input_tokens ?? 0;
+    outputTokens += response.usage?.output_tokens ?? 0;
 
     for (let i = 0; i < 4 && response.stop_reason === "pause_turn"; i++) {
       messages.push({ role: "assistant", content: response.content });
@@ -90,7 +97,18 @@ const claudeProvider: VisibilityProvider = {
         tools: [WEB_SEARCH_TOOL],
         messages,
       });
+      inputTokens += response.usage?.input_tokens ?? 0;
+      outputTokens += response.usage?.output_tokens ?? 0;
     }
+
+    logInfo("ai_call.ok", {
+      provider: "anthropic",
+      purpose: "visibility_probe",
+      model: MODEL,
+      inputTokens,
+      outputTokens,
+      durationMs: Date.now() - startedAt,
+    });
 
     const text = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")

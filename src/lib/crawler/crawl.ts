@@ -5,8 +5,9 @@ import type {
   Response as PlaywrightResponse,
 } from "playwright";
 import type { CrawledPage, DateSource } from "../scoring/types";
-import { getBrowser, withCrawlSlot } from "./browser";
+import { crawlSlotStats, getBrowser, withCrawlSlot } from "./browser";
 import { BlockedUrlError, assertPublicUrl, isPublicUrl } from "./ssrf";
+import { logInfo, logWarn } from "../log";
 
 /**
  * Named AI crawler user-agents we care about when deciding whether robots.txt
@@ -113,14 +114,36 @@ export async function crawl(url: string, opts: CrawlOptions = {}): Promise<Crawl
   // Fail fast with a precise message before spending a browser slot.
   await assertPublicUrl(url);
 
+  const queuedAt = Date.now();
+  const statsAtEnqueue = crawlSlotStats();
+  logInfo("crawl.enqueue", {
+    active: statsAtEnqueue.active,
+    queued: statsAtEnqueue.queued,
+  });
+
   return withCrawlSlot(async () => {
+    const waitMs = Date.now() - queuedAt;
+    const startedAt = Date.now();
     const browser: Browser = await getBrowser();
     // Block service workers: with request interception as a security boundary
     // (the SSRF guard routes every request), a service worker could serve or
     // reissue requests outside that path. Per Playwright's guidance.
     const context = await browser.newContext({ serviceWorkers: "block" });
     try {
-      return await crawlInContext(url, context, isUrlAllowed, fetchImpl);
+      const page = await crawlInContext(url, context, isUrlAllowed, fetchImpl);
+      logInfo("crawl.ok", {
+        waitMs,
+        durationMs: Date.now() - startedAt,
+        statusCode: page.statusCode,
+      });
+      return page;
+    } catch (err) {
+      logWarn("crawl.error", {
+        waitMs,
+        durationMs: Date.now() - startedAt,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
     } finally {
       // Contexts are cheap and disposable; the browser itself is shared.
       await context.close();

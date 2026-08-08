@@ -16,6 +16,7 @@ import { getPrForReport, recordPrOpened } from "@/lib/integrations/codeFixes";
 import { mergeRobotsTxt, openFixPullRequest, type FixFile } from "@/lib/integrations/github";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import { getClientIp } from "@/lib/requestIp";
+import { logInfo, logWarn } from "@/lib/log";
 import type { LeadState, PrState, ReportState } from "./report-state";
 
 /**
@@ -202,15 +203,24 @@ export async function openFixPrAction(
     ].join("\n"),
     branchName,
   });
-  if (!result.ok) return { status: "error", error: result.error };
+  if (!result.ok) {
+    logWarn("open_pr.error", { requestId, userId: reportRow.userId, error: result.error });
+    return { status: "error", error: result.error };
+  }
 
   const recorded = await recordPrOpened(requestId, reportRow.userId, result);
   if (!recorded) {
+    logWarn("open_pr.record_failed", {
+      requestId,
+      userId: reportRow.userId,
+      prNumber: result.prNumber,
+    });
     return {
       status: "error",
       error: "PR opened, but couldn't save the record — refresh to check its status.",
     };
   }
 
+  logInfo("open_pr.ok", { requestId, userId: reportRow.userId, prNumber: result.prNumber });
   return { status: "opened", prUrl: result.prUrl, prNumber: result.prNumber };
 }

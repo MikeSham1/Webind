@@ -1,4 +1,5 @@
 import { normalizeUrl } from "@/lib/crawler/ssrf";
+import { logWarn } from "@/lib/log";
 import type {
   AnswerEngine,
   EngineVisibility,
@@ -129,13 +130,15 @@ async function probeOne(
       evidence: verdict.evidence,
     };
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logWarn("ai_call.error", { provider: engine, purpose: "visibility_probe", error: message });
     return {
       engine,
       configured: true,
       present: null,
       prominence: null,
       competitors: [],
-      evidence: `Check failed: ${err instanceof Error ? err.message : String(err)}`,
+      evidence: `Check failed: ${message}`,
     };
   }
 }
