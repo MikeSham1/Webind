@@ -1,4 +1,9 @@
-import type { Browser, BrowserContext, Page, Response } from "playwright";
+import type {
+  Browser,
+  BrowserContext,
+  Page,
+  Response as PlaywrightResponse,
+} from "playwright";
 import type { CrawledPage, DateSource } from "../scoring/types";
 import { getBrowser, withCrawlSlot } from "./browser";
 import { BlockedUrlError, assertPublicUrl, isPublicUrl } from "./ssrf";
@@ -23,6 +28,12 @@ const AUX_TIMEOUT_MS = 10_000;
 
 /** Cap on stored outbound links, so a link-farm page can't balloon the payload. */
 const MAX_OUTBOUND_LINKS = 500;
+
+/** Redirect hops we'll follow ourselves before giving up. */
+const MAX_REDIRECT_HOPS = 10;
+
+/** Hard cap on any response body we read outside the browser (redirect probes). */
+const MAX_PROBE_BYTES = 2 * 1024 * 1024; // 2 MB
 
 /**
  * How the crawler identifies itself on the wire.
@@ -58,6 +69,12 @@ export interface CrawlOptions {
    * `./ssrf`. Tests inject a stub so they never touch DNS.
    */
   isUrlAllowed?: (url: string) => Promise<boolean>;
+  /**
+   * Test-only injection point for the out-of-band redirect-chain probe (see
+   * {@link resolveRedirectChain}). Defaults to the global `fetch`. Tests inject
+   * a stub so redirect resolution never touches the network either.
+   */
+  fetchImpl?: typeof fetch;
 }
 
 /**
@@ -70,11 +87,12 @@ export interface CrawlOptions {
  */
 export async function crawl(url: string, opts: CrawlOptions = {}): Promise<CrawledPage> {
   const isUrlAllowed = opts.isUrlAllowed ?? ((u: string) => isPublicUrl(u));
+  const fetchImpl = opts.fetchImpl ?? fetch;
 
   // An injected context means a test harness already owns admission control and
   // browser lifecycle; only the real path takes a slot on the shared browser.
   if (opts.context) {
-    return crawlInContext(url, opts.context, isUrlAllowed);
+    return crawlInContext(url, opts.context, isUrlAllowed, fetchImpl);
   }
 
   // Fail fast with a precise message before spending a browser slot.
@@ -87,7 +105,7 @@ export async function crawl(url: string, opts: CrawlOptions = {}): Promise<Crawl
     // reissue requests outside that path. Per Playwright's guidance.
     const context = await browser.newContext({ serviceWorkers: "block" });
     try {
-      return await crawlInContext(url, context, isUrlAllowed);
+      return await crawlInContext(url, context, isUrlAllowed, fetchImpl);
     } finally {
       // Contexts are cheap and disposable; the browser itself is shared.
       await context.close();
@@ -99,6 +117,7 @@ async function crawlInContext(
   url: string,
   context: BrowserContext,
   isUrlAllowed: (url: string) => Promise<boolean>,
+  fetchImpl: typeof fetch,
 ): Promise<CrawledPage> {
   // Subresources are memoized per origin (cheap, and the SSRF verdict depends
   // only on the host). The navigation chain is deliberately NOT memoized: it is
@@ -108,10 +127,107 @@ async function crawlInContext(
 
   const page = await context.newPage();
   try {
-    return await extractPage(url, context, page, isUrlAllowed);
+    return await extractPage(url, context, page, isUrlAllowed, fetchImpl);
   } finally {
     // Close the main page so pages don't accumulate on a reused injected context.
     await page.close();
+  }
+}
+
+/**
+ * Resolve a URL's redirect chain OURSELVES — entirely outside the browser —
+ * validating each hop before following it, and hand Chromium only the final,
+ * already-validated destination to navigate to directly.
+ *
+ * This closes a real gap: Playwright's route interception fires once per
+ * top-level navigation, not once per redirect hop — Chromium follows a 3xx
+ * chain internally at the network layer before any route handler runs again
+ * (confirmed against a live redirecting server: hop two never reaches
+ * `installUrlGuard`'s handler). `assertNavigationAllowed` below still checks
+ * the chain after the fact as a backstop, but by then Chromium has already
+ * made the request. Resolving here first means an internal address is never
+ * contacted by Chromium at all — only by this throwaway out-of-band probe,
+ * whose response body we discard without exposing anything about it.
+ *
+ * Uses a plain `fetch` (Node's own, not Chromium's) so it can run before a
+ * browser slot is even taken. `redirect: "manual"` on Node's fetch — unlike a
+ * browser's, which returns an opaque, unreadable response — returns the real
+ * 3xx status and a readable `Location` header, which is what makes this
+ * possible (verified empirically, not assumed).
+ */
+async function resolveRedirectChain(
+  startUrl: string,
+  allowed: (url: string) => Promise<boolean>,
+  userAgent: string,
+  fetchImpl: typeof fetch,
+): Promise<string> {
+  let current = startUrl;
+
+  for (let hop = 0; hop < MAX_REDIRECT_HOPS; hop++) {
+    if (!(await allowed(current))) {
+      throw new BlockedUrlError(
+        hop === 0
+          ? "That doesn't look like a public website."
+          : "That site redirects to a private or reserved network address.",
+      );
+    }
+
+    let res: Response;
+    try {
+      res = await fetchImpl(current, {
+        method: "GET",
+        redirect: "manual",
+        headers: { "user-agent": userAgent },
+        signal: AbortSignal.timeout(AUX_TIMEOUT_MS),
+      });
+    } catch {
+      // The out-of-band probe itself failed (network hiccup, a server that
+      // mishandles this exact request shape, etc). `current` was already
+      // validated above, so it's safe to hand to Chromium as-is — the
+      // post-navigation check remains as a backstop for whatever happens next.
+      return current;
+    }
+
+    await drainResponseBody(res);
+
+    const isRedirect = res.status >= 300 && res.status < 400 && res.status !== 304;
+    if (!isRedirect) return current; // this is the destination
+
+    const location = res.headers.get("location");
+    if (!location) return current; // redirect with nowhere to go — let Chromium sort it out
+
+    let next: URL;
+    try {
+      next = new URL(location, current);
+    } catch {
+      throw new BlockedUrlError("That site redirected to an invalid address.");
+    }
+    if (next.protocol !== "http:" && next.protocol !== "https:") {
+      throw new BlockedUrlError("That site redirected to a non-web address.");
+    }
+    current = next.toString();
+  }
+
+  throw new BlockedUrlError("That site redirected too many times.");
+}
+
+/** Discard a response body without buffering more than a small cap into memory. */
+async function drainResponseBody(res: Response): Promise<void> {
+  if (!res.body) return;
+  const reader = res.body.getReader();
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      total += value?.byteLength ?? 0;
+      if (total > MAX_PROBE_BYTES) {
+        await reader.cancel().catch(() => {});
+        return;
+      }
+    }
+  } catch {
+    // Ignore read errors — this body is being discarded regardless.
   }
 }
 
@@ -184,7 +300,7 @@ async function installUrlGuard(
  */
 async function assertNavigationAllowed(
   page: Page,
-  response: Response | null,
+  response: PlaywrightResponse | null,
   allowed: (url: string) => Promise<boolean>,
 ): Promise<void> {
   const urls = new Set<string>([page.url()]);
@@ -208,10 +324,20 @@ async function extractPage(
   context: BrowserContext,
   page: Page,
   allowed: (url: string) => Promise<boolean>,
+  fetchImpl: typeof fetch,
 ): Promise<CrawledPage> {
+  // Resolve any redirect chain ourselves first, so Chromium is only ever asked
+  // to navigate to an already-validated destination (see resolveRedirectChain).
+  const resolvedUrl = await resolveRedirectChain(
+    url,
+    allowed,
+    crawlerUserAgent(),
+    fetchImpl,
+  );
+
   // Bounded so a slow/hanging site fails gracefully (caught upstream → friendly
   // error) instead of tying up the request until a platform timeout.
-  const response = await page.goto(url, {
+  const response = await page.goto(resolvedUrl, {
     waitUntil: "load",
     timeout: NAV_TIMEOUT_MS,
   });

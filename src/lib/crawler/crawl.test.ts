@@ -8,9 +8,13 @@ import { BlockedUrlError } from "./ssrf";
 /**
  * These tests are hermetic: every request is fulfilled from a fixture. The real
  * URL guard would resolve `acme.test` against DNS, so it is replaced with one
- * that allows everything unless a test says otherwise.
+ * that allows everything unless a test says otherwise. `fetchImpl` stubs out
+ * the out-of-band redirect-chain probe (see resolveRedirectChain in crawl.ts)
+ * so it never touches the network either — without this, every test would
+ * attempt a real DNS lookup for the fake `acme.test` host before falling back.
  */
-const offline = { isUrlAllowed: async () => true };
+const noRedirectFetch: typeof fetch = async () => new Response(null, { status: 200 });
+const offline = { isUrlAllowed: async () => true, fetchImpl: noRedirectFetch };
 
 const BODY_TEXT = "Acme builds durable, professional-grade widgets for demanding worksites. ";
 
@@ -460,6 +464,112 @@ describe("crawl", () => {
       await context.close();
     }
   }, 30000);
+
+  describe("redirect chain resolution (resolves out-of-band, before Chromium navigates)", () => {
+    it("hands Chromium the final URL directly — never the pre-redirect one", async () => {
+      const seen: string[] = [];
+      const context = await routedContext(async (url, route) => {
+        seen.push(url);
+        return allowRobots("User-agent: *\nDisallow:\n")(url, route);
+      });
+      const fetchImpl: typeof fetch = async (input) => {
+        if (String(input) === "http://acme.test/start") {
+          return new Response(null, {
+            status: 302,
+            headers: { location: "http://acme.test/final" },
+          });
+        }
+        return new Response(null, { status: 200 });
+      };
+      try {
+        const page = await crawl("http://acme.test/start", {
+          context,
+          isUrlAllowed: async () => true,
+          fetchImpl,
+        });
+        expect(page.url).toBe("http://acme.test/final");
+        // Chromium's own browser-level requests never included the pre-redirect
+        // URL — it navigated straight to the already-resolved destination.
+        expect(seen).not.toContain("http://acme.test/start");
+        expect(seen.some((u) => u.startsWith("http://acme.test/final"))).toBe(true);
+      } finally {
+        await context.close();
+      }
+    }, 30000);
+
+    it("rejects a chain that redirects to a disallowed address before Chromium ever navigates there", async () => {
+      const seen: string[] = [];
+      const context = await routedContext(async (url, route) => {
+        seen.push(url);
+        return allowRobots("User-agent: *\nDisallow:\n")(url, route);
+      });
+      const fetchImpl: typeof fetch = async (input) => {
+        if (String(input) === "http://acme.test/start") {
+          return new Response(null, {
+            status: 302,
+            headers: { location: "http://169.254.169.254/latest/meta-data" },
+          });
+        }
+        return new Response(null, { status: 200 });
+      };
+      // A guard that mirrors what the real SSRF check would decide for this one
+      // address — the guard's own correctness (that 169.254.169.254 is blocked)
+      // is covered by ssrf.test.ts; this test proves resolveRedirectChain
+      // actually consults the guard on the redirect TARGET, not just the entry.
+      const isUrlAllowed = async (u: string) => !u.includes("169.254.169.254");
+
+      try {
+        await expect(
+          crawl("http://acme.test/start", { context, isUrlAllowed, fetchImpl }),
+        ).rejects.toThrow(BlockedUrlError);
+        // Chromium was never asked to fetch the private address.
+        expect(seen.some((u) => u.includes("169.254.169.254"))).toBe(false);
+      } finally {
+        await context.close();
+      }
+    }, 30000);
+
+    it("gives up after too many redirect hops", async () => {
+      const context = await routedContext(allowRobots("User-agent: *\nDisallow:\n"));
+      let hop = 0;
+      const fetchImpl: typeof fetch = async () => {
+        hop += 1;
+        return new Response(null, {
+          status: 302,
+          headers: { location: `http://acme.test/hop-${hop}` },
+        });
+      };
+      try {
+        await expect(
+          crawl("http://acme.test/start", {
+            context,
+            isUrlAllowed: async () => true,
+            fetchImpl,
+          }),
+        ).rejects.toThrow(BlockedUrlError);
+      } finally {
+        await context.close();
+      }
+    }, 30000);
+
+    it("falls back to letting Chromium navigate directly when the out-of-band probe itself fails", async () => {
+      const context = await routedContext(allowRobots("User-agent: *\nDisallow:\n"));
+      const throwingFetch: typeof fetch = async () => {
+        throw new Error("probe network error");
+      };
+      try {
+        const page = await crawl("http://acme.test/", {
+          context,
+          isUrlAllowed: async () => true,
+          fetchImpl: throwingFetch,
+        });
+        expect(page.url).toBe("http://acme.test/");
+        expect(page.statusCode).toBe(200);
+      } finally {
+        await context.close();
+      }
+    }, 30000);
+  });
 });
 
 describe("crawlerUserAgent", () => {
