@@ -1,0 +1,75 @@
+name: CI
+
+# Gate every change to main. Wire this workflow into branch protection
+# (Settings → Branches → require this check + a review before merge) so a broken
+# build or an unresolved conflict can never reach main again.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fail fast on unresolved merge-conflict markers (this reached main once).
+      - name: Conflict-marker check
+        run: |
+          if git grep -nE '^(<<<<<<<|>>>>>>>|=======)( |$)' -- ':!*.lock' ':!package-lock.json'; then
+            echo "::error::Unresolved merge-conflict markers found."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # The lockfile is generated on Windows and can omit Linux-only optional
+      # packages, so `npm ci` is not yet reliable here. Follow-up: regenerate the
+      # lockfile on Linux and switch this to `npm ci`.
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+      # Schema and committed migrations must agree: generating should produce no
+      # new files. If it does, someone changed the schema without a migration.
+      - name: Migrations in sync with schema
+        run: |
+          npx drizzle-kit generate
+          if ! git diff --quiet -- drizzle; then
+            echo "::error::Schema changed without a migration. Run 'npm run db:generate' and commit drizzle/."
+            git --no-pager diff --stat -- drizzle
+            exit 1
+          fi
+
+  # Best-effort supply-chain visibility. Non-blocking so a new advisory doesn't
+  # wedge deploys, but surfaced in the logs for triage.
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - name: Dependency audit (high severity)
+        run: npm audit --audit-level=high || true

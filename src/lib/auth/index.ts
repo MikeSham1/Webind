@@ -34,7 +34,7 @@ export async function createUser(
   try {
     const [row] = await db
       .insert(users)
-      .values({ email: email.trim().toLowerCase(), passwordHash: hashPassword(password) })
+      .values({ email: email.trim().toLowerCase(), passwordHash: await hashPassword(password) })
       .returning({ id: users.id, email: users.email, isAdmin: users.isAdmin });
     return { ok: true, user: row };
   } catch {
@@ -55,7 +55,7 @@ export async function verifyCredentials(
     .from(users)
     .where(eq(users.email, email.trim().toLowerCase()))
     .limit(1);
-  if (!row || !verifyPassword(password, row.passwordHash)) return null;
+  if (!row || !(await verifyPassword(password, row.passwordHash))) return null;
   return { id: row.id, email: row.email, isAdmin: row.isAdmin };
 }
 

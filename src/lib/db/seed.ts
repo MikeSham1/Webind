@@ -52,13 +52,13 @@ export async function seedAccounts(): Promise<void> {
       if (existing) {
         await db
           .update(users)
-          .set({ passwordHash: hashPassword(spec.password), isAdmin: spec.isAdmin })
+          .set({ passwordHash: await hashPassword(spec.password), isAdmin: spec.isAdmin })
           .where(eq(users.id, existing.id));
         console.log(`[seed] synced ${email}${spec.isAdmin ? " (admin)" : ""}`);
       } else {
         await db
           .insert(users)
-          .values({ email, passwordHash: hashPassword(spec.password), isAdmin: spec.isAdmin });
+          .values({ email, passwordHash: await hashPassword(spec.password), isAdmin: spec.isAdmin });
         console.log(`[seed] created ${email}${spec.isAdmin ? " (admin)" : ""}`);
       }
     } catch (err) {

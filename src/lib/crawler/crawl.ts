@@ -82,7 +82,10 @@ export async function crawl(url: string, opts: CrawlOptions = {}): Promise<Crawl
 
   return withCrawlSlot(async () => {
     const browser: Browser = await getBrowser();
-    const context = await browser.newContext();
+    // Block service workers: with request interception as a security boundary
+    // (the SSRF guard routes every request), a service worker could serve or
+    // reissue requests outside that path. Per Playwright's guidance.
+    const context = await browser.newContext({ serviceWorkers: "block" });
     try {
       return await crawlInContext(url, context, isUrlAllowed);
     } finally {
@@ -346,12 +349,17 @@ async function extractPage(
   // This distinguishes real SSR/SSG output from a near-empty JS-only shell.
   const hasServerRenderedContent = stripTags(html).length > SSR_MIN_TEXT_LENGTH;
 
-  const origin = new URL(url).origin;
+  // Use the URL we actually landed on (post-redirect) as canonical, so HTTPS
+  // scoring, robots.txt, and llms.txt reflect the analyzed page — not the URL
+  // the visitor typed before any redirect. Every hop was already SSRF-validated
+  // by assertNavigationAllowed above.
+  const finalUrl = page.url();
+  const origin = new URL(finalUrl).origin;
   const robotsAllowsAiBots = await checkRobotsAllowsAiBots(context, origin);
   const hasLlmsTxt = await checkHasLlmsTxt(context, origin);
 
   return {
-    url,
+    url: finalUrl,
     fetchedAt: new Date().toISOString(),
     statusCode,
     html,
@@ -637,22 +645,21 @@ function groupBlocksRoot(group: RobotsGroup): boolean {
 }
 
 /**
- * Most-specific-group-wins. If robots.txt names any of our AI bots specifically,
- * those named groups govern and the `*` wildcard is ignored entirely (a site that
- * blocks all via `*` but then explicitly allows GPTBot is NOT reported as blocked).
- * Only when no AI bot is named at all do we fall back to the `*` group. Returns
- * true only if the effective groups block the site root.
+ * Per RFC 9309, each crawler is evaluated against ITS OWN most-specific group:
+ * a group naming that bot if one exists, otherwise the `*` wildcard group. Bots
+ * are independent — naming GPTBot does not change how ClaudeBot is judged. The
+ * previous logic collapsed all AI bots into one set, so `User-agent: *
+ * Disallow: /` plus an `Allow` for GPTBot alone read as "all AI bots allowed"
+ * even though ClaudeBot, PerplexityBot, and Google-Extended were still blocked.
  */
 function robotsBlocksAnyAiBot(robotsTxt: string, botAgents: string[]): boolean {
   const groups = parseRobotsGroups(robotsTxt);
-  const named = new Set(botAgents.map((a) => a.toLowerCase()));
+  const wildcard = groups.filter((g) => g.agents.includes("*"));
 
-  const specificGroups = groups.filter((g) => g.agents.some((a) => named.has(a)));
-  if (specificGroups.length > 0) {
-    // At least one AI bot is addressed by name: only its rules count.
-    return specificGroups.some(groupBlocksRoot);
-  }
-
-  // No AI bot named: fall back to the wildcard group.
-  return groups.filter((g) => g.agents.includes("*")).some(groupBlocksRoot);
+  return botAgents.some((bot) => {
+    const b = bot.toLowerCase();
+    const named = groups.filter((g) => g.agents.includes(b));
+    const effective = named.length > 0 ? named : wildcard;
+    return effective.some(groupBlocksRoot);
+  });
 }

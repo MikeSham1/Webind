@@ -213,10 +213,25 @@ describe("crawl", () => {
     }
   }, 30000);
 
-  it("honors most-specific-group-wins: a specific allow overrides a wildcard block", async () => {
-    // `*` blocks everything, but GPTBot is explicitly allowed => AI bots allowed.
+  it("evaluates each AI bot independently: a wildcard block still blocks the others", async () => {
+    // `*` blocks everything and GPTBot is individually exempted — but ClaudeBot,
+    // PerplexityBot, and Google-Extended have no group of their own, so they fall
+    // to the wildcard and remain blocked. Per RFC 9309 that's "AI bots blocked".
     const context = await routedContext(
       allowRobots("User-agent: *\nDisallow: /\n\nUser-agent: GPTBot\nDisallow:\n"),
+    );
+    try {
+      const page = await crawl("http://acme.test/", { context, ...offline });
+      expect(page.robotsAllowsAiBots).toBe(false);
+    } finally {
+      await context.close();
+    }
+  }, 30000);
+
+  it("allows AI bots when the wildcard allows and only a non-AI bot is blocked", async () => {
+    // BadBot is blocked, but every AI bot falls to the permissive wildcard group.
+    const context = await routedContext(
+      allowRobots("User-agent: BadBot\nDisallow: /\n\nUser-agent: *\nDisallow:\n"),
     );
     try {
       const page = await crawl("http://acme.test/", { context, ...offline });
