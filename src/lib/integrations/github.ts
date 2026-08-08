@@ -91,6 +91,39 @@ export interface FixFile {
   /** Repo-root-relative path, e.g. "llms.txt". */
   path: string;
   content: string;
+  /**
+   * Optional non-destructive merge with the file's EXISTING content. When set
+   * and the file already exists in the repo, the committed content is
+   * `merge(existing, content)` instead of a wholesale replace — used for
+   * robots.txt so we never wipe a site's sitemaps or other crawler rules.
+   */
+  merge?: (existing: string, incoming: string) => string;
+}
+
+/** AI answer-engine crawler product tokens we ask robots.txt to allow. */
+const AI_ROBOT_AGENTS = [
+  "GPTBot",
+  "OAI-SearchBot",
+  "ClaudeBot",
+  "PerplexityBot",
+  "Google-Extended",
+];
+
+/**
+ * Merge AI-crawler allow rules into an existing robots.txt without touching any
+ * other line. Only bots that have no group of their own are appended (so we
+ * never duplicate or override rules the site owner set deliberately), and every
+ * existing sitemap/disallow/other-agent line is preserved verbatim.
+ */
+export function mergeRobotsTxt(existing: string, incoming: string): string {
+  if (!existing.trim()) return incoming; // no file yet → use the generated one
+  const lower = existing.toLowerCase();
+  const missing = AI_ROBOT_AGENTS.filter(
+    (bot) => !new RegExp(`user-agent:\\s*${bot.toLowerCase()}(\\s|$)`, "m").test(lower),
+  );
+  if (missing.length === 0) return existing; // already addressed — leave it alone
+  const additions = missing.map((bot) => `User-agent: ${bot}\nAllow: /`).join("\n\n");
+  return `${existing.trimEnd()}\n\n# Added by WeBind — allow AI answer engines\n${additions}\n`;
 }
 
 export interface OpenedPullRequest {
@@ -136,6 +169,15 @@ export async function openFixPullRequest(
     const existingSha =
       existing.ok && typeof existing.body.sha === "string" ? existing.body.sha : undefined;
 
+    // Merge into existing content when asked (robots.txt), otherwise replace.
+    let content = file.content;
+    if (existingSha && file.merge) {
+      const rawBase64 =
+        existing.ok && typeof existing.body.content === "string" ? existing.body.content : "";
+      const decoded = Buffer.from(rawBase64.replace(/\s/g, ""), "base64").toString("utf8");
+      content = file.merge(decoded, file.content);
+    }
+
     const written = await call(
       creds,
       `/repos/${creds.owner}/${creds.repo}/contents/${file.path}`,
@@ -143,7 +185,7 @@ export async function openFixPullRequest(
         method: "PUT",
         body: JSON.stringify({
           message: `WeBind: add/update ${file.path}`,
-          content: Buffer.from(file.content, "utf8").toString("base64"),
+          content: Buffer.from(content, "utf8").toString("base64"),
           branch: pr.branchName,
           ...(existingSha ? { sha: existingSha } : {}),
         }),

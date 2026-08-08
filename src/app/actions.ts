@@ -13,7 +13,7 @@ import {
   getGitHubCredentials,
 } from "@/lib/integrations/githubConnections";
 import { getPrForReport, recordPrOpened } from "@/lib/integrations/codeFixes";
-import { openFixPullRequest, type FixFile } from "@/lib/integrations/github";
+import { mergeRobotsTxt, openFixPullRequest, type FixFile } from "@/lib/integrations/github";
 import type { LeadState, PrState, ReportState } from "./report-state";
 
 /**
@@ -148,7 +148,10 @@ export async function openFixPrAction(
   const files: FixFile[] = [];
   for (const asset of reportRow.optimizations?.assets ?? []) {
     if (asset.key === "llmstxt") files.push({ path: "llms.txt", content: asset.content });
-    if (asset.key === "robots") files.push({ path: "robots.txt", content: asset.content });
+    if (asset.key === "robots")
+      // Merge into an existing robots.txt rather than overwriting it — never
+      // wipe the site's sitemaps or other crawler rules.
+      files.push({ path: "robots.txt", content: asset.content, merge: mergeRobotsTxt });
   }
   if (files.length === 0) {
     return {
