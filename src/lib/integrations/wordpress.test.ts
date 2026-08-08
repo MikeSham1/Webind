@@ -50,6 +50,33 @@ beforeAll(async () => {
       return;
     }
 
+    // Redirect-behavior fixtures, selected by a path prefix on the "site URL"
+    // used in the test (see the describe block below).
+    if (req.url === "/redirect-same-origin/wp-json/wp/v2/users/me" && req.method === "GET") {
+      res.writeHead(301, { location: `${siteUrl}/wp-json/wp/v2/users/me` });
+      res.end();
+      return;
+    }
+    if (req.url === "/redirect-cross-origin/wp-json/wp/v2/users/me" && req.method === "GET") {
+      // Port 9 (discard) has nothing listening — if we ever actually attempted
+      // this connection the test would see a generic "couldn't reach" error
+      // instead of the specific same-origin refusal, so this doubles as proof
+      // we never tried.
+      res.writeHead(301, { location: "http://127.0.0.1:9/wp-json/wp/v2/users/me" });
+      res.end();
+      return;
+    }
+    if (req.url === "/redirect-write/wp-json/wp/v2/pages" && req.method === "POST") {
+      res.writeHead(301, { location: `${siteUrl}/wp-json/wp/v2/pages` });
+      res.end();
+      return;
+    }
+    if (req.url === "/huge-response/wp-json/wp/v2/users/me" && req.method === "GET") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(Buffer.alloc(5 * 1024 * 1024 + 1024, 0x61));
+      return;
+    }
+
     send(404, { message: "No route" });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -107,6 +134,46 @@ describe("createPage", () => {
       content: "<p>Hello</p>",
       status: "publish",
     });
+  });
+});
+
+describe("redirect handling", () => {
+  it("follows a same-origin GET redirect", async () => {
+    const result = await testConnection(
+      { ...creds(), siteUrl: `${siteUrl}/redirect-same-origin` },
+      offline,
+    );
+    expect(result).toEqual({ ok: true, name: "Site Editor" });
+  });
+
+  it("refuses a cross-origin redirect without ever contacting it", async () => {
+    const result = await testConnection(
+      { ...creds(), siteUrl: `${siteUrl}/redirect-cross-origin` },
+      offline,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/outside its own domain/i);
+  });
+
+  it("refuses to follow a redirect on a write (POST) request", async () => {
+    const result = await createPage(
+      { ...creds(), siteUrl: `${siteUrl}/redirect-write` },
+      { title: "X", contentHtml: "<p>X</p>" },
+      offline,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/redirected this request/i);
+  });
+});
+
+describe("response size limit", () => {
+  it("rejects an oversized response body instead of buffering it", async () => {
+    const result = await testConnection(
+      { ...creds(), siteUrl: `${siteUrl}/huge-response` },
+      offline,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/too large/i);
   });
 });
 

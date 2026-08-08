@@ -178,6 +178,21 @@ describe("crawl", () => {
     }
   }, 30000);
 
+  it("caps stored HTML instead of holding an unbounded body in memory", async () => {
+    const hugeHtml =
+      `<!doctype html><html><head><title>Huge</title></head><body>` +
+      "x".repeat(4_000_000) +
+      `</body></html>`;
+    const context = await routedContext(allowRobots("User-agent: *\nDisallow:\n"), hugeHtml);
+    try {
+      const page = await crawl("http://acme.test/", { context, ...offline });
+      expect(page.html.length).toBeLessThan(hugeHtml.length);
+      expect(page.html.length).toBeLessThanOrEqual(3_000_000);
+    } finally {
+      await context.close();
+    }
+  }, 30000);
+
   it("reports hasServerRenderedContent=false for a near-empty JS shell", async () => {
     const context = await routedContext(
       allowRobots("User-agent: *\nDisallow:\n"),

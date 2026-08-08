@@ -13,6 +13,8 @@
 const API_BASE = "https://api.github.com";
 const REQUEST_TIMEOUT_MS = 15_000;
 const API_VERSION = "2022-11-28";
+/** Hard cap on any GitHub response body we buffer into memory. */
+const MAX_RESPONSE_BYTES = 5 * 1024 * 1024; // 5 MB
 
 export interface GitHubCredentials {
   token: string;
@@ -21,6 +23,36 @@ export interface GitHubCredentials {
 }
 
 export type GitHubResult<T> = ({ ok: true } & T) | { ok: false; error: string };
+
+/** Read a response body with a hard size cap, never buffering more than that. */
+async function readCappedText(res: Response, maxBytes: number): Promise<string | null> {
+  if (!res.body) {
+    try {
+      return await res.text();
+    } catch {
+      return "";
+    }
+  }
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {});
+        return null; // too large
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return null;
+  }
+  return Buffer.concat(chunks.map((c) => Buffer.from(c))).toString("utf8");
+}
 
 async function call(
   creds: GitHubCredentials,
@@ -48,9 +80,14 @@ async function call(
     };
   }
 
+  const text = await readCappedText(res, MAX_RESPONSE_BYTES);
+  if (text === null) {
+    return { ok: false, error: "GitHub's response was too large to process." };
+  }
+
   let body: unknown = null;
   try {
-    body = await res.json();
+    body = text ? JSON.parse(text) : null;
   } catch {
     // No JSON body (e.g. a 204) — fall through to the status check.
   }

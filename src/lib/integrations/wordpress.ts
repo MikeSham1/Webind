@@ -12,12 +12,17 @@
  * server, so it's the same request-forgery shape as the crawler: every call
  * re-validates against the SSRF guard (see crawler/ssrf.ts) before touching
  * the network, not just once at connect time — a site's DNS can change after
- * it's saved.
+ * it's saved. Unlike a plain `fetch`, redirects are never followed
+ * automatically: see `resolveWithinOrigin` below.
  */
 
 import { isPublicUrl } from "@/lib/crawler/ssrf";
 
 const REQUEST_TIMEOUT_MS = 15_000;
+/** Redirect hops we'll follow ourselves before giving up (GET requests only). */
+const MAX_REDIRECT_HOPS = 5;
+/** Hard cap on any WordPress response body we buffer into memory. */
+const MAX_RESPONSE_BYTES = 5 * 1024 * 1024; // 5 MB
 
 export interface WordPressCredentials {
   siteUrl: string;
@@ -48,40 +53,153 @@ function editUrl(siteUrl: string, postId: number): string {
   return `${apiBase(siteUrl)}/wp-admin/post.php?post=${postId}&action=edit`;
 }
 
+/** Read a response body with a hard size cap, never buffering more than that. */
+async function readCappedText(res: Response, maxBytes: number): Promise<string | null> {
+  if (!res.body) {
+    try {
+      return await res.text();
+    } catch {
+      return "";
+    }
+  }
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {});
+        return null; // too large
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return null;
+  }
+  return Buffer.concat(chunks.map((c) => Buffer.from(c))).toString("utf8");
+}
+
+/**
+ * Resolve a request's redirect chain manually, restricted to the SAME origin
+ * as the connected site and re-validated against the SSRF guard at every hop.
+ *
+ * A WordPress REST endpoint has no legitimate reason to redirect our
+ * authenticated request (Basic-auth header and all) to a different domain —
+ * allowing that would let a compromised or misconfigured site redirect it
+ * anywhere, including an internal address. So cross-origin redirects are
+ * refused outright. Within the same origin (the common case: http->https or
+ * www canonicalization), only GET requests are followed; a write (POST/PUT/
+ * PATCH) that gets redirected fails with a clear error instead of silently
+ * replaying its body/method to a different URL, which is the safer default
+ * for a request that changes state.
+ */
+async function resolveWithinOrigin(
+  startUrl: string,
+  method: string,
+  headers: Record<string, string>,
+  body: string | undefined,
+  isUrlAllowed: (url: string) => Promise<boolean>,
+): Promise<WordPressResult<{ response: Response }>> {
+  const allowedOrigin = new URL(startUrl).origin;
+  const isWrite = method.toUpperCase() !== "GET" && method.toUpperCase() !== "HEAD";
+  let target = startUrl;
+
+  for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
+    if (hop > 0 && !(await isUrlAllowed(target))) {
+      return { ok: false, error: "That site redirected somewhere that isn't allowed." };
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(target, {
+        method,
+        headers,
+        body,
+        redirect: "manual",
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch (err) {
+      const timedOut = err instanceof Error && err.name === "TimeoutError";
+      return {
+        ok: false,
+        error: timedOut
+          ? "The WordPress site took too long to respond."
+          : "Couldn't reach that WordPress site — check the URL.",
+      };
+    }
+
+    const isRedirect = res.status >= 300 && res.status < 400 && res.status !== 304;
+    if (!isRedirect) return { ok: true, response: res };
+
+    if (isWrite) {
+      await res.body?.cancel().catch(() => {});
+      return {
+        ok: false,
+        error:
+          "That site redirected this request instead of handling it directly — " +
+          "check the connected site URL (http vs https, or a domain change).",
+      };
+    }
+
+    const location = res.headers.get("location");
+    await res.body?.cancel().catch(() => {});
+    if (!location) return { ok: false, error: "That site sent a redirect with no destination." };
+
+    let next: URL;
+    try {
+      next = new URL(location, target);
+    } catch {
+      return { ok: false, error: "That site redirected to an invalid address." };
+    }
+    if (next.origin !== allowedOrigin) {
+      return {
+        ok: false,
+        error: "That site redirected outside its own domain — refusing to follow for safety.",
+      };
+    }
+    target = next.toString();
+  }
+
+  return { ok: false, error: "That site redirected too many times." };
+}
+
 async function call(
   creds: WordPressCredentials,
   path: string,
-  init: RequestInit = {},
+  init: { method?: string; body?: string; headers?: Record<string, string> } = {},
   { isUrlAllowed = isPublicUrl }: WordPressCallOptions = {},
 ): Promise<WordPressResult<{ status: number; body: Record<string, unknown> }>> {
-  if (!(await isUrlAllowed(apiBase(creds.siteUrl)))) {
+  const base = apiBase(creds.siteUrl);
+  if (!(await isUrlAllowed(base))) {
     return { ok: false, error: "That site address isn't allowed." };
   }
 
-  let res: Response;
-  try {
-    res = await fetch(`${apiBase(creds.siteUrl)}/wp-json/wp/v2${path}`, {
-      ...init,
-      headers: {
-        Authorization: authHeader(creds),
-        "Content-Type": "application/json",
-        ...init.headers,
-      },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-  } catch (err) {
-    const timedOut = err instanceof Error && err.name === "TimeoutError";
-    return {
-      ok: false,
-      error: timedOut
-        ? "The WordPress site took too long to respond."
-        : "Couldn't reach that WordPress site — check the URL.",
-    };
+  const resolved = await resolveWithinOrigin(
+    `${base}/wp-json/wp/v2${path}`,
+    init.method ?? "GET",
+    {
+      Authorization: authHeader(creds),
+      "Content-Type": "application/json",
+      ...init.headers,
+    },
+    init.body,
+    isUrlAllowed,
+  );
+  if (!resolved.ok) return resolved;
+  const res = resolved.response;
+
+  const text = await readCappedText(res, MAX_RESPONSE_BYTES);
+  if (text === null) {
+    return { ok: false, error: "The WordPress site's response was too large to process." };
   }
 
   let body: unknown = null;
   try {
-    body = await res.json();
+    body = text ? JSON.parse(text) : null;
   } catch {
     // Non-JSON body (e.g. a plain 404 HTML page) — fall through to the status check.
   }

@@ -36,6 +36,21 @@ const MAX_REDIRECT_HOPS = 10;
 const MAX_PROBE_BYTES = 2 * 1024 * 1024; // 2 MB
 
 /**
+ * Hard cap on the HTML/rendered-text we keep in memory per crawl. Protects
+ * scoring (which regex-scans this repeatedly), Postgres storage (the `report`
+ * jsonb column), and the response payload from a pathological page — see the
+ * call site for why this can only truncate after the fact, not abort the
+ * download itself.
+ */
+const MAX_STORED_TEXT_CHARS = 3_000_000;
+/** robots.txt/llms.txt are small text files by nature; cap generously. */
+const MAX_PROBE_TEXT_CHARS = 512_000;
+
+function capText(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max) : text;
+}
+
+/**
  * How the crawler identifies itself on the wire.
  *
  * A tool that fetches sites on people's behalf should say who it is and where to
@@ -345,15 +360,24 @@ async function extractPage(
 
   const statusCode = response ? response.status() : 0;
 
-  // RAW served HTML (pre-JS): what SSR judgement is based on.
-  const html = response ? await response.text() : "";
+  // RAW served HTML (pre-JS): what SSR judgement is based on. Capped: Playwright
+  // buffers a navigation's body before we can inspect it (no streaming hook for
+  // a page load), so this can't abort an oversized download mid-flight — but it
+  // does stop a pathological response from ever propagating into scoring,
+  // Postgres storage, or the JSON sent back to the client. NAV_TIMEOUT_MS plus
+  // the crawl concurrency/queue caps (browser.ts) are what bound the download
+  // itself.
+  const html = response ? capText(await response.text(), MAX_STORED_TEXT_CHARS) : "";
   const responseHeaders = response?.headers() ?? {};
   const headerDate = isCacheRegenerationArtifact(responseHeaders)
     ? null
     : toIso(responseHeaders["last-modified"] ?? null);
 
   // Visible text after render.
-  const renderedText = await page.innerText("body").catch(() => "");
+  const renderedText = capText(
+    await page.innerText("body").catch(() => ""),
+    MAX_STORED_TEXT_CHARS,
+  );
 
   const rawTitle = await page.title();
   const title = rawTitle && rawTitle.trim() ? rawTitle : null;
@@ -659,7 +683,7 @@ async function fetchViaPage(
       timeout: AUX_TIMEOUT_MS,
     });
     if (!resp) return empty;
-    const body = await resp.text().catch(() => "");
+    const body = capText(await resp.text().catch(() => ""), MAX_PROBE_TEXT_CHARS);
     return {
       status: resp.status(),
       body,
