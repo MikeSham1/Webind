@@ -33,6 +33,28 @@ is optional — the app runs without any of them and degrades gracefully (see
 | `npm run lint` | ESLint |
 | `npm run db:generate` / `db:migrate` | Drizzle migrations |
 
+## Deployment
+
+Ships as a Docker image (see `Dockerfile`) on the official Playwright base
+image, since the crawler needs a real Chromium. Runs as a dedicated non-root
+user. Set `SITE_PASSWORD` and `DATABASE_URL` (a Postgres instance) at minimum
+— see `.env.example` for the full list and what degrades without each one.
+
+**Health checks** — configure your platform's HTTP health check against:
+- `/api/health` — liveness (process is up; no dependency checks). Both
+  endpoints are exempt from the site password gate.
+- `/api/ready` — readiness (runs a real query against the database when one
+  is configured, plus crawler queue stats). Returns `503` only when the
+  database is configured but unreachable.
+
+**Migrations** run automatically before the server starts (`npm run
+db:migrate`) and, if they fail, the container exits rather than serving
+traffic against a stale schema — a container that never comes up never passes
+its health check, so the platform won't route to it. If your platform
+supports a genuine separate release/pre-deploy step (e.g. Railway's
+**Pre-Deploy Command**), prefer wiring `npm run db:migrate` there instead, so
+a failed migration never spins up a container in the first place.
+
 ## Layout
 
 - `src/lib/scoring/` — the pure, deterministic scoring core (fully unit-tested)
