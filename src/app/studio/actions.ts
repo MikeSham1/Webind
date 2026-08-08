@@ -17,6 +17,8 @@ import {
 } from "@/lib/integrations/publications";
 import { markdownToHtml, stripLeadingTitle } from "@/lib/integrations/markdown";
 import { createPage, setPageStatus } from "@/lib/integrations/wordpress";
+import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
+import { getClientIp } from "@/lib/requestIp";
 import type { ContentInputs, DraftStatus, PageType } from "@/lib/content/types";
 import type { DecisionState, PublishState, StudioState } from "./state";
 
@@ -64,6 +66,15 @@ export async function createDraftAction(
   _prev: StudioState,
   formData: FormData,
 ): Promise<StudioState> {
+  const user = await getCurrentUser();
+  // Works anonymously (like the free report), so key by account when signed
+  // in and fall back to IP otherwise.
+  const limitKey = user ? `create-draft:user:${user.id}` : `create-draft:ip:${await getClientIp()}`;
+  const limit = checkRateLimit(limitKey, 60 * 60 * 1000, 20);
+  if (!limit.allowed) {
+    return { status: "error", error: formatRetryAfter(limit.retryAfterMs) };
+  }
+
   const inputs = parseInputs(formData);
   if (!inputs) {
     return {
@@ -72,7 +83,6 @@ export async function createDraftAction(
     };
   }
   const draft = generateDraft(inputs);
-  const user = await getCurrentUser();
   const draftId = await saveDraft(inputs, draft, user?.id ?? null); // best-effort
   return { status: "created", draft, draftId };
 }
@@ -133,6 +143,11 @@ export async function publishDraftAction(
   const user = await getCurrentUser();
   if (!user) return { status: "error", error: "Log in to publish this draft." };
 
+  const limit = checkRateLimit(`publish:${user.id}`, 60 * 60 * 1000, 15);
+  if (!limit.allowed) {
+    return { status: "error", error: formatRetryAfter(limit.retryAfterMs) };
+  }
+
   const draft = user.isAdmin
     ? await getDraftById(draftId)
     : await getDraftForUser(draftId, user.id);
@@ -184,6 +199,11 @@ export async function rollbackPublicationAction(
   const draftId = String(formData.get("draftId") ?? "");
   const user = await getCurrentUser();
   if (!user) return { status: "error", error: "Log in to roll this back." };
+
+  const limit = checkRateLimit(`rollback:${user.id}`, 60 * 60 * 1000, 15);
+  if (!limit.allowed) {
+    return { status: "error", error: formatRetryAfter(limit.retryAfterMs) };
+  }
 
   const draft = user.isAdmin
     ? await getDraftById(draftId)

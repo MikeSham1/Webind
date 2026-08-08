@@ -10,6 +10,7 @@ import {
   saveGitHubConnection,
 } from "@/lib/integrations/githubConnections";
 import { testConnection as testGitHubConnection } from "@/lib/integrations/github";
+import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import type { GitHubConnectionState, WordPressConnectionState } from "./state";
 
 /** Connect (or replace) the user's WordPress site. Verifies the credentials before saving. */
@@ -19,6 +20,12 @@ export async function connectWordPressAction(
 ): Promise<WordPressConnectionState> {
   const user = await getCurrentUser();
   if (!user) return { status: "error", error: "Log in to connect a WordPress site." };
+
+  // Each attempt makes an outbound request to a user-supplied host.
+  const limit = checkRateLimit(`connect-wp:${user.id}`, 60 * 60 * 1000, 20);
+  if (!limit.allowed) {
+    return { status: "error", error: formatRetryAfter(limit.retryAfterMs) };
+  }
 
   const siteUrl = normalizeUrl(String(formData.get("siteUrl") ?? ""));
   const username = String(formData.get("username") ?? "").trim();
@@ -65,6 +72,11 @@ export async function connectGitHubAction(
 ): Promise<GitHubConnectionState> {
   const user = await getCurrentUser();
   if (!user) return { status: "error", error: "Log in to connect a GitHub repo." };
+
+  const limit = checkRateLimit(`connect-gh:${user.id}`, 60 * 60 * 1000, 20);
+  if (!limit.allowed) {
+    return { status: "error", error: formatRetryAfter(limit.retryAfterMs) };
+  }
 
   const owner = String(formData.get("owner") ?? "").trim();
   const repo = String(formData.get("repo") ?? "").trim();

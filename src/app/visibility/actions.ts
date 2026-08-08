@@ -2,6 +2,7 @@
 
 import { getCurrentUser } from "@/lib/auth";
 import { checkKeywordVisibility } from "@/lib/visibility/check";
+import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import type { VisibilityState } from "./state";
 
 function parseKeywords(raw: string): string[] {
@@ -27,6 +28,12 @@ export async function runVisibilityCheck(
   const user = await getCurrentUser();
   if (!user) {
     return { status: "error", error: "Please log in to run a visibility check." };
+  }
+
+  // Each keyword probes a real answer-engine API — cap per-user throughput.
+  const limit = checkRateLimit(`visibility:${user.id}`, 60 * 60 * 1000, 15);
+  if (!limit.allowed) {
+    return { status: "error", error: formatRetryAfter(limit.retryAfterMs) };
   }
 
   const domain = String(formData.get("domain") ?? "").trim();

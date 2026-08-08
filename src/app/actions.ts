@@ -14,6 +14,8 @@ import {
 } from "@/lib/integrations/githubConnections";
 import { getPrForReport, recordPrOpened } from "@/lib/integrations/codeFixes";
 import { mergeRobotsTxt, openFixPullRequest, type FixFile } from "@/lib/integrations/github";
+import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
+import { getClientIp } from "@/lib/requestIp";
 import type { LeadState, PrState, ReportState } from "./report-state";
 
 /**
@@ -35,6 +37,18 @@ export async function runReport(
       status: "error",
       error:
         "That doesn't look like a valid website address. Try something like example.com.",
+      url: raw,
+    };
+  }
+
+  // Anonymous endpoint, each run launches a real browser and (optionally) a
+  // Claude call — cap per-visitor throughput before any of that work starts.
+  const ip = await getClientIp();
+  const limit = checkRateLimit(`report:${ip}`, 10 * 60 * 1000, 8);
+  if (!limit.allowed) {
+    return {
+      status: "error",
+      error: `Too many reports from this connection. ${formatRetryAfter(limit.retryAfterMs)}`,
       url: raw,
     };
   }
@@ -94,6 +108,12 @@ export async function submitLead(
     return { status: "error", error: "Something went wrong — please refresh." };
   }
 
+  const ip = await getClientIp();
+  const limit = checkRateLimit(`lead:${ip}`, 60 * 60 * 1000, 20);
+  if (!limit.allowed) {
+    return { status: "error", error: formatRetryAfter(limit.retryAfterMs) };
+  }
+
   const ok = await attachEmail(requestId, email);
   return ok
     ? { status: "done" }
@@ -131,6 +151,11 @@ export async function openFixPrAction(
 
   const user = await getCurrentUser();
   if (!user) return { status: "error", error: "Log in to open a pull request." };
+
+  const limit = checkRateLimit(`open-pr:${user.id}`, 60 * 60 * 1000, 10);
+  if (!limit.allowed) {
+    return { status: "error", error: formatRetryAfter(limit.retryAfterMs) };
+  }
 
   const reportRow = user.isAdmin
     ? await getReportById(requestId)
