@@ -117,10 +117,10 @@ describe("testConnection", () => {
 });
 
 describe("createPage", () => {
-  it("creates a published page and returns view + edit URLs", async () => {
+  it("creates a published page and returns view/edit/preview URLs", async () => {
     const result = await createPage(
       creds(),
-      { title: "Managed IT", contentHtml: "<p>Hello</p>" },
+      { title: "Managed IT", contentHtml: "<p>Hello</p>", status: "publish" },
       offline,
     );
     expect(result).toEqual({
@@ -128,11 +128,26 @@ describe("createPage", () => {
       postId: 42,
       viewUrl: `${siteUrl}/managed-it/`,
       editUrl: `${siteUrl}/wp-admin/post.php?post=42&action=edit`,
+      previewUrl: `${siteUrl}/?page_id=42&preview=true`,
     });
     expect(lastPagePayload).toEqual({
       title: "Managed IT",
       content: "<p>Hello</p>",
       status: "publish",
+    });
+  });
+
+  it("creates a draft page when status is 'draft' (never live without explicit confirmation)", async () => {
+    const result = await createPage(
+      creds(),
+      { title: "Managed IT", contentHtml: "<p>Hello</p>", status: "draft" },
+      offline,
+    );
+    expect(result.ok).toBe(true);
+    expect(lastPagePayload).toEqual({
+      title: "Managed IT",
+      content: "<p>Hello</p>",
+      status: "draft",
     });
   });
 });
@@ -158,7 +173,7 @@ describe("redirect handling", () => {
   it("refuses to follow a redirect on a write (POST) request", async () => {
     const result = await createPage(
       { ...creds(), siteUrl: `${siteUrl}/redirect-write` },
-      { title: "X", contentHtml: "<p>X</p>" },
+      { title: "X", contentHtml: "<p>X</p>", status: "publish" },
       offline,
     );
     expect(result.ok).toBe(false);

@@ -17,6 +17,7 @@ import { mergeRobotsTxt, openFixPullRequest, type FixFile } from "@/lib/integrat
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import { getClientIp } from "@/lib/requestIp";
 import { logInfo, logWarn } from "@/lib/log";
+import { recordAudit } from "@/lib/audit";
 import type { LeadState, PrState, ReportState } from "./report-state";
 
 /**
@@ -203,12 +204,29 @@ export async function openFixPrAction(
     ].join("\n"),
     branchName,
   });
+  const destination = `${creds.owner}/${creds.repo}`;
   if (!result.ok) {
     logWarn("open_pr.error", { requestId, userId: reportRow.userId, error: result.error });
+    await recordAudit({
+      actorUserId: user.id,
+      action: "github.open_pr",
+      destination,
+      afterState: { files: files.map((f) => f.path) },
+      result: "failure",
+      error: result.error,
+    });
     return { status: "error", error: result.error };
   }
 
   const recorded = await recordPrOpened(requestId, reportRow.userId, result);
+  await recordAudit({
+    actorUserId: user.id,
+    action: "github.open_pr",
+    destination,
+    afterState: { prNumber: result.prNumber, prUrl: result.prUrl, files: files.map((f) => f.path) },
+    result: recorded ? "success" : "failure",
+    error: recorded ? undefined : "PR opened but failed to save the local record.",
+  });
   if (!recorded) {
     logWarn("open_pr.record_failed", {
       requestId,
@@ -217,7 +235,7 @@ export async function openFixPrAction(
     });
     return {
       status: "error",
-      error: "PR opened, but couldn't save the record — refresh to check its status.",
+      error: `PR opened, but couldn't save the record. PR: ${result.prUrl}`,
     };
   }
 

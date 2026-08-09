@@ -62,9 +62,12 @@ import {
   saveWordPressConnection,
 } from "@/lib/integrations/connections";
 import {
+  beginPublish,
   getPublicationForDraft,
   recordPublished,
+  recordPublishFailed,
   recordRolledBack,
+  recordWpDraftCreated,
 } from "@/lib/integrations/publications";
 import {
   deleteGitHubConnection,
@@ -73,6 +76,7 @@ import {
   saveGitHubConnection,
 } from "@/lib/integrations/githubConnections";
 import { getPrForReport, recordPrOpened } from "@/lib/integrations/codeFixes";
+import { listAuditLog, recordAudit } from "@/lib/audit";
 
 // Captures every "email" the password-reset flow would have sent, so tests
 // can pull the reset token out of the link without hitting a real provider.
@@ -226,10 +230,8 @@ describe("WordPress connection", () => {
   });
 });
 
-describe("publications (WordPress apply + rollback)", () => {
-  it("tracks publish → rollback → republish for a draft", async () => {
-    const owner = await createUser("publisher@example.com", "password123");
-    if (!owner.ok) throw new Error("setup failed");
+describe("publications (pending -> wp_draft -> published -> rolled_back)", () => {
+  async function newDraft(userId: string): Promise<string> {
     const inputs = {
       topic: "Managed IT",
       pageType: "landing" as const,
@@ -237,29 +239,107 @@ describe("publications (WordPress apply + rollback)", () => {
       tone: "professional",
       keyFacts: ["24/7 helpdesk"],
     };
-    const draftId = await saveDraft(inputs, generateDraft(inputs), owner.user.id);
+    const draftId = await saveDraft(inputs, generateDraft(inputs), userId);
     if (!draftId) throw new Error("setup failed");
+    return draftId;
+  }
+
+  const page = {
+    postId: 7,
+    viewUrl: "https://acme.example/managed-it/",
+    editUrl: "https://acme.example/wp-admin/post.php?post=7&action=edit",
+    previewUrl: "https://acme.example/?page_id=7&preview=true",
+  };
+
+  it("records pending BEFORE any WordPress call, then progresses through the full lifecycle", async () => {
+    const owner = await createUser("publisher@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+    const draftId = await newDraft(owner.user.id);
 
     expect(await getPublicationForDraft(draftId)).toBeNull();
 
-    const page = { postId: 7, viewUrl: "https://acme.example/managed-it/", editUrl: "https://acme.example/wp-admin/post.php?post=7&action=edit" };
-    expect(await recordPublished(draftId, owner.user.id, page)).toBe(true);
-
+    const begin = await beginPublish(draftId, owner.user.id);
+    expect(begin.ok).toBe(true);
     let row = await getPublicationForDraft(draftId);
-    expect(row?.status).toBe("published");
+    expect(row?.status).toBe("pending");
+    expect(row?.wpPostId).toBeNull(); // nothing on WordPress yet -- intent only
+
+    expect(await recordWpDraftCreated(draftId, page)).toBe(true);
+    row = await getPublicationForDraft(draftId);
+    expect(row?.status).toBe("wp_draft");
     expect(row?.wpPostId).toBe(7);
+    expect(row?.publishedAt).toBeNull(); // draft, not live
+
+    expect(await recordPublished(draftId, owner.user.id, page)).toBe(true);
+    row = await getPublicationForDraft(draftId);
+    expect(row?.status).toBe("published");
+    expect(row?.publishedAt).not.toBeNull();
     expect(row?.rolledBackAt).toBeNull();
 
     expect(await recordRolledBack(draftId)).toBe(true);
     row = await getPublicationForDraft(draftId);
     expect(row?.status).toBe("rolled_back");
     expect(row?.rolledBackAt).not.toBeNull();
+  });
 
-    // Republishing the same draft updates the existing row rather than duplicating it.
-    expect(await recordPublished(draftId, owner.user.id, page)).toBe(true);
-    row = await getPublicationForDraft(draftId);
-    expect(row?.status).toBe("published");
-    expect(row?.rolledBackAt).toBeNull();
+  it("beginPublish refuses a duplicate attempt while one is genuinely in flight", async () => {
+    const owner = await createUser("publisher2@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+    const draftId = await newDraft(owner.user.id);
+
+    expect((await beginPublish(draftId, owner.user.id)).ok).toBe(true);
+    const second = await beginPublish(draftId, owner.user.id);
+    expect(second).toMatchObject({ ok: false, reason: "in_progress" });
+  });
+
+  it("beginPublish reconciles a stale pending row instead of blocking forever", async () => {
+    const owner = await createUser("publisher3@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+    const draftId = await newDraft(owner.user.id);
+
+    await beginPublish(draftId, owner.user.id);
+    // Simulate a crashed attempt: age the pending row past the reconciliation
+    // window without ever calling recordWpDraftCreated/recordPublishFailed.
+    await testDb
+      .update(schema.publications)
+      .set({ updatedAt: new Date(Date.now() - 3 * 60 * 1000) })
+      .where(eq(schema.publications.draftId, draftId));
+
+    const retried = await beginPublish(draftId, owner.user.id);
+    expect(retried.ok).toBe(true); // reclaimed, not stuck behind the abandoned attempt
+  });
+
+  it("beginPublish returns already_active for an existing wp_draft or published row, never duplicating", async () => {
+    const owner = await createUser("publisher4@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+    const draftId = await newDraft(owner.user.id);
+
+    await beginPublish(draftId, owner.user.id);
+    await recordWpDraftCreated(draftId, page);
+
+    const attempt = await beginPublish(draftId, owner.user.id);
+    expect(attempt).toMatchObject({ ok: false, reason: "already_active" });
+    if (!attempt.ok && attempt.reason === "already_active") {
+      expect(attempt.row.status).toBe("wp_draft");
+      expect(attempt.row.wpPostId).toBe(7);
+    }
+  });
+
+  it("recordPublishFailed marks the attempt failed, and a later beginPublish allows retry (no duplicate)", async () => {
+    const owner = await createUser("publisher5@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+    const draftId = await newDraft(owner.user.id);
+
+    await beginPublish(draftId, owner.user.id);
+    expect(await recordPublishFailed(draftId, "WordPress timed out")).toBe(true);
+
+    const row = await getPublicationForDraft(draftId);
+    expect(row?.status).toBe("failed");
+    expect(row?.error).toBe("WordPress timed out");
+
+    // A failed attempt never created anything on WordPress, so a retry is safe.
+    const retried = await beginPublish(draftId, owner.user.id);
+    expect(retried.ok).toBe(true);
   });
 });
 
@@ -489,5 +569,50 @@ describe("email verification", () => {
     expect(row?.emailVerifiedAt).not.toBeNull();
 
     vi.unstubAllEnvs();
+  });
+});
+
+describe("audit trail", () => {
+  it("records both successful and failed writes, newest first, and never throws", async () => {
+    const owner = await createUser("auditor@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+
+    await recordAudit({
+      actorUserId: owner.user.id,
+      action: "wordpress.publish",
+      destination: "https://acme.example",
+      beforeState: { status: "wp_draft" },
+      afterState: { status: "published" },
+      result: "success",
+    });
+    await recordAudit({
+      actorUserId: owner.user.id,
+      action: "github.open_pr",
+      destination: "acme/site",
+      result: "failure",
+      error: "GitHub rejected that Personal Access Token.",
+    });
+
+    const entries = await listAuditLog(10);
+    expect(entries.length).toBeGreaterThanOrEqual(2);
+    // Newest first.
+    expect(entries[0].action).toBe("github.open_pr");
+    expect(entries[0].result).toBe("failure");
+    expect(entries[0].error).toMatch(/rejected/);
+    expect(entries[1].action).toBe("wordpress.publish");
+    expect(entries[1].result).toBe("success");
+    expect(entries[1].beforeState).toEqual({ status: "wp_draft" });
+    expect(entries[1].afterState).toEqual({ status: "published" });
+  });
+
+  it("accepts a null actor for system-initiated entries", async () => {
+    await recordAudit({
+      actorUserId: null,
+      action: "cron.cleanup_sessions",
+      destination: "system",
+      result: "success",
+    });
+    const entries = await listAuditLog(1);
+    expect(entries[0].actorUserId).toBeNull();
   });
 });

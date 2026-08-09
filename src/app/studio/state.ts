@@ -19,6 +19,8 @@ export const initialDecisionState: DecisionState = { status: "idle" };
 
 export type PublishState =
   | { status: "idle" }
+  /** Created on WordPress as a DRAFT — not live. Review via previewUrl, then confirm. */
+  | { status: "wp_draft"; previewUrl: string; editUrl: string }
   | { status: "published"; viewUrl: string; editUrl: string }
   | { status: "rolled_back" }
   | { status: "error"; error: string };

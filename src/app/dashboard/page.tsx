@@ -82,6 +82,14 @@ export default async function DashboardPage() {
           >
             Settings
           </Link>
+          {isAdmin && (
+            <Link
+              href="/dashboard/audit"
+              className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
+            >
+              Audit log
+            </Link>
+          )}
           <form action={logoutAction}>
             <button
               type="submit"

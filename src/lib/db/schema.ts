@@ -163,14 +163,25 @@ export const wordpressConnections = pgTable("wordpress_connections", {
 export type WordPressConnectionRow = typeof wordpressConnections.$inferSelect;
 
 /**
- * One-click-apply record: a Content Studio draft pushed to a WordPress page.
- * `status` mirrors the WP page's own publish/draft status, so "roll back" is
- * always a non-destructive toggle on the customer's own site — nothing WeBind
- * does here can delete a page or lose content.
+ * One-click-apply record: a Content Studio draft pushed to WordPress.
+ *
+ * Lifecycle: `pending` (WeBind intends to write, hasn't called WordPress yet)
+ * → `wp_draft` (created on WordPress as a DRAFT — not live) → `published`
+ * (explicitly confirmed live) → `rolled_back` (flipped back to draft on WP).
+ * `failed` marks an attempt whose WordPress call didn't succeed.
+ *
+ * The `pending` row is written BEFORE the WordPress call, not after — see
+ * src/lib/integrations/publications.ts's `beginPublish`. That is what lets a
+ * retry tell "nothing happened yet" apart from "something may have happened
+ * and we lost track of it" instead of blindly creating a duplicate page.
+ * wpPostId/urls are nullable because a `pending` row doesn't have them yet.
  */
 export const publications = pgTable("publications", {
   id: uuid("id").primaryKey().defaultRandom(),
   createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
   draftId: uuid("draft_id")
@@ -180,15 +191,40 @@ export const publications = pgTable("publications", {
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
-  wpPostId: integer("wp_post_id").notNull(),
-  wpViewUrl: text("wp_view_url").notNull(),
-  wpEditUrl: text("wp_edit_url").notNull(),
-  status: text("status").$type<"published" | "rolled_back">().notNull(),
-  publishedAt: timestamp("published_at", { withTimezone: true }).notNull(),
+  wpPostId: integer("wp_post_id"),
+  wpViewUrl: text("wp_view_url"),
+  wpEditUrl: text("wp_edit_url"),
+  status: text("status")
+    .$type<"pending" | "wp_draft" | "published" | "rolled_back" | "failed">()
+    .notNull(),
+  publishedAt: timestamp("published_at", { withTimezone: true }),
   rolledBackAt: timestamp("rolled_back_at", { withTimezone: true }),
+  error: text("error"),
 });
 
 export type PublicationRow = typeof publications.$inferSelect;
+
+/**
+ * Audit trail for every write WeBind makes to a customer's external site or
+ * repo (WordPress publish/rollback, GitHub PR open) — who did it, where, what
+ * changed, and whether it worked. Append-only; nothing here is ever updated or
+ * deleted by the app.
+ */
+export const auditLog = pgTable("audit_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+  action: text("action").notNull(),
+  destination: text("destination").notNull(),
+  beforeState: jsonb("before_state"),
+  afterState: jsonb("after_state"),
+  result: text("result").$type<"success" | "failure">().notNull(),
+  error: text("error"),
+});
+
+export type AuditLogRow = typeof auditLog.$inferSelect;
 
 /**
  * A user's GitHub repo, connected via a fine-grained Personal Access Token

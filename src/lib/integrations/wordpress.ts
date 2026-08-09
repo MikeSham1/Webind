@@ -53,6 +53,17 @@ function editUrl(siteUrl: string, postId: number): string {
   return `${apiBase(siteUrl)}/wp-admin/post.php?post=${postId}&action=edit`;
 }
 
+/**
+ * A draft page has no public permalink — `?page_id=&preview=true` is WP's own
+ * mechanism for a logged-in editor to view one regardless of permalink
+ * structure. Works for a published page too (WP just shows the live page).
+ * Exported so callers can reconstruct it from a stored postId without a fresh
+ * API round-trip (see beginPublish's "already_active" path in studio/actions.ts).
+ */
+export function buildPreviewUrl(siteUrl: string, postId: number): string {
+  return `${apiBase(siteUrl)}/?page_id=${postId}&preview=true`;
+}
+
 /** Read a response body with a hard size cap, never buffering more than that. */
 async function readCappedText(res: Response, maxBytes: number): Promise<string | null> {
   if (!res.body) {
@@ -234,12 +245,19 @@ export interface PublishedPage {
   postId: number;
   viewUrl: string;
   editUrl: string;
+  /** A logged-in-editor preview link — the only way to view a `draft` page's content on WP. */
+  previewUrl: string;
 }
 
-/** Create a new WordPress page, published live immediately. */
+/**
+ * Create a new WordPress page. `status` is required (not defaulted) so every
+ * call site has to say explicitly whether it's writing a draft or going live
+ * — see studio/actions.ts, which always creates as `"draft"` first and
+ * requires a separate, explicit confirmation before ever passing `"publish"`.
+ */
 export async function createPage(
   creds: WordPressCredentials,
-  page: { title: string; contentHtml: string },
+  page: { title: string; contentHtml: string; status: "draft" | "publish" },
   opts: WordPressCallOptions = {},
 ): Promise<WordPressResult<PublishedPage>> {
   const result = await call(
@@ -247,7 +265,7 @@ export async function createPage(
     "/pages",
     {
       method: "POST",
-      body: JSON.stringify({ title: page.title, content: page.contentHtml, status: "publish" }),
+      body: JSON.stringify({ title: page.title, content: page.contentHtml, status: page.status }),
     },
     opts,
   );
@@ -257,7 +275,13 @@ export async function createPage(
   if (!Number.isFinite(postId)) {
     return { ok: false, error: "WordPress didn't return a page id." };
   }
-  return { ok: true, postId, viewUrl: link, editUrl: editUrl(creds.siteUrl, postId) };
+  return {
+    ok: true,
+    postId,
+    viewUrl: link,
+    editUrl: editUrl(creds.siteUrl, postId),
+    previewUrl: buildPreviewUrl(creds.siteUrl, postId),
+  };
 }
 
 /**
@@ -282,5 +306,11 @@ export async function setPageStatus(
   );
   if (!result.ok) return result;
   const link = typeof result.body.link === "string" ? result.body.link : creds.siteUrl;
-  return { ok: true, postId, viewUrl: link, editUrl: editUrl(creds.siteUrl, postId) };
+  return {
+    ok: true,
+    postId,
+    viewUrl: link,
+    editUrl: editUrl(creds.siteUrl, postId),
+    previewUrl: buildPreviewUrl(creds.siteUrl, postId),
+  };
 }
