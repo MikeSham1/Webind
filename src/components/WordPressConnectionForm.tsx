@@ -75,7 +75,10 @@ export default function WordPressConnectionForm({
         <span className="mt-1.5 block text-xs leading-relaxed text-muted">
           In your WordPress admin: Users → Profile → Application Passwords.
           This isn&apos;t your account password, and you can revoke it there
-          any time without affecting your login.
+          any time without affecting your login. For safety, we recommend
+          creating a separate WordPress user with just the Author or Editor
+          role for this — rather than an Administrator account — so a leaked
+          credential can only ever touch pages, not your whole site.
         </span>
       </label>
 
