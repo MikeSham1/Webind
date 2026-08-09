@@ -1,11 +1,22 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { GATE_COOKIE, gateToken, safeEqual, sitePassword } from "@/lib/gate";
 
-// Reachable without the password: the splash itself, its auth endpoints, and
-// the container-orchestration health checks (Railway can't send our gate
-// cookie, and a redirect-to-splash would defeat the point of a health probe —
-// neither endpoint reveals anything sensitive).
-const PUBLIC_PATHS = ["/splash", "/api/login", "/api/logout", "/api/health", "/api/ready"];
+// Reachable without the password: the splash itself, its auth endpoints, the
+// container-orchestration health checks, and the cron cleanup endpoint.
+// None of these can send our gate cookie (a health prober or an external
+// scheduler isn't a browser with our cookie jar), and a redirect-to-splash
+// would defeat their purpose. Neither health endpoint reveals anything
+// sensitive, and the cron endpoint is independently protected by its own
+// CRON_SECRET bearer token — this list only controls whether the gate's
+// password applies, not whether the route itself is protected.
+const PUBLIC_PATHS = [
+  "/splash",
+  "/api/login",
+  "/api/logout",
+  "/api/health",
+  "/api/ready",
+  "/api/cron",
+];
 
 /**
  * Pre-launch password gate.

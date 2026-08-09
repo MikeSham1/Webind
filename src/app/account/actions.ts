@@ -2,9 +2,11 @@
 
 import { redirect } from "next/navigation";
 import { createSession, createUser, logout, verifyCredentials } from "@/lib/auth";
+import { consumePasswordResetToken, requestPasswordReset } from "@/lib/auth/passwordReset";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import { getClientIp } from "@/lib/requestIp";
-import type { AuthState } from "./state";
+import { getBaseUrl } from "@/lib/baseUrl";
+import type { AuthState, ForgotPasswordState, ResetPasswordState } from "./state";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -65,4 +67,50 @@ export async function loginAction(
 export async function logoutAction(): Promise<void> {
   await logout();
   redirect("/login");
+}
+
+/**
+ * Request a password-reset email. Always returns the same "requested" state
+ * regardless of whether the address is registered, an unregistered lookup, or
+ * a rate limit was hit — a different response for any of those would let a
+ * stranger enumerate registered emails or probe for account existence.
+ */
+export async function requestPasswordResetAction(
+  _prev: ForgotPasswordState,
+  formData: FormData,
+): Promise<ForgotPasswordState> {
+  const email = String(formData.get("email") ?? "").trim();
+  const ip = await getClientIp();
+
+  // Capped, but note the response is identical whether or not this trips —
+  // only the work skipped differs, never what the visitor sees.
+  const limit = checkRateLimit(`forgot-password:${ip}`, 60 * 60 * 1000, 6);
+  if (EMAIL_RE.test(email) && limit.allowed) {
+    const baseUrl = await getBaseUrl();
+    await requestPasswordReset(email, baseUrl);
+  }
+
+  return { status: "requested" };
+}
+
+export async function resetPasswordAction(
+  _prev: ResetPasswordState,
+  formData: FormData,
+): Promise<ResetPasswordState> {
+  const token = String(formData.get("token") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+
+  if (!token) {
+    return { status: "error", error: "Missing reset token — use the link from your email." };
+  }
+
+  const ip = await getClientIp();
+  const limit = checkRateLimit(`reset-password:${ip}`, 15 * 60 * 1000, 10);
+  if (!limit.allowed) {
+    return { status: "error", error: formatRetryAfter(limit.retryAfterMs) };
+  }
+
+  const result = await consumePasswordResetToken(token, password);
+  if (!result.ok) return { status: "error", error: result.error };
+  return { status: "done" };
 }

@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
+import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import * as schema from "./schema";
 import { __setTestDb } from "./index";
@@ -16,16 +17,24 @@ vi.mock("next/headers", () => ({
       jar.set(name, value);
     },
   }),
+  // createSession reads request metadata (UA/IP) purely for display; a real
+  // request never reaches this test, so an always-empty Headers is fine.
+  headers: async () => new Headers(),
 }));
 
 // Imported after the mock so the module picks up the mocked next/headers.
 import {
+  cleanupExpiredSessions,
   createSession,
   createUser,
   getCurrentUser,
+  listSessions,
   logout,
+  revokeOtherSessions,
+  revokeSession,
   verifyCredentials,
 } from "@/lib/auth";
+import { consumePasswordResetToken, requestPasswordReset } from "@/lib/auth/passwordReset";
 import {
   getReportById,
   getReportForUser,
@@ -61,6 +70,24 @@ import {
 } from "@/lib/integrations/githubConnections";
 import { getPrForReport, recordPrOpened } from "@/lib/integrations/codeFixes";
 
+// Captures every "email" the password-reset flow would have sent, so tests
+// can pull the reset token out of the link without hitting a real provider.
+const { sentEmails } = vi.hoisted(() => ({
+  sentEmails: [] as { to: string; subject: string; text: string }[],
+}));
+vi.mock("@/lib/email", () => ({
+  sendEmail: vi.fn(async (input: { to: string; subject: string; text: string }) => {
+    sentEmails.push(input);
+    return { delivered: true };
+  }),
+}));
+
+function tokenFromResetEmail(text: string): string {
+  const match = /token=([a-f0-9]+)/.exec(text);
+  if (!match) throw new Error("no reset token found in email body");
+  return match[1];
+}
+
 const report = (url: string): ReportResult => ({
   url,
   ai: { total: 50, signals: [], coverage: 1 },
@@ -68,9 +95,14 @@ const report = (url: string): ReportResult => ({
   prioritizedFixes: [],
 });
 
+// Kept for tests that need to reach in and directly manipulate a row (e.g.
+// backdating a session's expiry) rather than going through the public API.
+let testDb: ReturnType<typeof drizzle<typeof schema>>;
+
 beforeAll(async () => {
   const client = new PGlite();
-  __setTestDb(drizzle(client, { schema }));
+  testDb = drizzle(client, { schema });
+  __setTestDb(testDb);
   // Apply every generated migration in order — the real schema, not a mock.
   const dir = join(process.cwd(), "drizzle");
   const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
@@ -289,5 +321,121 @@ describe("account seeding", () => {
     expect(await verifyCredentials("admin@webind.design", "adminpass123")).toBeNull();
 
     vi.unstubAllEnvs();
+  });
+});
+
+describe("session management", () => {
+  it("lists a user's sessions and lets them revoke one by id", async () => {
+    const owner = await createUser("sessions1@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+
+    await createSession(owner.user.id);
+    const mine = await listSessions(owner.user.id);
+    expect(mine).toHaveLength(1);
+
+    // Another user can't revoke it.
+    const other = await createUser("sessions2@example.com", "password123");
+    if (!other.ok) throw new Error("setup failed");
+    expect(await revokeSession(other.user.id, mine[0].id)).toBe(false);
+
+    // The owner can.
+    expect(await revokeSession(owner.user.id, mine[0].id)).toBe(true);
+    expect(await listSessions(owner.user.id)).toHaveLength(0);
+  });
+
+  it("revokeOtherSessions can keep one session and drop the rest, or drop all", async () => {
+    const owner = await createUser("sessions3@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+
+    await createSession(owner.user.id);
+    await createSession(owner.user.id);
+    await createSession(owner.user.id);
+    const [keep, ...rest] = await listSessions(owner.user.id);
+    expect(rest).toHaveLength(2);
+
+    await revokeOtherSessions(owner.user.id, keep.id);
+    const afterPartial = await listSessions(owner.user.id);
+    expect(afterPartial.map((s) => s.id)).toEqual([keep.id]);
+
+    await revokeOtherSessions(owner.user.id);
+    expect(await listSessions(owner.user.id)).toHaveLength(0);
+  });
+
+  it("cleanupExpiredSessions removes only expired rows", async () => {
+    const owner = await createUser("sessions4@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+    await createSession(owner.user.id);
+
+    // Directly age one session into the past to simulate expiry without
+    // waiting 30 real days.
+    const [row] = await listSessions(owner.user.id);
+    await testDb
+      .update(schema.sessions)
+      .set({ expiresAt: new Date(Date.now() - 1000) })
+      .where(eq(schema.sessions.id, row.id));
+
+    const removed = await cleanupExpiredSessions();
+    expect(removed).toBeGreaterThanOrEqual(1);
+    expect(await listSessions(owner.user.id)).toHaveLength(0);
+  });
+});
+
+describe("password reset", () => {
+  it("requests a reset, emails a working link, and the new password takes effect", async () => {
+    const owner = await createUser("reset1@example.com", "originalpass1");
+    if (!owner.ok) throw new Error("setup failed");
+    sentEmails.length = 0;
+
+    await requestPasswordReset("reset1@example.com", "https://app.example.com");
+    expect(sentEmails).toHaveLength(1);
+    const token = tokenFromResetEmail(sentEmails[0].text);
+
+    const result = await consumePasswordResetToken(token, "brandnewpass1");
+    expect(result.ok).toBe(true);
+
+    expect(await verifyCredentials("reset1@example.com", "brandnewpass1")).not.toBeNull();
+    expect(await verifyCredentials("reset1@example.com", "originalpass1")).toBeNull();
+  });
+
+  it("is silent (no email, no error) for an unregistered address — prevents enumeration", async () => {
+    sentEmails.length = 0;
+    await requestPasswordReset("nobody-here@example.com", "https://app.example.com");
+    expect(sentEmails).toHaveLength(0);
+  });
+
+  it("rejects reusing an already-consumed token", async () => {
+    const owner = await createUser("reset2@example.com", "originalpass1");
+    if (!owner.ok) throw new Error("setup failed");
+    sentEmails.length = 0;
+
+    await requestPasswordReset("reset2@example.com", "https://app.example.com");
+    const token = tokenFromResetEmail(sentEmails[0].text);
+
+    expect((await consumePasswordResetToken(token, "firstnewpass1")).ok).toBe(true);
+    const second = await consumePasswordResetToken(token, "secondnewpass1");
+    expect(second.ok).toBe(false);
+
+    // The FIRST reset's password is what actually took effect.
+    expect(await verifyCredentials("reset2@example.com", "firstnewpass1")).not.toBeNull();
+  });
+
+  it("rejects a garbage/unknown token", async () => {
+    const result = await consumePasswordResetToken("not-a-real-token", "somenewpassword1");
+    expect(result.ok).toBe(false);
+  });
+
+  it("revokes existing sessions when a reset succeeds", async () => {
+    const owner = await createUser("reset3@example.com", "originalpass1");
+    if (!owner.ok) throw new Error("setup failed");
+    await createSession(owner.user.id);
+    await createSession(owner.user.id);
+    expect(await listSessions(owner.user.id)).toHaveLength(2);
+
+    sentEmails.length = 0;
+    await requestPasswordReset("reset3@example.com", "https://app.example.com");
+    const token = tokenFromResetEmail(sentEmails[0].text);
+    await consumePasswordResetToken(token, "brandnewpass1");
+
+    expect(await listSessions(owner.user.id)).toHaveLength(0);
   });
 });

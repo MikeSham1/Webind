@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { normalizeUrl } from "@/lib/crawler/ssrf";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, revokeOtherSessions, revokeSession } from "@/lib/auth";
 import { deleteWordPressConnection, saveWordPressConnection } from "@/lib/integrations/connections";
 import { testConnection as testWordPressConnection } from "@/lib/integrations/wordpress";
 import {
@@ -107,5 +107,22 @@ export async function connectGitHubAction(
 export async function disconnectGitHubAction(): Promise<void> {
   const user = await getCurrentUser();
   if (user) await deleteGitHubConnection(user.id);
+  revalidatePath("/dashboard/settings");
+}
+
+/** Sign a single device/session out. Scoped to the caller's own sessions. */
+export async function revokeSessionAction(formData: FormData): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) return;
+  const sessionId = String(formData.get("sessionId") ?? "");
+  if (sessionId) await revokeSession(user.id, sessionId);
+  revalidatePath("/dashboard/settings");
+}
+
+/** "Log out all other devices" — keeps the session making this request. */
+export async function revokeOtherSessionsAction(): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) return;
+  await revokeOtherSessions(user.id, user.sessionId);
   revalidatePath("/dashboard/settings");
 }

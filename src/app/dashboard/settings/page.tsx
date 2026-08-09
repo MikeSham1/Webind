@@ -3,9 +3,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import WordPressConnectionForm from "@/components/WordPressConnectionForm";
 import GitHubConnectionForm from "@/components/GitHubConnectionForm";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, listSessions } from "@/lib/auth";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
 import { getGitHubConnectionStatus } from "@/lib/integrations/githubConnections";
+import { summarizeUserAgent } from "@/lib/userAgent";
+import { revokeOtherSessionsAction, revokeSessionAction } from "./actions";
 
 export const metadata: Metadata = {
   title: "Settings — WeBind",
@@ -18,9 +20,10 @@ export default async function SettingsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [wordpress, github] = await Promise.all([
+  const [wordpress, github, sessions] = await Promise.all([
     getWordPressConnectionStatus(user.id),
     getGitHubConnectionStatus(user.id),
+    listSessions(user.id),
   ]);
 
   return (
@@ -70,6 +73,69 @@ export default async function SettingsPage() {
           <div className="mt-4">
             <GitHubConnectionForm connection={github} />
           </div>
+        </section>
+
+        <section>
+          <div className="flex items-baseline justify-between gap-4">
+            <h2 className="font-display text-lg font-semibold text-ink">
+              Sessions
+            </h2>
+            {sessions.length > 1 && (
+              <form action={revokeOtherSessionsAction}>
+                <button
+                  type="submit"
+                  className="font-mono text-xs uppercase tracking-[0.14em] text-muted hover:text-bad"
+                >
+                  Log out other devices
+                </button>
+              </form>
+            )}
+          </div>
+          <p className="mt-1 text-sm text-muted">
+            Everywhere you&apos;re currently signed in. Resetting your
+            password signs all of these out automatically.
+          </p>
+          <ul className="mt-4 divide-y divide-line rounded-2xl border border-line bg-surface">
+            {sessions.map((s) => {
+              const isCurrent = s.id === user.sessionId;
+              return (
+                <li
+                  key={s.id}
+                  className="flex items-center justify-between gap-4 p-4"
+                >
+                  <div>
+                    <p className="font-sans text-sm font-medium text-ink">
+                      {summarizeUserAgent(s.userAgent)}
+                      {isCurrent && (
+                        <span className="ml-2 rounded-full border border-accent/40 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">
+                          This device
+                        </span>
+                      )}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted">
+                      {s.ip ? `${s.ip} · ` : ""}
+                      Signed in {s.createdAt.toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </p>
+                  </div>
+                  {!isCurrent && (
+                    <form action={revokeSessionAction}>
+                      <input type="hidden" name="sessionId" value={s.id} />
+                      <button
+                        type="submit"
+                        className="shrink-0 font-mono text-xs uppercase tracking-[0.14em] text-muted hover:text-bad"
+                      >
+                        Log out
+                      </button>
+                    </form>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         </section>
       </div>
     </main>

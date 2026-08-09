@@ -74,7 +74,12 @@ export const users = pgTable("users", {
 
 export type UserRow = typeof users.$inferSelect;
 
-/** Server-side sessions; the cookie holds a token whose SHA-256 is stored here. */
+/**
+ * Server-side sessions; the cookie holds a token whose SHA-256 is stored here.
+ * `userAgent`/`ip` are captured at creation purely so a signed-in user can
+ * recognize their own sessions in Settings ("Chrome on Windows, last night") —
+ * never used for anything security-decisive.
+ */
 export const sessions = pgTable("sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -85,7 +90,31 @@ export const sessions = pgTable("sessions", {
     .references(() => users.id, { onDelete: "cascade" }),
   tokenHash: text("token_hash").notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  userAgent: text("user_agent"),
+  ip: text("ip"),
 });
+
+export type SessionRow = typeof sessions.$inferSelect;
+
+/**
+ * Single-use, time-limited password reset tokens. Only the SHA-256 of the raw
+ * token is stored (same pattern as sessions) — the raw token exists only in
+ * the emailed link and is never persisted or logged anywhere.
+ */
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+});
+
+export type PasswordResetTokenRow = typeof passwordResetTokens.$inferSelect;
 
 /**
  * A user's WordPress site, connected via a WP Application Password (not a full
