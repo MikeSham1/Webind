@@ -12,6 +12,7 @@ const report: ReportResult = {
   ai: { total: 40, signals: [], coverage: 0.75 },
   traditional: { total: 55, signals: [], coverage: 0.6 },
   prioritizedFixes: [],
+  modelVersion: "test",
 };
 
 describe("persistence without DATABASE_URL (fail-soft)", () => {

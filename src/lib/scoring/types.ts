@@ -84,4 +84,6 @@ export interface ReportResult {
   ai: AuthorityScore;
   traditional: AuthorityScore;
   prioritizedFixes: string[];
+  /** Which version of the weights/signals in scoring/weights.ts produced this report. */
+  modelVersion: string;
 }

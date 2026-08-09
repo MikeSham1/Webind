@@ -1,7 +1,14 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { createSession, createUser, getCurrentUser, logout, verifyCredentials } from "@/lib/auth";
+import {
+  createSession,
+  createUser,
+  deleteAccount,
+  getCurrentUser,
+  logout,
+  verifyCredentials,
+} from "@/lib/auth";
 import { consumePasswordResetToken, requestPasswordReset } from "@/lib/auth/passwordReset";
 import {
   consumeEmailVerificationToken,
@@ -12,6 +19,7 @@ import { getClientIp } from "@/lib/requestIp";
 import { getBaseUrl } from "@/lib/baseUrl";
 import type {
   AuthState,
+  DeleteAccountState,
   ForgotPasswordState,
   ResetPasswordState,
   VerifyEmailState,
@@ -150,4 +158,28 @@ export async function resendVerificationEmailAction(): Promise<void> {
   if (!limit.allowed) return;
 
   await sendVerificationEmail(user.id, user.email, await getBaseUrl());
+}
+
+/**
+ * Permanently delete the signed-in user's account. Requires the current
+ * password so a hijacked session alone can't destroy it. Irreversible: see
+ * deleteAccount() for exactly what cascades.
+ */
+export async function deleteAccountAction(
+  _prev: DeleteAccountState,
+  formData: FormData,
+): Promise<DeleteAccountState> {
+  const user = await getCurrentUser();
+  if (!user) return { status: "error", error: "Log in to delete your account." };
+
+  const ip = await getClientIp();
+  const limit = checkRateLimit(`delete-account:${user.id}:${ip}`, 60 * 60 * 1000, 5);
+  if (!limit.allowed) {
+    return { status: "error", error: formatRetryAfter(limit.retryAfterMs) };
+  }
+
+  const password = String(formData.get("password") ?? "");
+  const result = await deleteAccount(user.id, password);
+  if (!result.ok) return { status: "error", error: result.error };
+  redirect("/");
 }

@@ -198,6 +198,36 @@ export async function revokeOtherSessions(
   }
 }
 
+/**
+ * Permanently delete a user's account after re-verifying their password (a
+ * hijacked or CSRF'd session cookie alone must not be enough to destroy the
+ * account). Cascades via FK `onDelete` rules to sessions, reset/verification
+ * tokens, WordPress/GitHub connections, and publication records.
+ *
+ * Report requests and content drafts are NOT deleted — their `userId` is set
+ * to null instead (same schema rule an anonymous, logged-out run already
+ * uses), so they keep existing as anonymized rows rather than being erased.
+ * The audit log similarly keeps its rows with `actorUserId` set to null,
+ * since it is an append-only record of writes to external sites, not of the
+ * account that made them. Also clears the caller's own session cookie.
+ */
+export async function deleteAccount(
+  userId: string,
+  password: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const db = getDb();
+  if (!db) {
+    return { ok: false, error: "Accounts need a database (DATABASE_URL is not set)." };
+  }
+  const [row] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!row || !(await verifyPassword(password, row.passwordHash))) {
+    return { ok: false, error: "Incorrect password." };
+  }
+  await db.delete(users).where(eq(users.id, userId));
+  await logout();
+  return { ok: true };
+}
+
 /** Delete every expired session row. Never throws. Returns the count removed. */
 export async function cleanupExpiredSessions(): Promise<number> {
   const db = getDb();

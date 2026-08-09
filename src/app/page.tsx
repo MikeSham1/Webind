@@ -49,16 +49,17 @@ export default function Home() {
             className="reveal mt-5 font-display text-[2.6rem] font-semibold leading-[1.05] tracking-tight text-ink sm:text-6xl"
             style={{ animationDelay: "60ms" }}
           >
-            Find out if AI{" "}
-            <span className="italic text-accent">recommends</span> your website.
+            Find out if your site is built for AI to{" "}
+            <span className="italic text-accent">recommend</span>.
           </h1>
           <p
             className="reveal mx-auto mt-6 max-w-xl text-lg leading-relaxed text-muted"
             style={{ animationDelay: "120ms" }}
           >
             ChatGPT, Perplexity, and Google now decide who gets discovered. Enter
-            your URL for two authority scores — and the exact, prioritized fixes
-            to climb.
+            your URL for two AI-readiness scores — based on the structural and
+            content signals AI answer engines actually cite — and the exact,
+            prioritized fixes to climb.
           </p>
 
           <div className="reveal mt-10" style={{ animationDelay: "180ms" }}>
@@ -69,13 +70,24 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t border-line">
-        <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-2 px-6 py-6 text-center sm:flex-row sm:text-left">
+        <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-6 py-6 text-center sm:flex-row sm:text-left">
           <span className="font-display text-sm font-semibold text-ink">
             WeBind Design
           </span>
-          <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
-            Authority for the AI era
-          </span>
+          <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
+            <Link href="/methodology" className="hover:text-accent">
+              Methodology
+            </Link>
+            <Link href="/bot" className="hover:text-accent">
+              Bot
+            </Link>
+            <Link href="/privacy" className="hover:text-accent">
+              Privacy
+            </Link>
+            <Link href="/terms" className="hover:text-accent">
+              Terms
+            </Link>
+          </nav>
         </div>
       </footer>
     </div>

@@ -6,6 +6,7 @@ import FixList from "./FixList";
 import OptimizationAssets from "./OptimizationAssets";
 import LeadCapture from "./LeadCapture";
 import type { PrSnapshot } from "./OpenPrBar";
+import Link from "next/link";
 
 export interface ReportResultsProps {
   report: ReportResult;
@@ -42,7 +43,7 @@ export default function ReportResults({
       {/* Header */}
       <div className="reveal text-center">
         <p className="font-mono text-xs uppercase tracking-[0.22em] text-muted">
-          Authority Report
+          AI Readiness Report
         </p>
         <h2 className="mt-2 font-display text-3xl font-semibold text-ink">
           {host}
@@ -52,14 +53,19 @@ export default function ReportResults({
             {narrative}
           </p>
         )}
+        <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+          <Link href="/methodology" className="hover:text-accent">
+            Methodology v{report.modelVersion}
+          </Link>
+        </p>
       </div>
 
       {/* Dials */}
       <div className="reveal flex flex-col items-center justify-center gap-y-12 gap-x-20 sm:flex-row sm:items-start">
         <ScoreDial
-          label="AI Authority"
+          label="AI Readiness"
           score={report.ai.total}
-          sublabel="How likely AI models are to trust and cite you."
+          sublabel="How ready your page is to be understood and cited by AI models."
           delay={0}
         />
         <ScoreDial
@@ -75,7 +81,7 @@ export default function ReportResults({
         className="reveal grid gap-6 lg:grid-cols-2"
         style={{ animationDelay: "80ms" }}
       >
-        <SignalBreakdown title="AI Authority signals" score={report.ai} />
+        <SignalBreakdown title="AI Readiness signals" score={report.ai} />
         <SignalBreakdown
           title="Traditional Authority signals"
           score={report.traditional}

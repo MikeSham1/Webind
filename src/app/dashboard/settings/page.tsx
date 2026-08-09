@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import WordPressConnectionForm from "@/components/WordPressConnectionForm";
 import GitHubConnectionForm from "@/components/GitHubConnectionForm";
+import DeleteAccountForm from "@/components/DeleteAccountForm";
 import { getCurrentUser, listSessions } from "@/lib/auth";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
 import { getGitHubConnectionStatus } from "@/lib/integrations/githubConnections";
@@ -136,6 +137,18 @@ export default async function SettingsPage() {
               );
             })}
           </ul>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg font-semibold text-ink">
+            Danger zone
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            Permanently delete your account and everything tied to it.
+          </p>
+          <div className="mt-4">
+            <DeleteAccountForm />
+          </div>
         </section>
       </div>
     </main>

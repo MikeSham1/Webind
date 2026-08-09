@@ -24,12 +24,26 @@ const plexMono = IBM_Plex_Mono({
   display: "swap",
 });
 
+const TITLE = "WeBind — AI Readiness Report";
+const DESCRIPTION =
+  "See how well your website is structured for AI models and search engines to understand and cite. Get your AI readiness and traditional authority scores in seconds, plus the highest-impact fixes.";
+
 export const metadata: Metadata = {
-  title: "WeBind — AI Authority Report",
-  description:
-    "See how AI models and search engines rate your website's authority. Get your AI and traditional authority scores in seconds, plus the highest-impact fixes.",
+  title: TITLE,
+  description: DESCRIPTION,
   // Pre-launch: keep the whole site out of search indexes.
   robots: { index: false, follow: false, nocache: true },
+  openGraph: {
+    title: TITLE,
+    description: DESCRIPTION,
+    siteName: "WeBind",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: TITLE,
+    description: DESCRIPTION,
+  },
 };
 
 export default function RootLayout({

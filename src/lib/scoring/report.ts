@@ -1,5 +1,6 @@
 import type { CrawledPage, ReportResult, SignalScore } from "./types";
 import { scoreAiAuthority, scoreTraditionalAuthority } from "./authority";
+import { SCORING_MODEL_VERSION } from "./weights";
 
 /**
  * Ranking priority: high-weight, low-scoring signals surface first. Unmeasured
@@ -21,5 +22,5 @@ export function buildReport(page: CrawledPage): ReportResult {
     .sort((a, b) => priority(b) - priority(a) || a.key.localeCompare(b.key))
     .map((s) => s.fix);
 
-  return { url: page.url, ai, traditional, prioritizedFixes };
+  return { url: page.url, ai, traditional, prioritizedFixes, modelVersion: SCORING_MODEL_VERSION };
 }

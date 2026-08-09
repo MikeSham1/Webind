@@ -27,6 +27,7 @@ import {
   cleanupExpiredSessions,
   createSession,
   createUser,
+  deleteAccount,
   getCurrentUser,
   listSessions,
   logout,
@@ -101,6 +102,7 @@ const report = (url: string): ReportResult => ({
   ai: { total: 50, signals: [], coverage: 1 },
   traditional: { total: 60, signals: [], coverage: 1 },
   prioritizedFixes: [],
+  modelVersion: "test",
 });
 
 // Kept for tests that need to reach in and directly manipulate a row (e.g.
@@ -461,6 +463,65 @@ describe("session management", () => {
     const removed = await cleanupExpiredSessions();
     expect(removed).toBeGreaterThanOrEqual(1);
     expect(await listSessions(owner.user.id)).toHaveLength(0);
+  });
+});
+
+describe("account deletion", () => {
+  it("refuses with the wrong password and leaves the account intact", async () => {
+    const owner = await createUser("delete1@example.com", "correctpass1");
+    if (!owner.ok) throw new Error("setup failed");
+
+    const result = await deleteAccount(owner.user.id, "wrongpassword");
+    expect(result).toEqual({ ok: false, error: "Incorrect password." });
+    expect(await verifyCredentials("delete1@example.com", "correctpass1")).not.toBeNull();
+  });
+
+  it("deletes the user, cascades sessions/connections, but anonymizes reports and drafts", async () => {
+    const owner = await createUser("delete2@example.com", "correctpass1");
+    if (!owner.ok) throw new Error("setup failed");
+    const userId = owner.user.id;
+
+    await createSession(userId);
+    await saveWordPressConnection(userId, {
+      siteUrl: "https://example.com",
+      username: "editor",
+      appPassword: "abcd efgh ijkl mnop",
+    });
+    await saveGitHubConnection(userId, { owner: "acme", repo: "site", token: "ghp_test" });
+    const reportId = await saveReportRequest(report("https://example.com"), userId);
+    const inputs = {
+      topic: "Widgets",
+      pageType: "landing" as const,
+      audience: "smbs",
+      tone: "professional",
+      keyFacts: ["ships worldwide"],
+    };
+    const draftId = await saveDraft(inputs, generateDraft(inputs), userId);
+
+    const result = await deleteAccount(userId, "correctpass1");
+    expect(result).toEqual({ ok: true });
+
+    // The account itself, and everything FK-cascaded to it, is gone.
+    expect(await verifyCredentials("delete2@example.com", "correctpass1")).toBeNull();
+    expect(await listSessions(userId)).toHaveLength(0);
+    expect(await getWordPressConnectionStatus(userId)).toBeNull();
+    expect(await getGitHubConnectionStatus(userId)).toBeNull();
+
+    // Reports/drafts are anonymized (userId cleared), not deleted outright —
+    // same rule an anonymous, logged-out run already uses.
+    expect(reportId).not.toBeNull();
+    const [reportRow] = await testDb
+      .select()
+      .from(schema.reportRequests)
+      .where(eq(schema.reportRequests.id, reportId!));
+    expect(reportRow.userId).toBeNull();
+
+    expect(draftId).not.toBeNull();
+    const [draftRow] = await testDb
+      .select()
+      .from(schema.contentDrafts)
+      .where(eq(schema.contentDrafts.id, draftId!));
+    expect(draftRow.userId).toBeNull();
   });
 });
 

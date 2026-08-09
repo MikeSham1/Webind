@@ -33,9 +33,12 @@ export default async function VisibilityPage() {
           See where AI answers recommend you
         </h1>
         <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-muted">
-          Enter the questions your customers actually ask ChatGPT, Gemini, or
-          Perplexity. We run each one against the answer engines and show where
-          you surface, who gets recommended instead, and how to close the gap.
+          Enter the questions your customers actually ask an AI assistant. We
+          probe live with Claude today — without ever naming your brand in the
+          prompt, so the answer isn&apos;t primed — and show where you surface,
+          who gets recommended instead, and how to close the gap. ChatGPT,
+          Gemini, and Perplexity light up automatically as those providers are
+          enabled.
         </p>
       </div>
       <VisibilityForm />

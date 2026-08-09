@@ -73,7 +73,7 @@ function buildPrompt(report: ReportResult): string {
   const lines: string[] = [];
   lines.push(`Website: ${report.url}`);
   lines.push(
-    `AI authority score: ${report.ai.total}/100 ` +
+    `AI readiness score: ${report.ai.total}/100 ` +
       `(from ${pct(report.ai.coverage)} of the AI model's signals)`,
   );
   lines.push(
@@ -115,9 +115,9 @@ function fallbackNarrative(report: ReportResult): string {
         : "has clear room to improve";
 
   let narrative =
-    `Your site ${standing}: it scores ${ai}/100 for AI authority ` +
-    `(how likely AI models are to trust and cite you) and ${trad}/100 for ` +
-    `traditional search authority.`;
+    `Your site ${standing}: it scores ${ai}/100 for AI readiness ` +
+    `(how well-structured your page is to be understood and cited by AI ` +
+    `models) and ${trad}/100 for traditional search authority.`;
 
   const topFix = report.prioritizedFixes[0];
   if (topFix) {

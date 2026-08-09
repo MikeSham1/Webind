@@ -13,6 +13,17 @@
  * with backlinks retained as the one honest off-page unknown.
  */
 
+/**
+ * Bump this whenever a weight, signal, or scoring formula changes, so a
+ * stored report can always be traced back to the exact model that produced
+ * it. See /methodology for what each version means and the research behind
+ * it — and the explicit, honest note that these weights are reasoned from
+ * published research, not calibrated against a labeled benchmark dataset (no
+ * such dataset — ground-truth "does an AI actually cite this page" labels at
+ * scale — exists for us to calibrate against yet).
+ */
+export const SCORING_MODEL_VERSION = "2026.1";
+
 export const AI_WEIGHTS = {
   eeat: 0.2,
   answerability: 0.18,
