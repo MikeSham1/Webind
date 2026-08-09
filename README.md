@@ -120,12 +120,6 @@ Documented here rather than left implicit, so nobody has to rediscover them:
   containers (`src/lib/rateLimit.ts`). Fine for a single-container
   deployment; scaling out horizontally needs a shared store (Redis) before
   the limits mean anything cluster-wide.
-- **`npm install`, not `npm ci`, in `Dockerfile` / CI.** `package-lock.json`
-  was generated on Windows and can omit Linux-only optional dependencies
-  needed by the Playwright base image, so both currently use `npm install` as
-  a documented stopgap. Regenerating the lockfile on Linux (or in the Docker
-  build itself) to restore strict, reproducible `npm ci` installs is a known
-  follow-up.
 - **Session cleanup is best-effort without a cron.** Expired sessions are
   swept on ~2% of new logins regardless, but `POST /api/cron/cleanup-sessions`
   (guarded by `CRON_SECRET`) needs an external scheduler pointed at it for
