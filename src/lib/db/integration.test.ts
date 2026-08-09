@@ -36,6 +36,10 @@ import {
 } from "@/lib/auth";
 import { consumePasswordResetToken, requestPasswordReset } from "@/lib/auth/passwordReset";
 import {
+  consumeEmailVerificationToken,
+  sendVerificationEmail,
+} from "@/lib/auth/emailVerification";
+import {
   getReportById,
   getReportForUser,
   listAllReports,
@@ -437,5 +441,53 @@ describe("password reset", () => {
     await consumePasswordResetToken(token, "brandnewpass1");
 
     expect(await listSessions(owner.user.id)).toHaveLength(0);
+  });
+});
+
+describe("email verification", () => {
+  it("is unverified on signup, verified after consuming the emailed link", async () => {
+    const owner = await createUser("verify1@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+    await createSession(owner.user.id);
+    expect((await getCurrentUser())?.emailVerifiedAt).toBeNull();
+
+    sentEmails.length = 0;
+    await sendVerificationEmail(owner.user.id, "verify1@example.com", "https://app.example.com");
+    expect(sentEmails).toHaveLength(1);
+    const token = tokenFromResetEmail(sentEmails[0].text);
+
+    expect((await consumeEmailVerificationToken(token)).ok).toBe(true);
+    expect((await getCurrentUser())?.emailVerifiedAt).not.toBeNull();
+  });
+
+  it("rejects reusing an already-consumed verification token", async () => {
+    const owner = await createUser("verify2@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+
+    sentEmails.length = 0;
+    await sendVerificationEmail(owner.user.id, "verify2@example.com", "https://app.example.com");
+    const token = tokenFromResetEmail(sentEmails[0].text);
+
+    expect((await consumeEmailVerificationToken(token)).ok).toBe(true);
+    expect((await consumeEmailVerificationToken(token)).ok).toBe(false);
+  });
+
+  it("rejects a garbage/unknown verification token", async () => {
+    expect((await consumeEmailVerificationToken("not-a-real-token")).ok).toBe(false);
+  });
+
+  it("seeded accounts are pre-verified", async () => {
+    vi.stubEnv("SEED_ADMIN_EMAIL", "preverified-admin@webind.design");
+    vi.stubEnv("SEED_ADMIN_PASSWORD", "adminpass123");
+    await seedAccounts();
+
+    const [row] = await testDb
+      .select({ emailVerifiedAt: schema.users.emailVerifiedAt })
+      .from(schema.users)
+      .where(eq(schema.users.email, "preverified-admin@webind.design"))
+      .limit(1);
+    expect(row?.emailVerifiedAt).not.toBeNull();
+
+    vi.unstubAllEnvs();
   });
 });

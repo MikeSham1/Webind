@@ -61,7 +61,13 @@ export const contentDrafts = pgTable("content_drafts", {
 
 export type ContentDraftRow = typeof contentDrafts.$inferSelect;
 
-/** Registered users (email + scrypt password hash). */
+/**
+ * Registered users (email + scrypt password hash). `emailVerifiedAt` is
+ * informational only, never a login gate -- this app can run with no email
+ * provider configured at all (see src/lib/email.ts), and blocking access on
+ * an unverifiable email would lock everyone out in that case, including the
+ * seeded admin account.
+ */
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -70,6 +76,7 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   isAdmin: boolean("is_admin").notNull().default(false),
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
 });
 
 export type UserRow = typeof users.$inferSelect;
@@ -115,6 +122,22 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
 });
 
 export type PasswordResetTokenRow = typeof passwordResetTokens.$inferSelect;
+
+/** Single-use email verification tokens — same shape and pattern as password resets. */
+export const emailVerificationTokens = pgTable("email_verification_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+});
+
+export type EmailVerificationTokenRow = typeof emailVerificationTokens.$inferSelect;
 
 /**
  * A user's WordPress site, connected via a WP Application Password (not a full

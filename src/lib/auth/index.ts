@@ -14,6 +14,8 @@ export interface AuthUser {
   isAdmin: boolean;
   /** The current session's row id — lets callers mark "this device" in a session list. */
   sessionId: string;
+  /** Null when unverified. Informational only — never gates access. */
+  emailVerifiedAt: Date | null;
 }
 
 function sha256(value: string): string {
@@ -114,6 +116,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       email: users.email,
       isAdmin: users.isAdmin,
       sessionId: sessions.id,
+      emailVerifiedAt: users.emailVerifiedAt,
     })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))

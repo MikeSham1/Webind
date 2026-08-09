@@ -20,3 +20,10 @@ export type ResetPasswordState =
   | { status: "error"; error: string };
 
 export const initialResetPasswordState: ResetPasswordState = { status: "idle" };
+
+export type VerifyEmailState =
+  | { status: "idle" }
+  | { status: "done" }
+  | { status: "error"; error: string };
+
+export const initialVerifyEmailState: VerifyEmailState = { status: "idle" };

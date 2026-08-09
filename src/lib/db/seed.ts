@@ -56,9 +56,15 @@ export async function seedAccounts(): Promise<void> {
           .where(eq(users.id, existing.id));
         console.log(`[seed] synced ${email}${spec.isAdmin ? " (admin)" : ""}`);
       } else {
-        await db
-          .insert(users)
-          .values({ email, passwordHash: await hashPassword(spec.password), isAdmin: spec.isAdmin });
+        // Pre-verified: this account was provisioned by whoever controls the
+        // deployment's env vars, not self-registered, so there's no email
+        // ownership left to confirm.
+        await db.insert(users).values({
+          email,
+          passwordHash: await hashPassword(spec.password),
+          isAdmin: spec.isAdmin,
+          emailVerifiedAt: new Date(),
+        });
         console.log(`[seed] created ${email}${spec.isAdmin ? " (admin)" : ""}`);
       }
     } catch (err) {

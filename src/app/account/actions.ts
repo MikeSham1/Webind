@@ -1,12 +1,21 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { createSession, createUser, logout, verifyCredentials } from "@/lib/auth";
+import { createSession, createUser, getCurrentUser, logout, verifyCredentials } from "@/lib/auth";
 import { consumePasswordResetToken, requestPasswordReset } from "@/lib/auth/passwordReset";
+import {
+  consumeEmailVerificationToken,
+  sendVerificationEmail,
+} from "@/lib/auth/emailVerification";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import { getClientIp } from "@/lib/requestIp";
 import { getBaseUrl } from "@/lib/baseUrl";
-import type { AuthState, ForgotPasswordState, ResetPasswordState } from "./state";
+import type {
+  AuthState,
+  ForgotPasswordState,
+  ResetPasswordState,
+  VerifyEmailState,
+} from "./state";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -34,6 +43,9 @@ export async function signupAction(
   if (!result.ok) return { status: "error", error: result.error };
 
   await createSession(result.user.id);
+  // Best-effort and never throws; awaited (not fire-and-forget) so it isn't
+  // left racing the redirect that follows.
+  await sendVerificationEmail(result.user.id, result.user.email, await getBaseUrl());
   redirect("/dashboard");
 }
 
@@ -113,4 +125,29 @@ export async function resetPasswordAction(
   const result = await consumePasswordResetToken(token, password);
   if (!result.ok) return { status: "error", error: result.error };
   return { status: "done" };
+}
+
+export async function verifyEmailAction(
+  _prev: VerifyEmailState,
+  formData: FormData,
+): Promise<VerifyEmailState> {
+  const token = String(formData.get("token") ?? "").trim();
+  if (!token) {
+    return { status: "error", error: "Missing verification token — use the link from your email." };
+  }
+  const result = await consumeEmailVerificationToken(token);
+  if (!result.ok) return { status: "error", error: result.error };
+  return { status: "done" };
+}
+
+/** Re-send the verification email to the signed-in (but unverified) user. */
+export async function resendVerificationEmailAction(): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user || user.emailVerifiedAt) return;
+
+  const ip = await getClientIp();
+  const limit = checkRateLimit(`resend-verify:${user.id}:${ip}`, 60 * 60 * 1000, 5);
+  if (!limit.allowed) return;
+
+  await sendVerificationEmail(user.id, user.email, await getBaseUrl());
 }
