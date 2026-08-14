@@ -6,7 +6,7 @@ import { BlockedUrlError, normalizeUrl } from "@/lib/crawler/ssrf";
 import { buildReport } from "@/lib/scoring/report";
 import { explainReport } from "@/lib/scoring/explain";
 import { buildOptimizations } from "@/lib/optimize/assets";
-import { attachEmail, getReportById, getReportForUser, saveReportRequest } from "@/lib/leads";
+import { attachEmail, getReportForUser, saveReportRequest } from "@/lib/leads";
 import { getCurrentUser } from "@/lib/auth";
 import {
   getGitHubConnectionStatus,
@@ -137,10 +137,12 @@ function hostOf(url: string): string {
  * unknown template, not something safe to commit blindly). A PR already open
  * for this report is reported as-is rather than opened twice.
  *
- * Always the report's own owner, not whoever clicks the button — mirrors the
- * same fix applied to WordPress publishing, for the same reason: an admin
- * reviewing someone else's report must never open a PR on the admin's own
- * unrelated repo.
+ * Owner-only — deliberately does NOT use the admin bypass that report-viewing
+ * pages use (getReportById). An admin can review any report, but writing to a
+ * customer's own GitHub repo is an action only the report's owner can take,
+ * even though the destination is always correctly routed to the owner's repo
+ * either way. No delegated-publishing path exists yet; an admin who needs to
+ * act on a user's behalf has to do it as that user.
  */
 export async function openFixPrAction(
   _prev: PrState,
@@ -159,9 +161,7 @@ export async function openFixPrAction(
     return { status: "error", error: formatRetryAfter(limit.retryAfterMs) };
   }
 
-  const reportRow = user.isAdmin
-    ? await getReportById(requestId)
-    : await getReportForUser(requestId, user.id);
+  const reportRow = await getReportForUser(requestId, user.id);
   if (!reportRow) return { status: "error", error: "Couldn't find that report." };
   if (!reportRow.userId) {
     return { status: "error", error: "This report has no owner to open a PR on behalf of." };

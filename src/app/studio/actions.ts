@@ -2,7 +2,6 @@
 
 import { generateDraft } from "@/lib/content/generate";
 import {
-  getDraftById,
   getDraftForUser,
   saveDraft,
   setAnyDraftStatus,
@@ -125,20 +124,28 @@ export async function decideDraftAction(
       };
 }
 
-/** Shared validation for the publish/confirm/rollback actions below. */
-async function loadOwnedDraft(draftId: string, userId: string, isAdmin: boolean) {
-  return isAdmin ? getDraftById(draftId) : getDraftForUser(draftId, userId);
+/**
+ * Shared validation for the publish/confirm/rollback actions below.
+ *
+ * Owner-only — deliberately does NOT use the admin bypass that draft-viewing
+ * pages use (getDraftById). An admin can review and moderate (approve/
+ * reject) any draft via decideDraftAction above, but writing to a customer's
+ * own WordPress site is an action only the draft's owner can take, even
+ * though the destination is always correctly routed to the owner's site
+ * either way. No delegated-publishing path exists yet; an admin who needs to
+ * act on a user's behalf has to do it as that user.
+ */
+async function loadOwnedDraft(draftId: string, userId: string) {
+  return getDraftForUser(draftId, userId);
 }
 
 /**
  * Stage 1 of publishing: create the page on WordPress as a DRAFT — never
- * live. Always the draft's own owner's WordPress site, not whoever clicks the
- * button — an admin reviewing someone else's draft must never publish it to
- * the admin's own unrelated site. Content only reaches a customer's site
- * after a human approved it here (the mandatory gate this feature is built
- * around) AND, separately, only goes LIVE after a second explicit
- * confirmation (confirmGoLiveAction) once they've reviewed the WordPress
- * draft itself — two independent human checkpoints, not one.
+ * live. Content only reaches a customer's site after a human approved it
+ * here (the mandatory gate this feature is built around) AND, separately,
+ * only goes LIVE after a second explicit confirmation (confirmGoLiveAction)
+ * once they've reviewed the WordPress draft itself — two independent human
+ * checkpoints, not one.
  *
  * Records a `pending` row before ever calling WordPress (see beginPublish),
  * so a retry after a crash/DB hiccup can't create a duplicate page, and every
@@ -161,7 +168,7 @@ export async function publishDraftAction(
     return { status: "error", error: formatRetryAfter(limit.retryAfterMs) };
   }
 
-  const draft = await loadOwnedDraft(draftId, user.id, user.isAdmin);
+  const draft = await loadOwnedDraft(draftId, user.id);
   if (!draft) return { status: "error", error: "Couldn't find that draft." };
   if (draft.status !== "approved") {
     return { status: "error", error: "Approve this draft before publishing it." };
@@ -256,7 +263,7 @@ export async function confirmGoLiveAction(
     return { status: "error", error: formatRetryAfter(limit.retryAfterMs) };
   }
 
-  const draft = await loadOwnedDraft(draftId, user.id, user.isAdmin);
+  const draft = await loadOwnedDraft(draftId, user.id);
   if (!draft || !draft.userId) return { status: "error", error: "Couldn't find that draft." };
 
   const publication = await getPublicationForDraft(draftId);
@@ -317,7 +324,7 @@ export async function rollbackPublicationAction(
     return { status: "error", error: formatRetryAfter(limit.retryAfterMs) };
   }
 
-  const draft = await loadOwnedDraft(draftId, user.id, user.isAdmin);
+  const draft = await loadOwnedDraft(draftId, user.id);
   if (!draft) return { status: "error", error: "Couldn't find that draft." };
   if (!draft.userId) {
     return { status: "error", error: "This draft has no owner to publish on behalf of." };
