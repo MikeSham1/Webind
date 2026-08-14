@@ -15,8 +15,8 @@ export default function SignalBreakdown({ title, score }: SignalBreakdownProps) 
   const coveragePct = Math.round(score.coverage * 100);
 
   return (
-    <section className="rounded-2xl border border-line bg-surface p-6 sm:p-7">
-      <header className="flex items-baseline justify-between gap-4 border-b border-line pb-4">
+    <section className="border border-line bg-surface p-6 sm:p-7">
+      <header className="flex items-baseline justify-between gap-4 border-b-2 border-line-strong pb-4">
         <h3 className="font-display text-lg font-semibold text-ink">{title}</h3>
         <span className="font-mono text-sm text-muted">
           <span className="text-ink">{score.total}</span>
@@ -55,7 +55,7 @@ export default function SignalBreakdown({ title, score }: SignalBreakdownProps) 
 
               {measured ? (
                 <div
-                  className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-surface-2"
+                  className="mt-2.5 h-1.5 w-full overflow-hidden bg-surface-2"
                   role="meter"
                   aria-valuenow={signal.score as number}
                   aria-valuemin={0}
@@ -63,7 +63,7 @@ export default function SignalBreakdown({ title, score }: SignalBreakdownProps) 
                   aria-label={`${signal.label} score`}
                 >
                   <div
-                    className="bar-grow h-full rounded-full"
+                    className="bar-grow h-full"
                     style={{
                       width: `${signal.score}%`,
                       backgroundColor: gradeVar(signal.score as number),
@@ -72,7 +72,7 @@ export default function SignalBreakdown({ title, score }: SignalBreakdownProps) 
                 </div>
               ) : (
                 <div
-                  className="mt-2.5 h-2 w-full rounded-full border border-dashed border-line"
+                  className="mt-2.5 h-1.5 w-full border border-dashed border-line"
                   aria-label={`${signal.label} not measured`}
                 />
               )}

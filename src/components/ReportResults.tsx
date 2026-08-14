@@ -42,8 +42,10 @@ export default function ReportResults({
     <div className="space-y-14">
       {/* Header */}
       <div className="reveal text-center">
-        <p className="font-mono text-xs uppercase tracking-[0.22em] text-muted">
-          AI Readiness Report
+        <p className="font-mono text-xs uppercase tracking-[0.22em] text-accent">
+          <span aria-hidden="true">[ </span>
+          Parse complete
+          <span aria-hidden="true"> ]</span>
         </p>
         <h2 className="mt-2 font-display text-3xl font-semibold text-ink">
           {host}
@@ -60,8 +62,9 @@ export default function ReportResults({
         </p>
       </div>
 
-      {/* Dials */}
-      <div className="reveal flex flex-col items-center justify-center gap-y-12 gap-x-20 sm:flex-row sm:items-start">
+      {/* Dials — the literal readout, so this is where the scan-frame signature
+          gets its most deliberate use. */}
+      <div className="scan-frame reveal flex flex-col items-center justify-center gap-y-12 gap-x-20 border border-line bg-surface px-8 py-12 sm:flex-row sm:items-start">
         <ScoreDial
           label="AI Readiness"
           score={report.ai.total}

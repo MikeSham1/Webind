@@ -34,7 +34,7 @@ export default function ReportForm() {
         <label htmlFor="url" className="sr-only">
           Website address
         </label>
-        <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-2 shadow-[0_1px_0_rgba(0,0,0,0.02)] sm:flex-row sm:items-center sm:rounded-full sm:pl-5">
+        <div className="scan-frame flex flex-col gap-3 border border-line bg-surface p-2 shadow-[0_1px_0_rgba(0,0,0,0.02)] sm:flex-row sm:items-center sm:pl-5">
           <div className="flex flex-1 items-center gap-3 px-3 sm:px-0">
             <span
               className="hidden font-mono text-sm text-muted sm:inline"

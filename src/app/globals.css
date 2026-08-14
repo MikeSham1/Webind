@@ -1,49 +1,53 @@
 @import "tailwindcss";
 
 /* ---------------------------------------------------------------------------
-   WeBind — "editorial diagnostic" design system
-   Warm paper light theme / deep ink dark theme. Cobalt brand accent kept
-   distinct from the red/amber/green gauge semantics used by the score dials.
+   WeBind — "signal read" design system
+
+   The product's whole mechanic is a machine reading a page to decide whether
+   to cite it. The visual language follows that literally: a cool instrument-
+   panel palette (not the warm-cream-editorial look this used to have), scores
+   rendered like calibration gauges, and a recurring corner-bracket "scan
+   frame" — the signature device — marking whatever's currently being read.
 --------------------------------------------------------------------------- */
 
 :root {
-  --paper: #f5f1e8;
-  --surface: #fffdf8;
-  --surface-2: #fbf7ee;
-  --ink: #17150f;
-  --muted: #6d685b;
-  --line: #e5ddcd;
-  --line-strong: #d6ccb6;
-  --accent: #2439d6;
-  --accent-hover: #1c2fb8;
+  --paper: #eef2ee;
+  --surface: #ffffff;
+  --surface-2: #e4e9e3;
+  --ink: #10160f;
+  --muted: #5b665c;
+  --line: #d3dcd1;
+  --line-strong: #b9c6b6;
+  --accent: #ff5a1f;
+  --accent-hover: #e64d15;
   --accent-ink: #ffffff;
-  --accent-soft: rgba(36, 57, 214, 0.08);
+  --accent-soft: rgba(255, 90, 31, 0.1);
   /* Darkened for WCAG AA: small colored text (e.g. the grade badge) sits on
-     the cream --paper; these hit >=4.5:1 there (good 4.76, warn 4.56, bad 4.99).
-     Graphical uses (meter bars, large numeral) only need 3:1. */
-  --good: #157a4a;
-  --warn: #94640f;
-  --bad: #c62828;
-  --glow: rgba(36, 57, 214, 0.1);
+     the pale --paper; these hit >=4.5:1 there. Graphical uses (meter bars,
+     large numeral) only need 3:1. */
+  --good: #1c7a4f;
+  --warn: #9a6a0a;
+  --bad: #c23a2b;
+  --glow: rgba(255, 90, 31, 0.08);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #09090c;
-    --surface: #131318;
-    --surface-2: #17171d;
-    --ink: #f1eee5;
-    --muted: #9c988c;
-    --line: #262630;
-    --line-strong: #33333f;
-    --accent: #8c99ff;
-    --accent-hover: #a3adff;
-    --accent-ink: #0a0a10;
-    --accent-soft: rgba(140, 153, 255, 0.12);
-    --good: #35c285;
+    --paper: #0a0d0a;
+    --surface: #14180f;
+    --surface-2: #191e14;
+    --ink: #eef2ea;
+    --muted: #96a191;
+    --line: #262c22;
+    --line-strong: #333c2d;
+    --accent: #ff8a52;
+    --accent-hover: #ffa471;
+    --accent-ink: #14100a;
+    --accent-soft: rgba(255, 138, 82, 0.14);
+    --good: #3fc383;
     --warn: #e0a23d;
-    --bad: #f2585d;
-    --glow: rgba(140, 153, 255, 0.14);
+    --bad: #f2685f;
+    --glow: rgba(255, 138, 82, 0.12);
   }
 }
 
@@ -62,9 +66,9 @@
   --color-good: var(--good);
   --color-warn: var(--warn);
   --color-bad: var(--bad);
-  --font-display: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", monospace;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "SFMono-Regular", monospace;
 }
 
 html {
@@ -75,12 +79,13 @@ body {
   background-color: var(--paper);
   color: var(--ink);
   font-family: var(--font-sans);
-  /* Layered atmosphere: a soft brand glow + a faint editorial grid. */
+  /* Layered atmosphere: a soft brand glow + a faint scan grid, like graph
+     paper under a scope. */
   background-image:
     radial-gradient(120% 90% at 50% -10%, var(--glow), transparent 60%),
-    linear-gradient(to right, color-mix(in oklab, var(--line) 45%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in oklab, var(--line) 45%, transparent) 1px, transparent 1px);
-  background-size: 100% 100%, 72px 72px, 72px 72px;
+    linear-gradient(to right, color-mix(in oklab, var(--line-strong) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--line-strong) 55%, transparent) 1px, transparent 1px);
+  background-size: 100% 100%, 32px 32px, 32px 32px;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -98,6 +103,64 @@ body {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* ---- Scan frame — the signature device -------------------------------------
+   Corner brackets marking a region as "currently being read" by the machine,
+   like a viewfinder or a target-lock indicator. Applied sparingly: the URL
+   input, the score dials, and top-level report panels — never as a generic
+   card border. Pure CSS, no extra markup: four pseudo-corner strokes drawn
+   via a single conic-gradient mask so it scales cleanly with the element. */
+.scan-frame {
+  position: relative;
+}
+
+.scan-frame::before,
+.scan-frame::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+}
+
+.scan-frame::before {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid var(--accent);
+  border-left: 2px solid var(--accent);
+}
+
+.scan-frame::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+}
+
+/* A second pair of corners via a nested span keeps the utility to one class
+   on the element while still drawing all four brackets; see .scan-frame-full
+   usage in components for the two-span pattern. */
+.scan-corner-tr {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 14px;
+  height: 14px;
+  border-top: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+  pointer-events: none;
+}
+
+.scan-corner-bl {
+  position: absolute;
+  bottom: -1px;
+  left: -1px;
+  width: 14px;
+  height: 14px;
+  border-bottom: 2px solid var(--accent);
+  border-left: 2px solid var(--accent);
+  pointer-events: none;
 }
 
 /* ---- Motion --------------------------------------------------------------- */
@@ -129,6 +192,15 @@ body {
   }
   50% {
     opacity: 1;
+  }
+}
+
+@keyframes sweep {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
   }
 }
 

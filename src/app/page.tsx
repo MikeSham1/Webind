@@ -13,11 +13,20 @@ export default function Home() {
           <span className="font-display text-xl font-semibold tracking-tight text-ink">
             WeBind
           </span>
-          <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted">
-            Design
+          <span
+            className="font-mono text-[11px] tracking-[0.22em] text-accent"
+            aria-hidden="true"
+          >
+            [scan]
           </span>
         </Link>
         <nav className="flex items-center gap-5">
+          <Link
+            href="/compare"
+            className="whitespace-nowrap font-sans text-sm font-medium text-muted transition-colors hover:text-accent"
+          >
+            Compare
+          </Link>
           <Link
             href="/studio"
             className="whitespace-nowrap font-sans text-sm font-medium text-muted transition-colors hover:text-accent"
@@ -43,14 +52,23 @@ export default function Home() {
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 pb-24">
         <section className="mx-auto max-w-3xl pt-16 text-center sm:pt-24">
           <p className="reveal font-mono text-xs uppercase tracking-[0.24em] text-accent">
+            <span aria-hidden="true">[ </span>
             The new front page is an AI answer
+            <span aria-hidden="true"> ]</span>
           </p>
           <h1
             className="reveal mt-5 font-display text-[2.6rem] font-semibold leading-[1.05] tracking-tight text-ink sm:text-6xl"
             style={{ animationDelay: "60ms" }}
           >
             Find out if your site is built for AI to{" "}
-            <span className="italic text-accent">recommend</span>.
+            <span className="relative whitespace-nowrap text-accent">
+              <span className="relative z-10">recommend</span>
+              <span
+                className="absolute inset-x-0 bottom-1 h-[0.4em] bg-accent-soft"
+                aria-hidden="true"
+              />
+            </span>
+            .
           </h1>
           <p
             className="reveal mx-auto mt-6 max-w-xl text-lg leading-relaxed text-muted"
@@ -72,7 +90,7 @@ export default function Home() {
       <footer className="border-t border-line">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-6 py-6 text-center sm:flex-row sm:text-left">
           <span className="font-display text-sm font-semibold text-ink">
-            WeBind Design
+            WeBind
           </span>
           <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
             <Link href="/methodology" className="hover:text-accent">

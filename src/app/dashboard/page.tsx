@@ -14,6 +14,14 @@ export const metadata: Metadata = {
 // Auth-gated + reads cookies/DB per request — never prerender.
 export const dynamic = "force-dynamic";
 
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 function fmtDate(d: Date | string): string {
   return new Date(d).toLocaleDateString("en-US", {
     month: "short",
@@ -149,12 +157,22 @@ export default async function DashboardPage() {
                     <Td className="text-muted">{r.email ?? "—"}</Td>
                     <Td className="text-muted">{fmtDate(r.createdAt)}</Td>
                     <Td>
-                      <Link
-                        href={`/dashboard/reports/${r.id}`}
-                        className="font-medium text-accent hover:underline"
-                      >
-                        Open
-                      </Link>
+                      <div className="flex items-center gap-4">
+                        <Link
+                          href={`/dashboard/reports/${r.id}`}
+                          className="font-medium text-accent hover:underline"
+                        >
+                          Open
+                        </Link>
+                        {!isAdmin && (
+                          <Link
+                            href={`/dashboard/history/${encodeURIComponent(hostOf(r.url))}`}
+                            className="font-medium text-muted hover:text-accent hover:underline"
+                          >
+                            Trend
+                          </Link>
+                        )}
+                      </div>
                     </Td>
                   </tr>
                 ))}

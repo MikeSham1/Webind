@@ -32,9 +32,31 @@ const GRADE_VAR: Record<Grade, string> = {
 };
 
 const SIZE = 200;
-const STROKE = 16;
+const STROKE = 14;
 const R = (SIZE - STROKE) / 2;
 const C = 2 * Math.PI * R;
+// Ticks sit just inside the ring, between the arc and the numeral — a
+// calibration-gauge read without needing extra canvas beyond the ring.
+const TICK_R_OUTER = R - STROKE / 2 - 3;
+const TICK_R_INNER_MAJOR = TICK_R_OUTER - 11;
+const TICK_R_INNER_MINOR = TICK_R_OUTER - 6;
+
+/** 10 ticks (every 10 points) around the full circle, gauge-style; every 5th is major. */
+const TICKS = Array.from({ length: 10 }, (_, i) => {
+  const angle = (i / 10) * 2 * Math.PI - Math.PI / 2;
+  const major = i % 5 === 0;
+  const rInner = major ? TICK_R_INNER_MAJOR : TICK_R_INNER_MINOR;
+  const cx = SIZE / 2;
+  const cy = SIZE / 2;
+  return {
+    key: i,
+    x1: cx + rInner * Math.cos(angle),
+    y1: cy + rInner * Math.sin(angle),
+    x2: cx + TICK_R_OUTER * Math.cos(angle),
+    y2: cy + TICK_R_OUTER * Math.sin(angle),
+    major,
+  };
+});
 
 export default function ScoreDial({
   label,
@@ -111,6 +133,46 @@ export default function ScoreDial({
             strokeDashoffset={offset}
           />
         </svg>
+        {/* Gauge ticks + crosshair — drawn upright (not rotated with the arc
+            above) since tick 0 is computed directly for the 12 o'clock start. */}
+        <svg
+          width={SIZE}
+          height={SIZE}
+          viewBox={`0 0 ${SIZE} ${SIZE}`}
+          className="absolute inset-0"
+          aria-hidden="true"
+        >
+          {TICKS.map((t) => (
+            <line
+              key={t.key}
+              x1={t.x1}
+              y1={t.y1}
+              x2={t.x2}
+              y2={t.y2}
+              stroke="var(--muted)"
+              strokeWidth={t.major ? 1.5 : 1}
+              opacity={t.major ? 0.55 : 0.3}
+            />
+          ))}
+          <line
+            x1={SIZE / 2 - 5}
+            y1={SIZE / 2}
+            x2={SIZE / 2 + 5}
+            y2={SIZE / 2}
+            stroke="var(--muted)"
+            strokeWidth={1}
+            opacity={0.4}
+          />
+          <line
+            x1={SIZE / 2}
+            y1={SIZE / 2 - 5}
+            x2={SIZE / 2}
+            y2={SIZE / 2 + 5}
+            stroke="var(--muted)"
+            strokeWidth={1}
+            opacity={0.4}
+          />
+        </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span
             className="font-display text-6xl font-semibold leading-none tabular-nums"
@@ -126,12 +188,13 @@ export default function ScoreDial({
 
       <h3 className="mt-5 font-display text-xl font-semibold text-ink">{label}</h3>
       <span
-        className="mt-2 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-[11px] font-medium uppercase tracking-[0.14em]"
+        className="mt-2 inline-flex items-center gap-2 border-x-2 px-3 py-1 font-mono text-[11px] font-medium uppercase tracking-[0.14em]"
         style={{ color, borderColor: color }}
       >
         <span
-          className="h-1.5 w-1.5 rounded-full"
+          className="h-1.5 w-1.5"
           style={{ backgroundColor: color }}
+          aria-hidden="true"
         />
         {GRADE_TEXT[grade]}
       </span>

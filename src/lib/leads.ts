@@ -64,6 +64,38 @@ export async function listReportsForUser(userId: string): Promise<ReportRequest[
   );
 }
 
+/**
+ * A user's own report runs for one host, oldest first — the shape a trend
+ * chart wants. `url` is stored as the exact crawled URL (path included), not
+ * a separate host column, so this filters in application code with the same
+ * `new URL(...).host` extraction the UI already uses elsewhere, rather than
+ * a SQL LIKE that could false-match a substring of an unrelated domain.
+ * Reads a wider window (200) than the dashboard's plain list (50) since a
+ * tracked site is exactly the case where someone has run it many times.
+ */
+export async function listReportsForUserHost(
+  userId: string,
+  host: string,
+): Promise<ReportRequest[]> {
+  const rows = await withDb("listReportsForUserHost", [], (db) =>
+    db
+      .select()
+      .from(reportRequests)
+      .where(eq(reportRequests.userId, userId))
+      .orderBy(desc(reportRequests.createdAt))
+      .limit(200),
+  );
+  return rows
+    .filter((r) => {
+      try {
+        return new URL(r.url).host === host;
+      } catch {
+        return false;
+      }
+    })
+    .reverse();
+}
+
 /** All recent report runs, including anonymous lead-gen ones. Admin only. */
 export async function listAllReports(): Promise<ReportRequest[]> {
   return withDb("listAllReports", [], (db) =>
