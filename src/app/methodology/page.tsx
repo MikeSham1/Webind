@@ -152,7 +152,7 @@ export default function MethodologyPage() {
             <strong className="text-ink">Not calibrated against a benchmark dataset.</strong>{" "}
             These weights are reasoned from published GEO/AEO research (Princeton&apos;s
             GEO study, industry citation-rate studies), not fit to a labeled
-            set of "does an AI actually cite this page" outcomes — no such
+            set of &ldquo;does an AI actually cite this page&rdquo; outcomes — no such
             dataset exists for us to calibrate against yet. Treat scores as a
             directionally-grounded checklist, not a lab-measured probability.
           </li>

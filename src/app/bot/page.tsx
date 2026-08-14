@@ -51,7 +51,7 @@ export default function BotPage() {
           <li>
             Fetches <strong className="text-ink">one page at a time</strong>,
             each time triggered directly by a person entering a URL into
-            WeBind — never on a schedule, and never crawling a site's other
+            WeBind — never on a schedule, and never crawling a site&apos;s other
             pages or following links beyond that single page.
           </li>
           <li>

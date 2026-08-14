@@ -44,7 +44,7 @@ export default function TermsPage() {
         </p>
       </div>
 
-      <H2>What you're getting</H2>
+      <H2>What you&apos;re getting</H2>
       <P>
         WeBind analyzes a URL you provide and produces AI Readiness and
         Traditional Authority scores, a plain-English explanation, and
@@ -57,7 +57,7 @@ export default function TermsPage() {
         check of whether any AI model currently recommends you.
       </P>
 
-      <H2>Only analyze what you're allowed to</H2>
+      <H2>Only analyze what you&apos;re allowed to</H2>
       <P>
         Only submit a URL you own or otherwise have permission to have
         analyzed. Our crawler fetches the page you submit, on your request,
