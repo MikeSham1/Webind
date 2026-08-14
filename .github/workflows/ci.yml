@@ -25,7 +25,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
 
       # Strict, reproducible install from the lockfile — fails if package.json
@@ -67,8 +67,21 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci --no-audit --no-fund
       - name: Dependency audit (high severity)
         run: npm audit --audit-level=high || true
+
+  # Container-only failures (e.g. a lockfile entry that's fine on the host
+  # platform but missing for the Dockerfile's Linux base image) don't show up
+  # in the jobs above, since they run npm ci directly on the runner rather
+  # than inside the image. Build the real image so that class of bug is
+  # caught here instead of on the next deploy.
+  docker-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -t webind:ci .
