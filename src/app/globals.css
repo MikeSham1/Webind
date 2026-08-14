@@ -79,13 +79,13 @@ body {
   background-color: var(--paper);
   color: var(--ink);
   font-family: var(--font-sans);
-  /* Layered atmosphere: a soft brand glow + a faint scan grid, like graph
-     paper under a scope. */
-  background-image:
-    radial-gradient(120% 90% at 50% -10%, var(--glow), transparent 60%),
-    linear-gradient(to right, color-mix(in oklab, var(--line-strong) 55%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in oklab, var(--line-strong) 55%, transparent) 1px, transparent 1px);
-  background-size: 100% 100%, 32px 32px, 32px 32px;
+  /* A single soft glow behind the hero, nothing tiled across the whole page —
+     a repeating grid/dot texture under every line of body text competed with
+     the content instead of sitting behind it. The scan-frame brackets on the
+     dials and inputs already carry the "being read" idea; the page itself
+     stays quiet. */
+  background-image: radial-gradient(120% 70% at 50% -10%, var(--glow), transparent 60%);
+  background-repeat: no-repeat;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
