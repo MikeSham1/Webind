@@ -1,4 +1,5 @@
 import {
+  bigserial,
   boolean,
   integer,
   jsonb,
@@ -212,6 +213,11 @@ export type PublicationRow = typeof publications.$inferSelect;
  */
 export const auditLog = pgTable("audit_log", {
   id: uuid("id").primaryKey().defaultRandom(),
+  // Monotonic insert order. `created_at` alone can't order two entries written
+  // in the same instant (the UUID PK is random, so there's no stable tiebreak),
+  // which matters for an append-only trail read newest-first — `seq` makes that
+  // ordering deterministic.
+  seq: bigserial("seq", { mode: "number" }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

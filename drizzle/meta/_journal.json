@@ -71,6 +71,13 @@
       "when": 1786240006747,
       "tag": "0009_blushing_rick_jones",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787087035265,
+      "tag": "0010_orange_shard",
+      "breakpoints": true
     }
   ]
 }

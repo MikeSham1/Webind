@@ -58,7 +58,9 @@ export async function listAuditLog(limit = 100): Promise<AuditLogRow[]> {
   const db = getDb();
   if (!db) return [];
   try {
-    return await db.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(limit);
+    // Order by the monotonic seq, not created_at — two entries in the same
+    // instant must still come back in a stable newest-first order.
+    return await db.select().from(auditLog).orderBy(desc(auditLog.seq)).limit(limit);
   } catch (err) {
     console.error("listAuditLog failed:", err);
     return [];
