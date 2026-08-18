@@ -2,6 +2,7 @@
 
 import { getCurrentUser } from "@/lib/auth";
 import { checkKeywordVisibility } from "@/lib/visibility/check";
+import { saveVisibilityOutcome } from "@/lib/visibility/store";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import type { VisibilityState } from "./state";
 
@@ -41,7 +42,13 @@ export async function runVisibilityCheck(
   const keywords = parseKeywords(String(formData.get("keywords") ?? ""));
 
   const result = await checkKeywordVisibility({ domain, brandName, keywords });
-  return result.ok
-    ? { status: "success", report: result.report }
-    : { status: "error", error: result.error };
+  if (!result.ok) {
+    return { status: "error", error: result.error };
+  }
+
+  // Persist the measured AI-surfacing outcome as ground-truth training data for
+  // the readiness model. Best-effort — never blocks or breaks the user's check.
+  await saveVisibilityOutcome(result.report, user.id);
+
+  return { status: "success", report: result.report };
 }

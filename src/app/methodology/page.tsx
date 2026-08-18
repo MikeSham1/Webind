@@ -203,6 +203,20 @@ export default function MethodologyPage() {
           (<code className="font-mono text-[13px]">scripts/model</code>) so the
           distillation is fully reproducible.
         </p>
+        <p className="text-[15px] leading-relaxed text-muted">
+          <strong className="text-ink">Closing the gap to ground truth:</strong>{" "}
+          every{" "}
+          <Link href="/visibility" className="text-accent hover:underline">
+            Keyword Visibility
+          </Link>{" "}
+          run now records a real outcome — did an AI answer engine actually
+          surface the brand? Those measured outcomes accumulate as a genuine
+          training set (page features → real visibility), and the pipeline can
+          retrain the model on them instead of on Claude&apos;s judgment once
+          enough have accrued. That&apos;s the path from &ldquo;distilled from an
+          opinion&rdquo; to &ldquo;calibrated to reality&rdquo; — built, and
+          waiting on data.
+        </p>
       </section>
     </main>
   );

@@ -48,6 +48,11 @@ import {
   saveReportRequest,
 } from "@/lib/leads";
 import {
+  listVisibilityOutcomes,
+  saveVisibilityOutcome,
+} from "@/lib/visibility/store";
+import type { VisibilityReport } from "@/lib/visibility/types";
+import {
   getDraftForUser,
   saveDraft,
   setAnyDraftStatus,
@@ -675,5 +680,52 @@ describe("audit trail", () => {
     });
     const entries = await listAuditLog(1);
     expect(entries[0].actorUserId).toBeNull();
+  });
+});
+
+describe("visibility outcomes (real training data)", () => {
+  function report(overrides: Partial<VisibilityReport> = {}): VisibilityReport {
+    return {
+      domain: "acme.test",
+      brandName: "Acme",
+      keywords: [],
+      overallScore: 55,
+      coverage: 0.75,
+      topCompetitors: ["Globex"],
+      recommendations: [],
+      enginesUsed: ["claude"],
+      ...overrides,
+    };
+  }
+
+  it("persists a measured outcome and reads it back", async () => {
+    const owner = await createUser("vis-owner@example.com", "correcthorse1");
+    if (!owner.ok) throw new Error("setup failed");
+
+    const id = await saveVisibilityOutcome(
+      report({ domain: "roundtrip.test", overallScore: 62, coverage: 0.5 }),
+      owner.user.id,
+    );
+    expect(id).not.toBeNull();
+
+    const rows = await listVisibilityOutcomes();
+    const row = rows.find((r) => r.domain === "roundtrip.test");
+    expect(row).toBeDefined();
+    expect(row?.overallScore).toBe(62);
+    expect(row?.coverageBps).toBe(500); // 0.5 stored ×1000
+    expect(row?.userId).toBe(owner.user.id);
+    expect(row?.report?.brandName).toBe("Acme");
+  });
+
+  it("stores an anonymous-safe null score without dropping the row", async () => {
+    const id = await saveVisibilityOutcome(
+      report({ domain: "noscore.test", overallScore: null, coverage: 0 }),
+      null,
+    );
+    expect(id).not.toBeNull();
+    const rows = await listVisibilityOutcomes();
+    const row = rows.find((r) => r.domain === "noscore.test");
+    expect(row?.overallScore).toBeNull();
+    expect(row?.userId).toBeNull();
   });
 });

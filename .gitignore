@@ -45,3 +45,6 @@ next-env.d.ts
 # Claude Code local settings (personal, not shared)
 .claude/settings.local.json
 .claude/settings.json
+
+# Real-outcome training data is derived from customer visibility checks — never commit it.
+scripts/model/real-dataset.jsonl

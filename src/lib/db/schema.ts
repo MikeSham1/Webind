@@ -15,6 +15,7 @@ import type {
   DraftStatus,
   GateReport,
 } from "../content/types";
+import type { VisibilityReport } from "../visibility/types";
 
 /**
  * Every free-report run is logged here (the preview doubles as a lead funnel).
@@ -39,6 +40,33 @@ export const reportRequests = pgTable("report_requests", {
 });
 
 export type ReportRequest = typeof reportRequests.$inferSelect;
+
+/**
+ * Real AI-surfacing outcomes from Keyword Visibility runs — the ground-truth
+ * signal the readiness model can eventually be retrained on. Each row is one
+ * completed visibility check: for a domain's keywords, did an AI answer engine
+ * actually surface the brand? `overallScore` is the measured 0-100 outcome
+ * (null when no engine returned a definite verdict); the full `report` is kept
+ * so the training export can aggregate however it needs. Append-only; the
+ * `userId` FK is set-null so deleting an account anonymizes the sample rather
+ * than discarding a measured outcome (matching report_requests).
+ */
+export const visibilityOutcomes = pgTable("visibility_outcomes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  domain: text("domain").notNull(),
+  brandName: text("brand_name"),
+  /** Measured 0-100 AI visibility across engines, or null if none was definite. */
+  overallScore: integer("overall_score"),
+  /** Fraction (0-1, stored ×1000 as int) of the probe matrix that ran. */
+  coverageBps: integer("coverage_bps"),
+  report: jsonb("report").$type<VisibilityReport>(),
+});
+
+export type VisibilityOutcomeRow = typeof visibilityOutcomes.$inferSelect;
 
 /** AI-assisted content drafts from the Content Studio, pending human approval. */
 export const contentDrafts = pgTable("content_drafts", {
