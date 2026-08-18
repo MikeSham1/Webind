@@ -33,6 +33,13 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      # The crawler tests launch a real Chromium (src/lib/crawler/*.test.ts), so
+      # the browser binary and its OS libraries must be present or `npm test`
+      # fails with "Executable doesn't exist". Pinned implicitly to the installed
+      # Playwright version via the lockfile.
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
       - name: Lint
         run: npm run lint
 
