@@ -6,6 +6,7 @@ import FixList from "./FixList";
 import OptimizationAssets from "./OptimizationAssets";
 import LeadCapture from "./LeadCapture";
 import type { PrSnapshot } from "./OpenPrBar";
+import { MODEL_META } from "@/lib/model/predict";
 import Link from "next/link";
 
 export interface ReportResultsProps {
@@ -18,6 +19,11 @@ export interface ReportResultsProps {
   requestId?: string | null;
   githubConnected?: boolean;
   initialPr?: PrSnapshot | null;
+  /**
+   * Experimental Claude-distilled model prediction (0-100). Shown only on fresh
+   * runs (the crawl is needed to compute it); omitted on saved-report views.
+   */
+  modelReadiness?: number;
 }
 
 function hostOf(url: string): string {
@@ -35,6 +41,7 @@ export default function ReportResults({
   requestId,
   githubConnected = false,
   initialPr = null,
+  modelReadiness,
 }: ReportResultsProps) {
   const host = hostOf(report.url);
 
@@ -78,6 +85,40 @@ export default function ReportResults({
           delay={160}
         />
       </div>
+
+      {/* Experimental: Claude-distilled model prediction. Deliberately kept
+          visually secondary to the heuristic dials and labeled honestly — it's
+          distilled from Claude's judgment of structural signals, not measured
+          real-world citations. */}
+      {typeof modelReadiness === "number" && (
+        <div className="reveal" style={{ animationDelay: "40ms" }}>
+          <div className="mx-auto flex max-w-xl flex-col items-center gap-3 border border-dashed border-accent/40 bg-surface px-6 py-5 text-center sm:flex-row sm:justify-between sm:text-left">
+            <div>
+              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+                <span aria-hidden="true">[ </span>
+                Experimental · Claude-distilled model {MODEL_META.version}
+                <span aria-hidden="true"> ]</span>
+              </p>
+              <p className="mt-1.5 text-sm leading-relaxed text-muted">
+                A small neural net trained to imitate Claude&apos;s judgment of
+                AI-readiness signals — held-out MAE {MODEL_META.testMAE}, not
+                calibrated to real citations.{" "}
+                <Link href="/methodology" className="text-accent hover:underline">
+                  How it works
+                </Link>
+              </p>
+            </div>
+            <div className="shrink-0">
+              <span className="font-display text-4xl font-semibold tabular-nums text-ink">
+                {modelReadiness}
+              </span>
+              <span className="ml-1 font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
+                / 100
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Signal breakdown */}
       <div

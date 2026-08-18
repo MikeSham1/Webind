@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AI_WEIGHTS, TRADITIONAL_WEIGHTS, SCORING_MODEL_VERSION } from "@/lib/scoring/weights";
+import { MODEL_META } from "@/lib/model/predict";
 
 export const metadata: Metadata = {
   title: "Methodology — WeBind",
@@ -168,6 +169,40 @@ export default function MethodologyPage() {
             providers activate automatically once configured).
           </li>
         </ul>
+      </section>
+
+      <section className="mt-10 space-y-3">
+        <h2 className="font-display text-lg font-semibold text-ink">
+          Experimental: the Claude-distilled model{" "}
+          <span className="font-mono text-xs font-normal text-muted">
+            {MODEL_META.version}
+          </span>
+        </h2>
+        <p className="text-[15px] leading-relaxed text-muted">
+          Alongside the two heuristic scores, fresh reports show one more number
+          from a small neural network we actually trained (a 25-input → 16-unit
+          → 1 model, fit by gradient descent). It is a{" "}
+          <strong className="text-ink">distillation</strong>: we generated a
+          corpus of page-signal profiles, had Claude judge how citable each one
+          is, and trained the network to reproduce that judgment — including the
+          non-linear calls a weighted checklist can&apos;t make, like
+          &ldquo;great content behind an AI-blocking robots.txt is still nearly
+          uncitable.&rdquo; On a held-out test split it predicts Claude&apos;s
+          judgment to within a mean absolute error of {MODEL_META.testMAE} points
+          (R² {MODEL_META.testR2}), versus {MODEL_META.baselineTestMAE} for
+          guessing the average.
+        </p>
+        <p className="text-[15px] leading-relaxed text-muted">
+          <strong className="text-ink">What it is not:</strong> it is trained on
+          Claude&apos;s <em>opinion</em> of citability from structural signals,
+          not on measured &ldquo;did an AI actually cite this page&rdquo;
+          outcomes — the same missing dataset noted above. So it inherits
+          Claude&apos;s reasoning, not ground truth. We show it as a labeled
+          experiment, kept visually secondary to the heuristic scores, never as a
+          calibrated probability. The teacher and training code are in the repo
+          (<code className="font-mono text-[13px]">scripts/model</code>) so the
+          distillation is fully reproducible.
+        </p>
       </section>
     </main>
   );

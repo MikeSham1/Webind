@@ -18,6 +18,11 @@ export type ReportState =
       requestId: string | null;
       /** Whether the signed-in visitor has a GitHub repo connected (Settings). */
       githubConnected: boolean;
+      /**
+       * Experimental: the Claude-distilled model's readiness prediction (0-100).
+       * Runs alongside — never replaces — the heuristic scores. See predict.ts.
+       */
+      modelReadiness: number;
     }
   | { status: "error"; error: string; url: string };
 

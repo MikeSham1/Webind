@@ -5,6 +5,7 @@ import { CrawlerBusyError } from "@/lib/crawler/browser";
 import { BlockedUrlError, normalizeUrl } from "@/lib/crawler/ssrf";
 import { buildReport } from "@/lib/scoring/report";
 import { explainReport } from "@/lib/scoring/explain";
+import { predictReadiness } from "@/lib/model/predict";
 import { buildOptimizations } from "@/lib/optimize/assets";
 import { attachEmail, getReportForUser, saveReportRequest } from "@/lib/leads";
 import { getCurrentUser } from "@/lib/auth";
@@ -77,7 +78,17 @@ export async function runReport(
     const githubConnected = user
       ? (await getGitHubConnectionStatus(user.id)) !== null
       : false;
-    return { status: "success", report, narrative, optimizations, requestId, githubConnected };
+    // Experimental Claude-distilled model prediction — deterministic, no network.
+    const modelReadiness = predictReadiness(page);
+    return {
+      status: "success",
+      report,
+      narrative,
+      optimizations,
+      requestId,
+      githubConnected,
+      modelReadiness,
+    };
   } catch (err) {
     // These two carry messages written for a visitor; anything else is an
     // internal failure and gets the generic line so we leak nothing.
