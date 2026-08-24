@@ -16,6 +16,8 @@ import type {
   GateReport,
 } from "../content/types";
 import type { VisibilityReport } from "../visibility/types";
+import type { PageSnapshot as PageSnapshotData } from "../fixgen/snapshot";
+import type { FixCandidate as FixCandidateData } from "../fixgen/types";
 
 /**
  * Every free-report run is logged here (the preview doubles as a lead funnel).
@@ -309,3 +311,98 @@ export const codeFixPrs = pgTable("code_fix_prs", {
 });
 
 export type CodeFixPrRow = typeof codeFixPrs.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Fix Generator — closed-loop intervention learning records.
+//
+// Deliberately NORMALIZED and multi-dimensional: human judgment, deployment,
+// safety, and outcome are never flattened into one reward column. A fix run
+// binds to an immutable page_snapshots row (the exact page state it was based
+// on), so features/evidence can't drift out from under a recommendation.
+// ---------------------------------------------------------------------------
+
+/** The immutable page state a recommendation was generated against. */
+export const pageSnapshots = pgTable("page_snapshots", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  url: text("url").notNull(),
+  host: text("host").notNull(),
+  /** sha256 of the canonical content fields — the snapshot's identity. */
+  contentHash: text("content_hash").notNull(),
+  pageType: text("page_type").notNull(),
+  locale: text("locale"),
+  /** The extracted PageSnapshot (title/meta/headings/body/json-ld), not raw HTML. */
+  snapshot: jsonb("snapshot").$type<PageSnapshotData>(),
+});
+export type PageSnapshotRow = typeof pageSnapshots.$inferSelect;
+
+/** One generation run: a diagnosis against a snapshot, by a specific model. */
+export const fixRuns = pgTable("fix_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  snapshotId: uuid("snapshot_id")
+    .notNull()
+    .references(() => pageSnapshots.id, { onDelete: "cascade" }),
+  signalKey: text("signal_key").notNull(),
+  category: text("category").notNull(),
+  diagnosis: text("diagnosis").notNull(),
+  generatorProvider: text("generator_provider").notNull(),
+  generatorModel: text("generator_model").notNull(),
+  promptVersion: text("prompt_version").notNull(),
+  /** Query context, kept per-run rather than averaged away. */
+  queryCluster: text("query_cluster"),
+  engine: text("engine"),
+});
+export type FixRunRow = typeof fixRuns.$inferSelect;
+
+/** One generated candidate (or no_fix) plus its deterministic validation. */
+export const fixCandidates = pgTable("fix_candidates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  runId: uuid("run_id")
+    .notNull()
+    .references(() => fixRuns.id, { onDelete: "cascade" }),
+  candidate: jsonb("candidate").$type<FixCandidateData>().notNull(),
+  validationOk: boolean("validation_ok").notNull(),
+  validationFailures: jsonb("validation_failures").$type<string[]>(),
+  rerankerScore: integer("reranker_score"),
+});
+export type FixCandidateRow = typeof fixCandidates.$inferSelect;
+
+/**
+ * The human's judgment on a candidate — the highest-value learning signal.
+ * `decision` and the edited final are kept distinct from any downstream SEO
+ * outcome so preference and value can be learned separately.
+ */
+export const fixReviews = pgTable("fix_reviews", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  candidateId: uuid("candidate_id")
+    .notNull()
+    .references(() => fixCandidates.id, { onDelete: "cascade" }),
+  reviewerUserId: uuid("reviewer_user_id").references(() => users.id, { onDelete: "set null" }),
+  /** accepted_unedited | accepted_minor_edit | accepted_major_edit | rejected | skipped */
+  decision: text("decision").notNull(),
+  /** The human's final text when edited — the real training target, not the model's. */
+  humanFinal: text("human_final"),
+  rejectionReason: text("rejection_reason"),
+});
+export type FixReviewRow = typeof fixReviews.$inferSelect;
+
+/**
+ * Registry of every generator/reranker/fix-value model version, so a run,
+ * a ranking, or an outcome can always be traced to the exact model + config
+ * that produced it. Promotion is a config change recorded here, never a delete.
+ */
+export const modelVersions = pgTable("model_versions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  kind: text("kind").notNull(), // generator | reranker | fix_value
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  versionLabel: text("version_label").notNull(),
+  metadata: jsonb("metadata"),
+});
+export type ModelVersionRow = typeof modelVersions.$inferSelect;

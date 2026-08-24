@@ -1,5 +1,9 @@
 import type { FixContextPackage } from "./types";
 
+/** Bump when the system instruction or context serialization changes, so every
+ *  stored run is traceable to the exact prompt that produced it. */
+export const PROMPT_VERSION = "fixgen-2026.08.24";
+
 /**
  * The WeBind Fix Generator system instruction — the hard, non-negotiable rules.
  * Grounded in Google's 2026 guidance that normal, people-first SEO remains

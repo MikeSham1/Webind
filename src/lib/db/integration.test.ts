@@ -52,6 +52,16 @@ import {
   saveVisibilityOutcome,
 } from "@/lib/visibility/store";
 import type { VisibilityReport } from "@/lib/visibility/types";
+import { makePage } from "@/lib/scoring/test-fixtures";
+import { buildSnapshot } from "@/lib/fixgen/snapshot";
+import { buildMetaDescriptionContext } from "@/lib/fixgen/context";
+import {
+  getRunWithCandidates,
+  persistFixRun,
+  saveReview,
+} from "@/lib/fixgen/store";
+import type { GenerateFixesOutcome } from "@/lib/fixgen/generate";
+import type { FixCandidate } from "@/lib/fixgen/types";
 import {
   getDraftForUser,
   saveDraft,
@@ -727,5 +737,80 @@ describe("visibility outcomes (real training data)", () => {
     const row = rows.find((r) => r.domain === "noscore.test");
     expect(row?.overallScore).toBeNull();
     expect(row?.userId).toBeNull();
+  });
+});
+
+describe("fix generator persistence", () => {
+  function fix(overrides: Partial<FixCandidate> = {}): FixCandidate {
+    return {
+      candidateId: "c1",
+      action: "fix",
+      category: "metadata",
+      target: "<head>",
+      before: null,
+      after: '<meta name="description" content="Acme widgets for small business.">',
+      rationale: "Summarizes the page.",
+      evidenceSpanIds: ["ev_001"],
+      confidence: "high",
+      applyVia: "github-snippet",
+      noFixReason: null,
+      ...overrides,
+    };
+  }
+
+  it("persists a run + candidates bound to an immutable snapshot, and a review", async () => {
+    const owner = await createUser("fixgen@example.com", "correcthorse9");
+    if (!owner.ok) throw new Error("setup failed");
+
+    const snapshot = buildSnapshot(
+      makePage({ url: "https://acme.test/w", metaDescription: null, title: "Acme Widgets" }),
+    );
+    const gate = buildMetaDescriptionContext(snapshot);
+    if (gate.kind !== "context") throw new Error("expected a context");
+
+    const outcome: GenerateFixesOutcome = {
+      accepted: [fix()],
+      rejected: [
+        {
+          candidate: fix({ candidateId: "c2", after: "Trusted by 9,999 firms.", evidenceSpanIds: [] }),
+          result: { ok: false, failures: ["introduces factual tokens but cites no evidence"] },
+        },
+      ],
+      generation: {
+        provider: "fake",
+        model: "fake-1",
+        text: "{}",
+        inputTokens: 0,
+        outputTokens: 0,
+        durationMs: 0,
+        purpose: "fix_generate",
+        fallback: false,
+      },
+    };
+
+    const ids = await persistFixRun(snapshot, gate.context, outcome, owner.user.id);
+    expect(ids).not.toBeNull();
+
+    const loaded = await getRunWithCandidates(ids!.runId);
+    expect(loaded).not.toBeNull();
+    // The run is bound to the snapshot, with the model + prompt version recorded.
+    expect(loaded!.run.snapshotId).toBe(ids!.snapshotId);
+    expect(loaded!.run.generatorModel).toBe("fake-1");
+    expect(loaded!.run.category).toBe("metadata");
+    // Both candidates stored, with their validation verdicts kept distinct.
+    expect(loaded!.candidates).toHaveLength(2);
+    const ok = loaded!.candidates.filter((c) => c.validationOk);
+    const bad = loaded!.candidates.filter((c) => !c.validationOk);
+    expect(ok).toHaveLength(1);
+    expect(bad[0].validationFailures?.[0]).toMatch(/cites no evidence/);
+
+    // A human review round-trips.
+    const reviewId = await saveReview({
+      candidateId: ok[0].id,
+      reviewerUserId: owner.user.id,
+      decision: "accepted_minor_edit",
+      humanFinal: '<meta name="description" content="Durable Acme widgets for small businesses.">',
+    });
+    expect(reviewId).not.toBeNull();
   });
 });
