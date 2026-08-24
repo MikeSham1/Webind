@@ -1,16 +1,24 @@
 /**
- * Signal weights, grounded in 2026 GEO/AEO research.
+ * Signal weights for the on-page readiness estimate.
  *
- * AI Authority is now dominated by the levers that actually move AI citations:
- * E-E-A-T/trust (96% of AI-Overview citations have strong E-E-A-T; unauthored
- * pages ~40% less cited), structural answerability (lists +30% for Claude, FAQ
- * +28-40%, 44% of citations come from the first 30% of a page), and fact
- * density (Princeton's single strongest method, +41%). Schema, AI-crawlability
- * and freshness round it out. Brand mentions are off-page — kept as a small
- * weight, measured only when the live AI-citation check runs.
+ * These are reasoned from published GEO/AEO research, corrected for what 2026
+ * evidence actually supports — which is less than the GEO hype cycle claimed.
+ * Deliberate corrections baked into the signals these weights apply to:
+ *   - llms.txt is NOT scored (engines say it neither helps nor hurts).
+ *   - FAQPage schema is NOT rewarded or recommended (Google removed FAQ rich
+ *     results; no special schema is needed for generative Search). Q&A
+ *     *structure* still helps and is scored.
+ *   - Content length only flags "too thin to answer" — there is no ideal
+ *     length, so more words are not rewarded.
+ *   - Title/meta length is a usability nudge (truncation), not a hard rule.
+ *   - Freshness decays gently and never to zero, because how much recency
+ *     matters is topic-dependent.
  *
- * Traditional Authority leans on measurable on-page quality/technical signals,
- * with backlinks retained as the one honest off-page unknown.
+ * The weights themselves (which signal counts how much) remain reasoned, not
+ * calibrated against labeled citation outcomes — the readiness model and the
+ * visibility-outcome training loop are how we move toward real calibration.
+ * Brand mentions and backlinks stay off-page unknowns, measured only when a
+ * live check / paid index is configured.
  */
 
 /**
@@ -22,7 +30,7 @@
  * such dataset — ground-truth "does an AI actually cite this page" labels at
  * scale — exists for us to calibrate against yet).
  */
-export const SCORING_MODEL_VERSION = "2026.1";
+export const SCORING_MODEL_VERSION = "2026.2";
 
 export const AI_WEIGHTS = {
   eeat: 0.2,

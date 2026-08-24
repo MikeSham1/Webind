@@ -114,7 +114,11 @@ export function scoreSchema(page: CrawledPage): SignalScore {
   const missing: string[] = [];
   if (!hasOrg) missing.push("Organization");
   if (!hasSite) missing.push("WebSite");
-  if (!contentType) missing.push("a content type (Article, FAQPage, Product…)");
+  // Recommend a content type that MATCHES the page (Article/Product/HowTo…) —
+  // never a generic FAQPage. Google removed FAQ rich results in 2026 and says
+  // no special schema is needed for generative Search, so pushing FAQPage as a
+  // default "become citable" trick is outdated.
+  if (!contentType) missing.push("a content type that matches the page (Article, Product, HowTo…)");
 
   return {
     key: "schema",
@@ -128,24 +132,27 @@ export function scoreSchema(page: CrawledPage): SignalScore {
     fix:
       score >= 90
         ? null
-        : `Add JSON-LD schema — ${missing.length ? missing.join(", ") : "FAQPage or Article to become citable"}.`,
+        : `Add JSON-LD schema — ${missing.length ? missing.join(", ") : "the content type that matches this page"}.`,
   };
 }
 
 export function scoreAiCrawlability(page: CrawledPage): SignalScore {
+  // Only the two things that actually gate whether an AI engine can read the
+  // page: is the content server-rendered (AI crawlers run little JS), and are
+  // AI crawlers allowed in robots.txt. llms.txt is deliberately NOT scored —
+  // as of 2026 the major engines have said it neither helps nor hurts
+  // visibility, so penalizing its absence would be manufacturing a problem.
+  // It stays available as an optional generated asset (see optimize/assets),
+  // just not as a scored/ranked deficiency.
   const problems: string[] = [];
   let score = 100;
   if (!page.hasServerRenderedContent) {
-    score -= 40;
+    score -= 55;
     problems.push("server-render key content (AI crawlers run little JS)");
   }
   if (!page.robotsAllowsAiBots) {
-    score -= 35;
-    problems.push("unblock AI bots in robots.txt");
-  }
-  if (!page.hasLlmsTxt) {
-    score -= 25;
-    problems.push("add an llms.txt file");
+    score -= 45;
+    problems.push("unblock AI search crawlers in robots.txt");
   }
   score = clamp(score);
   return {
@@ -155,7 +162,7 @@ export function scoreAiCrawlability(page: CrawledPage): SignalScore {
     weight: AI_WEIGHTS.aiCrawlability,
     reason:
       problems.length === 0
-        ? "Server-rendered, AI bots allowed, and llms.txt present."
+        ? "Server-rendered and AI search crawlers are allowed."
         : `AI crawlability gaps: ${problems.join("; ")}.`,
     fix: problems.length === 0 ? null : `Improve AI crawlability: ${problems.join("; ")}.`,
   };
@@ -199,20 +206,25 @@ export function scoreFreshness(page: CrawledPage): SignalScore {
     ? ` (via ${DATE_SOURCE_LABEL[page.lastModifiedSource]})`
     : "";
 
+  // How much recency matters is genuinely topic-dependent — a news or pricing
+  // page ages fast, an evergreen explainer barely at all. Until we model query
+  // and content type (roadmap), we apply a gentle, non-punitive decay and floor
+  // an old-but-dated page well above zero rather than asserting a universal
+  // "content decays in N months" rule the evidence doesn't support.
   let score: number;
   let reason: string;
-  if (age < 90) {
+  if (age < 180) {
     score = 100;
-    reason = `Updated within the last 90 days${via}.`;
-  } else if (age < 180) {
-    score = 60;
-    reason = `Last updated 3-6 months ago${via}.`;
+    reason = `Updated within the last 6 months${via}.`;
   } else if (age < 365) {
-    score = 30;
+    score = 75;
     reason = `Last updated 6-12 months ago${via}.`;
+  } else if (age < 730) {
+    score = 55;
+    reason = `Last updated 1-2 years ago${via}.`;
   } else {
-    score = 0;
-    reason = `Last updated over a year ago${via}.`;
+    score = 40;
+    reason = `Last updated over 2 years ago${via}.`;
   }
 
   return {
@@ -221,7 +233,10 @@ export function scoreFreshness(page: CrawledPage): SignalScore {
     score,
     weight: AI_WEIGHTS.freshness,
     reason,
-    fix: score < 100 ? "Refresh this page; AI engines decay content in 2-3 months." : null,
+    fix:
+      score < 100
+        ? "If the topic changes over time, refresh the page and its update date; for evergreen topics a stable date is fine."
+        : null,
   };
 }
 
@@ -272,13 +287,15 @@ export function scoreAnswerability(page: CrawledPage): SignalScore {
   // Tables.
   const tableScore = page.tableCount > 0 ? 15 : 0;
 
-  // FAQ / Q&A.
-  const types = collectJsonLdTypes(page.jsonLdBlocks);
-  const hasFaqSchema = types.has("FAQPage") || types.has("QAPage");
+  // Q&A structure — real question-style headings that directly answer what a
+  // user asked. Scored on the STRUCTURE (which genuinely helps an engine lift a
+  // passage), NOT on FAQPage schema: Google removed FAQ rich results in 2026
+  // and says no special schema is needed for generative Search, so rewarding
+  // the markup would be scoring an outdated trick.
   const questions = questionHeadingCount(page);
-  let faqScore = 0;
-  if (hasFaqSchema || questions >= 2) faqScore = 25;
-  else if (questions >= 1) faqScore = 12;
+  let qaScore = 0;
+  if (questions >= 2) qaScore = 25;
+  else if (questions >= 1) qaScore = 12;
 
   // Heading structure.
   const levels = new Set(page.headings.map((h) => h.level));
@@ -293,11 +310,11 @@ export function scoreAnswerability(page: CrawledPage): SignalScore {
     proseScore = longRatio <= 0.3 ? 15 : longRatio <= 0.5 ? 8 : 0;
   }
 
-  const score = clamp(listScore + tableScore + faqScore + headingScore + proseScore);
+  const score = clamp(listScore + tableScore + qaScore + headingScore + proseScore);
 
   const missing: string[] = [];
   if (listScore < 25) missing.push("break key points into bullet/numbered lists");
-  if (faqScore < 25) missing.push("add an FAQ section (question headings + FAQPage schema)");
+  if (qaScore < 25) missing.push("answer common questions with clear question-style headings");
   if (tableScore === 0) missing.push("use a comparison table where it fits");
   if (proseScore < 15) missing.push("shorten long paragraphs into scannable chunks");
 
@@ -368,26 +385,28 @@ export function scoreBrandMentions(page: CrawledPage): SignalScore {
 
 export function scoreContentQuality(page: CrawledPage): SignalScore {
   const w = page.wordCount;
-  let base: number;
-  if (w < 200) base = 15;
-  else if (w < 400) base = 35;
-  else if (w < 800) base = 58;
-  else if (w < 1500) base = 78;
-  else base = 90;
-
+  // There is no ideal page length (Google is explicit that length alone
+  // doesn't affect ranking), so word count only distinguishes "too thin to
+  // actually answer the topic" from "substantive enough" — we do NOT reward
+  // more words beyond that adequacy floor. Structure and depth carry the rest.
+  const thin = w < 150;
+  const adequacy = thin ? 25 : w < 350 ? 55 : 72;
   const structured =
     (page.listCount > 0 || page.tableCount > 0) && page.headings.length >= 3;
-  const score = clamp(base + (structured ? 10 : 0));
+  const hasHeadings = page.headings.length >= 2;
+  const score = clamp(adequacy + (structured ? 18 : hasHeadings ? 8 : 0));
 
   return {
     key: "contentQuality",
     label: "Content Quality",
     score,
     weight: TRADITIONAL_WEIGHTS.contentQuality,
-    reason: `${w} words${structured ? ", well-structured" : ""}.`,
+    reason: thin
+      ? `Only ${w} words — likely too thin to fully answer the topic.`
+      : `Substantive content${structured ? ", well-structured" : ""}.`,
     fix:
-      score < 80
-        ? "Expand into genuinely helpful, in-depth content with clear structure."
+      score < 70
+        ? "Make sure the page thoroughly answers its topic with clear structure — depth and usefulness matter more than raw length."
         : null,
   };
 }
@@ -462,16 +481,21 @@ export function scoreOnPageOptimization(page: CrawledPage): SignalScore {
   const titleLen = page.title?.trim().length ?? 0;
   const metaLen = page.metaDescription?.trim().length ?? 0;
 
-  const titleScore = titleLen === 0 ? 0 : titleLen >= 20 && titleLen <= 70 ? 35 : 18;
-  const metaScore = metaLen === 0 ? 0 : metaLen >= 70 && metaLen <= 165 ? 35 : 18;
+  // Presence and descriptiveness are what matter. Length is a USABILITY nudge —
+  // an over-long title/description just truncates in a result snippet — not an
+  // SEO-correctness rule (search engines have no hard title-length limit and no
+  // minimum), so we only nudge the over-long end, never penalize a short one.
+  const titleScore = titleLen === 0 ? 0 : titleLen <= 65 ? 35 : 28;
+  const metaScore = metaLen === 0 ? 0 : metaLen <= 165 ? 35 : 28;
   const ogScore = page.hasOpenGraph ? 30 : 0;
 
   const score = clamp(titleScore + metaScore + ogScore);
 
   const missing: string[] = [];
-  if (titleScore < 35) missing.push(titleLen === 0 ? "add a title" : "tune the title to 20-70 chars");
-  if (metaScore < 35)
-    missing.push(metaLen === 0 ? "add a meta description" : "tune the meta description to 70-165 chars");
+  if (titleLen === 0) missing.push("add a descriptive title");
+  else if (titleLen > 65) missing.push("shorten the title so it doesn't truncate in results");
+  if (metaLen === 0) missing.push("add a meta description");
+  else if (metaLen > 165) missing.push("shorten the meta description so it doesn't truncate");
   if (!page.hasOpenGraph) missing.push("add Open Graph tags for rich sharing");
 
   return {

@@ -51,19 +51,21 @@ describe("scoreAiCrawlability", () => {
     expect(scoreAiCrawlability(makePage()).score).toBe(100);
   });
 
-  it("penalizes SSR (-40), robots (-35), llms.txt (-25)", () => {
-    expect(scoreAiCrawlability(makePage({ hasServerRenderedContent: false })).score).toBe(60);
-    expect(scoreAiCrawlability(makePage({ robotsAllowsAiBots: false })).score).toBe(65);
-    expect(scoreAiCrawlability(makePage({ hasLlmsTxt: false })).score).toBe(75);
+  it("penalizes missing SSR (-55) and blocked AI crawlers (-45); ignores llms.txt", () => {
+    expect(scoreAiCrawlability(makePage({ hasServerRenderedContent: false })).score).toBe(45);
+    expect(scoreAiCrawlability(makePage({ robotsAllowsAiBots: false })).score).toBe(55);
+    // llms.txt is no longer scored — its absence is not a deficiency.
+    expect(scoreAiCrawlability(makePage({ hasLlmsTxt: false })).score).toBe(100);
   });
 });
 
 describe("scoreFreshness", () => {
-  it("scores by age buckets", () => {
+  it("decays gently by age and never floors to zero", () => {
     expect(scoreFreshness(makePage({ lastModified: daysAgo(10) })).score).toBe(100);
-    expect(scoreFreshness(makePage({ lastModified: daysAgo(120) })).score).toBe(60);
-    expect(scoreFreshness(makePage({ lastModified: daysAgo(300) })).score).toBe(30);
-    expect(scoreFreshness(makePage({ lastModified: daysAgo(500) })).score).toBe(0);
+    expect(scoreFreshness(makePage({ lastModified: daysAgo(120) })).score).toBe(100);
+    expect(scoreFreshness(makePage({ lastModified: daysAgo(300) })).score).toBe(75);
+    expect(scoreFreshness(makePage({ lastModified: daysAgo(500) })).score).toBe(55);
+    expect(scoreFreshness(makePage({ lastModified: daysAgo(900) })).score).toBe(40);
   });
 
   it("scores an unknown date mid-range, not as stale", () => {
@@ -128,17 +130,17 @@ describe("scoreEeat", () => {
 });
 
 describe("scoreAnswerability", () => {
-  it("maxes with lists, table, FAQ, heading structure, and short paragraphs", () => {
+  it("maxes with lists, table, Q&A headings, structure, and short paragraphs (no FAQ schema needed)", () => {
     const s = scoreAnswerability(
       makePage({
         listCount: 2,
         listItemCount: 8,
         tableCount: 1,
-        jsonLdBlocks: [{ "@type": "FAQPage" }],
+        jsonLdBlocks: [], // deliberately no FAQPage schema — structure alone maxes it
         headings: [
           { level: 1, text: "Guide" },
           { level: 2, text: "What is it?" },
-          { level: 3, text: "Details" },
+          { level: 2, text: "How much does it cost?" },
         ],
         paragraphCount: 10,
         longParagraphCount: 1,
@@ -230,13 +232,18 @@ describe("scoreTechnicalSeo", () => {
 });
 
 describe("scoreContentQuality", () => {
-  it("scores by depth with a structure bonus", () => {
-    expect(scoreContentQuality(makePage({ wordCount: 100, headings: [] })).score).toBe(15);
-    // 700 words but only one heading → no structure bonus.
-    expect(scoreContentQuality(makePage({ wordCount: 700, headings: [{ level: 1, text: "A" }] })).score).toBe(58);
-    const deep = scoreContentQuality(
+  it("flags too-thin content but does not reward raw length", () => {
+    // Under ~150 words reads as too thin to answer the topic.
+    expect(scoreContentQuality(makePage({ wordCount: 100, headings: [] })).score).toBe(25);
+    // Adequate length, but a single heading → no structure bonus. Note more
+    // words alone would NOT raise this further — there is no ideal length.
+    expect(
+      scoreContentQuality(makePage({ wordCount: 700, headings: [{ level: 1, text: "A" }] })).score,
+    ).toBe(72);
+    // Adequate + well-structured (default fixture has lists/tables + 3 headings).
+    const structured = scoreContentQuality(
       makePage({
-        wordCount: 1600,
+        wordCount: 500,
         headings: [
           { level: 1, text: "A" },
           { level: 2, text: "B" },
@@ -244,7 +251,7 @@ describe("scoreContentQuality", () => {
         ],
       }),
     );
-    expect(deep.score).toBe(100); // 90 base + 10 structure
+    expect(structured.score).toBe(90); // 72 adequacy + 18 structure
   });
 });
 
@@ -275,11 +282,11 @@ describe("scoreOnPageOptimization", () => {
     expect(s.score).toBe(100);
   });
 
-  it("penalizes a too-short title, missing meta, and no Open Graph", () => {
+  it("does not penalize a short title (no minimum length); only absence and truncation count", () => {
     const s = scoreOnPageOptimization(
       makePage({ title: "Hi", metaDescription: null, hasOpenGraph: false }),
     );
-    expect(s.score).toBe(18); // short title 18 + no meta 0 + no OG 0
+    expect(s.score).toBe(35); // title present 35 + no meta 0 + no OG 0
   });
 });
 

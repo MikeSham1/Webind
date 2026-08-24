@@ -17,7 +17,7 @@ const AI_LABELS: Record<keyof typeof AI_WEIGHTS, { label: string; note: string }
   },
   answerability: {
     label: "Answer-ready Structure",
-    note: "Lists, FAQs, and content near the top of the page — lists correlate with +30% citation odds for Claude, FAQ blocks +28-40%, and 44% of citations come from the first 30% of a page.",
+    note: "Lists, tables, question-style headings, and scannable prose that let a model lift a passage cleanly. We score the structure, not FAQ markup: Google removed FAQ rich results in 2026 and needs no special schema for AI Search, so FAQPage schema earns nothing here.",
   },
   factDensity: {
     label: "Fact Density & Evidence",
@@ -29,11 +29,11 @@ const AI_LABELS: Record<keyof typeof AI_WEIGHTS, { label: string; note: string }
   },
   aiCrawlability: {
     label: "AI Crawlability",
-    note: "Whether robots.txt welcomes named AI crawlers (GPTBot, ClaudeBot, PerplexityBot, Google-Extended) and whether an llms.txt exists.",
+    note: "Whether the page is server-rendered (AI crawlers run little JS) and whether AI search crawlers are allowed in robots.txt. llms.txt is NOT scored — the major engines say it neither helps nor hurts, so we don't manufacture a deficiency from its absence.",
   },
   freshness: {
     label: "Content Freshness",
-    note: "A recoverable last-modified date, and how recent it is.",
+    note: "A machine-readable last-modified date. How much recency matters is topic-dependent, so we decay gently and never all the way to zero.",
   },
   brandMentions: {
     label: "Brand Mentions (off-page)",
@@ -44,7 +44,7 @@ const AI_LABELS: Record<keyof typeof AI_WEIGHTS, { label: string; note: string }
 const TRAD_LABELS: Record<keyof typeof TRADITIONAL_WEIGHTS, { label: string; note: string }> = {
   contentQuality: {
     label: "Content Quality",
-    note: "Word count, heading structure, and readability.",
+    note: "Whether the page is substantive enough to actually answer its topic, plus structure and readability. There is no ideal length, so past a not-too-thin floor, more words earn nothing.",
   },
   technicalSeo: {
     label: "Technical SEO",

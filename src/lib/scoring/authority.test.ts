@@ -151,7 +151,9 @@ describe("score range and coverage", () => {
   it("spans the full range: near-100 optimized, near-0 broken", () => {
     expect(scoreAiAuthority(optimizedPage()).total).toBeGreaterThanOrEqual(90);
     expect(scoreTraditionalAuthority(optimizedPage()).total).toBeGreaterThanOrEqual(90);
-    expect(scoreAiAuthority(brokenPage()).total).toBe(0);
+    // Not exactly 0: freshness deliberately floors above zero (recency is
+    // topic-dependent), so even a fully-broken page keeps a little freshness credit.
+    expect(scoreAiAuthority(brokenPage()).total).toBeLessThan(10);
     expect(scoreTraditionalAuthority(brokenPage()).total).toBeLessThan(15);
   });
 
