@@ -1,6 +1,8 @@
 import type { ReportResult } from "@/lib/scoring/types";
 import type { OptimizationAssets as Assets } from "@/lib/optimize/assets";
+import { computeStages } from "@/lib/scoring/stages";
 import ScoreDial from "./ScoreDial";
+import StageBreakdown from "./StageBreakdown";
 import SignalBreakdown from "./SignalBreakdown";
 import FixList from "./FixList";
 import OptimizationAssets from "./OptimizationAssets";
@@ -119,6 +121,11 @@ export default function ReportResults({
           </div>
         </div>
       )}
+
+      {/* Stage vector — the visibility pipeline underneath the headline scores. */}
+      <div className="reveal" style={{ animationDelay: "60ms" }}>
+        <StageBreakdown stages={computeStages(report)} />
+      </div>
 
       {/* Signal breakdown */}
       <div

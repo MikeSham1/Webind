@@ -146,6 +146,27 @@ export default function MethodologyPage() {
 
       <section className="mt-10 space-y-3">
         <h2 className="font-display text-lg font-semibold text-ink">
+          The visibility pipeline (stages + confidence)
+        </h2>
+        <p className="text-[15px] leading-relaxed text-muted">
+          Getting cited by an AI isn&apos;t one score — it&apos;s a chain:{" "}
+          <strong className="text-ink">crawlable → retrievable → citable →
+          trusted → useful</strong>. 2026 research on generative visibility is
+          clear that these stages are distinct and that optimizing one in
+          isolation can hurt an earlier one, so alongside the two headline
+          scores every report breaks the signals into those five stages. Each
+          stage also carries a <strong className="text-ink">confidence</strong>{" "}
+          — the share of that stage&apos;s signals we actually measured. The
+          Authority &amp; Trust stage is honestly low-confidence on the free
+          report, because backlinks and brand mentions are off-page signals we
+          don&apos;t collect; we show that rather than renormalizing the number
+          to look complete. Confidence travels with the score, never hidden
+          behind it.
+        </p>
+      </section>
+
+      <section className="mt-10 space-y-3">
+        <h2 className="font-display text-lg font-semibold text-ink">
           What this is not
         </h2>
         <ul className="list-disc space-y-2 pl-5 text-[15px] leading-relaxed text-muted">
