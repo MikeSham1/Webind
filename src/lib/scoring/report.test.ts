@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { CrawledPage, SignalScore } from "./types";
-import { buildReport } from "./report";
+import { buildReport, fixPriority } from "./report";
 import { daysAgo, makePage } from "./test-fixtures";
 
 // A page with several deficiencies so there are fixes to order.
@@ -15,7 +15,7 @@ const deficientPage: CrawledPage = makePage({
   lastModifiedSource: null,
 });
 
-/** Priority buildReport sorts fixes by: weight * (100 - score), descending. */
+/** buildReport ranks fixes by expected value (fixPriority), tie-broken by key. */
 function expectedFixOrder(page: CrawledPage): string[] {
   const r = buildReport(page);
   const withFix = [...r.ai.signals, ...r.traditional.signals].filter(
@@ -23,9 +23,18 @@ function expectedFixOrder(page: CrawledPage): string[] {
       s.fix !== null && s.score !== null,
   );
   return withFix
-    .sort((a, b) => b.weight * (100 - b.score) - a.weight * (100 - a.score))
+    .sort((a, b) => fixPriority(b) - fixPriority(a) || a.key.localeCompare(b.key))
     .map((s) => s.fix);
 }
+
+const sig = (key: string, score: number, weight: number): SignalScore => ({
+  key,
+  label: key,
+  score,
+  weight,
+  reason: "",
+  fix: "x",
+});
 
 describe("buildReport", () => {
   it("returns the url and both authority scores", () => {
@@ -35,12 +44,20 @@ describe("buildReport", () => {
     expect(r.traditional.signals).toHaveLength(5);
   });
 
-  it("orders fixes by weight * (100 - score) desc and excludes null fixes", () => {
+  it("orders fixes by expected value and excludes null fixes", () => {
     const r = buildReport(deficientPage);
     // Every fix corresponds to a measured, deficient signal...
     for (const fix of r.prioritizedFixes) expect(typeof fix).toBe("string");
-    // ...and the order matches the weight * deficit ranking exactly.
+    // ...and the order matches the fixPriority ranking exactly.
     expect(r.prioritizedFixes).toEqual(expectedFixOrder(deficientPage));
+  });
+
+  it("favors a cheaper, safer fix over an equally-weighted expensive one", () => {
+    // Same weighted deficit, but technicalSeo is a cheap/safe edit while
+    // contentQuality is a high-effort, higher-risk content rewrite.
+    const cheap = sig("technicalSeo", 50, 0.2);
+    const expensive = sig("contentQuality", 50, 0.2);
+    expect(fixPriority(cheap)).toBeGreaterThan(fixPriority(expensive));
   });
 
   it("never emits a fix for a signal it could not measure", () => {
