@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import ReportResults from "@/components/ReportResults";
+import FixGeneratorPanel from "@/components/FixGeneratorPanel";
 import { getCurrentUser } from "@/lib/auth";
 import { getReportById, getReportForUser } from "@/lib/leads";
 import { getGitHubConnectionStatus } from "@/lib/integrations/githubConnections";
@@ -52,6 +53,9 @@ export default async function ReportDetailPage({
           githubConnected={githubConnected}
           initialPr={pr ? { prUrl: pr.prUrl, prNumber: pr.prNumber } : null}
         />
+      </div>
+      <div className="mt-10">
+        <FixGeneratorPanel requestId={row.id} />
       </div>
     </main>
   );

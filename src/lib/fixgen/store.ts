@@ -113,6 +113,23 @@ export async function getRunWithCandidates(
   });
 }
 
+/**
+ * The user who owns the run a candidate belongs to (via fix_runs.userId), or
+ * null. Used to enforce that a review can only be submitted by the run's owner
+ * — the same owner-only boundary the rest of the app uses.
+ */
+export async function candidateOwnerUserId(candidateId: string): Promise<string | null> {
+  return withDb("candidateOwnerUserId", null, async (db) => {
+    const [row] = await db
+      .select({ userId: fixRuns.userId })
+      .from(fixCandidates)
+      .innerJoin(fixRuns, eq(fixCandidates.runId, fixRuns.id))
+      .where(eq(fixCandidates.id, candidateId))
+      .limit(1);
+    return row?.userId ?? null;
+  });
+}
+
 export type ReviewDecision =
   | "accepted_unedited"
   | "accepted_minor_edit"
