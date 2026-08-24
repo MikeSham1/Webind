@@ -54,12 +54,21 @@ const m = trained.metrics;
 console.log(`train: MAE ${m.trainMAE}  (n=${m.trainN})`);
 console.log(`test:  MAE ${m.testMAE}  R² ${m.testR2}  RMSE ${m.testRMSE}  (n=${m.testN})`);
 console.log(`baseline (predict mean) test MAE ${m.baselineTestMAE}`);
+
+// HARD deployment gate. A model that can't beat predict-the-mean on held-out
+// data has not learned a generalizable signal — promoting it would ship a
+// worse-than-a-constant "real" model and quietly overwrite the working one.
+// Refuse to write it. `--force` is only for local inspection and never writes.
+const force = process.argv.includes("--force");
 if (m.testMAE >= m.baselineTestMAE) {
-  console.warn(
-    "\n⚠  The model does not beat the predict-the-mean baseline on held-out data. " +
-      "With this little/this noisy real data it hasn't learned a generalizable signal yet — " +
-      "collect more outcomes before promoting it. Writing anyway so you can inspect it.",
+  console.error(
+    `\n✗ REFUSING TO PROMOTE: held-out MAE ${m.testMAE} does not beat the ` +
+      `predict-the-mean baseline ${m.baselineTestMAE}. The model hasn't learned a ` +
+      `generalizable signal from this data yet — collect more/cleaner outcomes and ` +
+      `re-run. Nothing written.` +
+      (force ? " (--force does not override a failed gate.)" : ""),
   );
+  process.exit(1);
 }
 
 const today = new Date().toISOString().slice(0, 10);

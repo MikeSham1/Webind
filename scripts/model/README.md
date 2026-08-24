@@ -36,9 +36,11 @@ git add src/lib/model/model.json && git commit                  # promote it (th
   score as the label, crawls each domain once for its current features, and
   writes `real-dataset.jsonl`. It refuses below 40 usable domains.
 - **Train-real** uses a smaller net + stronger L2 (real datasets start small),
-  refuses below 40 samples, and warns if the model fails to beat a
-  predict-the-mean baseline on held-out data — i.e. it hasn't learned a
-  generalizable signal yet, so don't promote it.
+  refuses below 40 samples, and **hard-refuses to write the model** if it
+  fails to beat a predict-the-mean baseline on held-out data — a model that
+  can't beat a constant hasn't learned a generalizable signal, so it never
+  overwrites the working model. (`--force` is inspection-only and still won't
+  promote a failed gate.)
 - `real-dataset.jsonl` is git-ignored — it's derived from customer domains.
 
 ## Shared pieces
