@@ -4,17 +4,43 @@ import type {
   Page,
   Response as PlaywrightResponse,
 } from "playwright";
-import type { CrawledPage, DateSource } from "../scoring/types";
+import type {
+  CrawledPage,
+  CrawlerAccess,
+  CrawlerAccessState,
+  DateSource,
+} from "../scoring/types";
 import { crawlSlotStats, getBrowser, withCrawlSlot } from "./browser";
 import { BlockedUrlError, assertPublicUrl, isPublicUrl } from "./ssrf";
 import { logInfo, logWarn } from "../log";
 
 /**
- * Named AI crawler user-agents we care about when deciding whether robots.txt
- * blocks AI access. The `*` wildcard group is applied as a fallback only when a
- * bot has no group naming it specifically (see robotsBlocksAnyAiBot).
+ * The crawlers we resolve robots.txt access for, each tagged with its purpose.
+ * `search` crawlers govern whether a page can be surfaced/cited; `training`
+ * crawlers govern model-training use only and never affect search inclusion.
+ * The `*` wildcard group is the fallback when a bot has no group naming it
+ * specifically (see robotsBlocksBot). UAs are lowercased for matching.
  */
-const AI_BOT_AGENTS = ["gptbot", "claudebot", "perplexitybot", "google-extended"];
+const CRAWLERS: {
+  key: keyof CrawlerAccess;
+  ua: string;
+  purpose: "search" | "training";
+}[] = [
+  { key: "googleSearch", ua: "googlebot", purpose: "search" },
+  { key: "openaiSearch", ua: "oai-searchbot", purpose: "search" },
+  { key: "openaiTraining", ua: "gptbot", purpose: "training" },
+  { key: "anthropicSearch", ua: "claude-searchbot", purpose: "search" },
+  { key: "anthropicTraining", ua: "claudebot", purpose: "training" },
+  { key: "perplexitySearch", ua: "perplexitybot", purpose: "search" },
+  { key: "geminiTraining", ua: "google-extended", purpose: "training" },
+];
+
+/** The AI *search* crawlers whose access defines `robotsAllowsAiBots`. */
+const AI_SEARCH_KEYS: (keyof CrawlerAccess)[] = [
+  "openaiSearch",
+  "anthropicSearch",
+  "perplexitySearch",
+];
 
 /**
  * Minimum stripped-text length (in chars) of the RAW html for us to consider a
@@ -528,7 +554,8 @@ async function extractPage(
   // by assertNavigationAllowed above.
   const finalUrl = page.url();
   const origin = new URL(finalUrl).origin;
-  const robotsAllowsAiBots = await checkRobotsAllowsAiBots(context, origin);
+  const crawlerAccess = await checkCrawlerAccess(context, origin);
+  const robotsAllowsAiBots = aiSearchCrawlersAllowed(crawlerAccess);
   const hasLlmsTxt = await checkHasLlmsTxt(context, origin);
 
   return {
@@ -546,6 +573,7 @@ async function extractPage(
     wordCount,
     hasServerRenderedContent,
     robotsAllowsAiBots,
+    crawlerAccess,
     hasLlmsTxt,
     lastModified,
     lastModifiedSource,
@@ -730,14 +758,37 @@ function looksLikeHtml(resource: FetchedResource): boolean {
   return /^\s*(<!doctype\s+html|<html[\s>])/i.test(resource.body);
 }
 
-async function checkRobotsAllowsAiBots(
+/**
+ * Resolve robots.txt access for every crawler in CRAWLERS, per purpose.
+ *  - status 0 (fetch failed/timed out) → "unknown": we genuinely couldn't check.
+ *  - a real robots.txt (200, not a soft-404 shell) → per-bot allowed/blocked.
+ *  - anything else (404, non-200, soft-404) → no enforceable robots → "allowed".
+ */
+async function checkCrawlerAccess(
   context: BrowserContext,
   origin: string,
-): Promise<boolean> {
+): Promise<CrawlerAccess> {
   const resource = await fetchViaPage(context, `${origin}/robots.txt`);
-  // Missing, erroring, or soft-404'd robots.txt => nothing is disallowed.
-  if (resource.status !== 200 || looksLikeHtml(resource)) return true;
-  return !robotsBlocksAnyAiBot(resource.body, AI_BOT_AGENTS);
+
+  const uniform = (state: CrawlerAccessState): CrawlerAccess =>
+    Object.fromEntries(CRAWLERS.map((c) => [c.key, state])) as unknown as CrawlerAccess;
+
+  if (resource.status === 0) return uniform("unknown");
+  if (resource.status !== 200 || looksLikeHtml(resource)) return uniform("allowed");
+
+  const groups = parseRobotsGroups(resource.body);
+  const wildcard = groups.filter((g) => g.agents.includes("*"));
+  return Object.fromEntries(
+    CRAWLERS.map((c) => [
+      c.key,
+      robotsBlocksBot(groups, wildcard, c.ua) ? "blocked" : "allowed",
+    ]),
+  ) as unknown as CrawlerAccess;
+}
+
+/** True when no AI *search* crawler is explicitly blocked (unknown ≠ blocked). */
+function aiSearchCrawlersAllowed(access: CrawlerAccess): boolean {
+  return !AI_SEARCH_KEYS.some((k) => access[k] === "blocked");
 }
 
 async function checkHasLlmsTxt(
@@ -818,21 +869,19 @@ function groupBlocksRoot(group: RobotsGroup): boolean {
 }
 
 /**
- * Per RFC 9309, each crawler is evaluated against ITS OWN most-specific group:
- * a group naming that bot if one exists, otherwise the `*` wildcard group. Bots
- * are independent — naming GPTBot does not change how ClaudeBot is judged. The
- * previous logic collapsed all AI bots into one set, so `User-agent: *
- * Disallow: /` plus an `Allow` for GPTBot alone read as "all AI bots allowed"
- * even though ClaudeBot, PerplexityBot, and Google-Extended were still blocked.
+ * Per RFC 9309, a crawler is evaluated against ITS OWN most-specific group: a
+ * group naming that bot if one exists, otherwise the `*` wildcard group. Bots
+ * are independent — naming GPTBot does not change how ClaudeBot is judged, so
+ * `User-agent: * Disallow: /` plus an `Allow` for GPTBot alone blocks every
+ * other bot but not GPTBot.
  */
-function robotsBlocksAnyAiBot(robotsTxt: string, botAgents: string[]): boolean {
-  const groups = parseRobotsGroups(robotsTxt);
-  const wildcard = groups.filter((g) => g.agents.includes("*"));
-
-  return botAgents.some((bot) => {
-    const b = bot.toLowerCase();
-    const named = groups.filter((g) => g.agents.includes(b));
-    const effective = named.length > 0 ? named : wildcard;
-    return effective.some(groupBlocksRoot);
-  });
+function robotsBlocksBot(
+  groups: RobotsGroup[],
+  wildcard: RobotsGroup[],
+  ua: string,
+): boolean {
+  const b = ua.toLowerCase();
+  const named = groups.filter((g) => g.agents.includes(b));
+  const effective = named.length > 0 ? named : wildcard;
+  return effective.some(groupBlocksRoot);
 }

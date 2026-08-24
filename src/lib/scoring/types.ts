@@ -1,6 +1,28 @@
 /** Where a page's modification date was recovered from, in precedence order. */
 export type DateSource = "json-ld" | "meta" | "time-element" | "header";
 
+/** Per-crawler robots.txt verdict. `unknown` = robots.txt couldn't be fetched. */
+export type CrawlerAccessState = "allowed" | "blocked" | "unknown";
+
+/**
+ * robots.txt access, tracked per crawler AND per purpose — because these are
+ * genuinely different controls, not one "AI access" bit. Search crawlers govern
+ * whether you can be surfaced/cited (OAI-SearchBot → ChatGPT Search,
+ * PerplexityBot → Perplexity, Claude-SearchBot → Claude, Googlebot → Google).
+ * Training crawlers govern model-training use (GPTBot, ClaudeBot,
+ * Google-Extended) and do NOT affect search inclusion or ranking — blocking
+ * them is a legitimate publisher choice that must never cost "SEO points".
+ */
+export interface CrawlerAccess {
+  googleSearch: CrawlerAccessState;
+  openaiSearch: CrawlerAccessState;
+  openaiTraining: CrawlerAccessState;
+  anthropicSearch: CrawlerAccessState;
+  anthropicTraining: CrawlerAccessState;
+  perplexitySearch: CrawlerAccessState;
+  geminiTraining: CrawlerAccessState;
+}
+
 export interface CrawledPage {
   url: string;
   fetchedAt: string; // ISO timestamp
@@ -16,7 +38,16 @@ export interface CrawledPage {
   outboundLinks: string[];
   wordCount: number;
   hasServerRenderedContent: boolean;
+  /**
+   * True when no AI *search* crawler (OAI-SearchBot, PerplexityBot,
+   * Claude-SearchBot) is blocked in robots.txt — i.e. the page is eligible to
+   * be surfaced/cited. Deliberately search-only: blocking training crawlers
+   * (GPTBot, ClaudeBot, Google-Extended) does not reduce this. Derived from
+   * `crawlerAccess`; kept as a boolean for the scorer and model features.
+   */
   robotsAllowsAiBots: boolean;
+  /** Full per-crawler, per-purpose robots.txt access (see CrawlerAccess). */
+  crawlerAccess: CrawlerAccess;
   hasLlmsTxt: boolean;
   lastModified: string | null; // ISO
   /** Which source `lastModified` came from; null when no date was found. */

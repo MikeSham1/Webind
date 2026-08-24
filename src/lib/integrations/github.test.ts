@@ -21,33 +21,35 @@ describe("mergeRobotsTxt", () => {
     // Nothing existing is lost.
     expect(merged).toContain("Disallow: /admin/");
     expect(merged).toContain("Sitemap: https://acme.com/sitemap.xml");
-    // Each AI bot without a group is added.
-    for (const bot of ["GPTBot", "ClaudeBot", "PerplexityBot", "Google-Extended", "OAI-SearchBot"]) {
+    // Each AI SEARCH crawler without a group is added (training crawlers are
+    // deliberately never added — blocking those doesn't affect search).
+    for (const bot of ["Googlebot", "OAI-SearchBot", "Claude-SearchBot", "PerplexityBot"]) {
       expect(merged).toContain(`User-agent: ${bot}`);
     }
+    // A training crawler is NOT added by the merge.
+    expect(merged).not.toContain("User-agent: GPTBot");
+    expect(merged).not.toContain("User-agent: Google-Extended");
   });
 
   it("does not duplicate a bot that already has a group", () => {
-    const existing = "User-agent: GPTBot\nDisallow: /private/";
+    const existing = "User-agent: OAI-SearchBot\nDisallow: /private/";
     const merged = mergeRobotsTxt(existing, FRAGMENT);
-    // The existing GPTBot rule is respected (not overridden or duplicated).
-    expect(merged.match(/User-agent:\s*GPTBot/gi)?.length).toBe(1);
+    // The existing OAI-SearchBot rule is respected (not overridden or duplicated).
+    expect(merged.match(/User-agent:\s*OAI-SearchBot/gi)?.length).toBe(1);
     expect(merged).toContain("Disallow: /private/");
-    // Other AI bots are still added.
-    expect(merged).toContain("User-agent: ClaudeBot");
+    // Other AI search crawlers are still added.
+    expect(merged).toContain("User-agent: Claude-SearchBot");
   });
 
-  it("leaves the file untouched when every AI bot is already addressed", () => {
+  it("leaves the file untouched when every AI search crawler is already addressed", () => {
     const existing = [
-      "User-agent: GPTBot",
+      "User-agent: Googlebot",
       "Allow: /",
       "User-agent: OAI-SearchBot",
       "Allow: /",
-      "User-agent: ClaudeBot",
+      "User-agent: Claude-SearchBot",
       "Allow: /",
       "User-agent: PerplexityBot",
-      "Allow: /",
-      "User-agent: Google-Extended",
       "Allow: /",
     ].join("\n");
     expect(mergeRobotsTxt(existing, FRAGMENT)).toBe(existing);

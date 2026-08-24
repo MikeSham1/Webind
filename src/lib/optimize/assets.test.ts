@@ -92,17 +92,31 @@ describe("llmsTxtAsset", () => {
   });
 });
 
+const BLOCKED_ACCESS = {
+  googleSearch: "blocked",
+  openaiSearch: "blocked",
+  openaiTraining: "blocked",
+  anthropicSearch: "blocked",
+  anthropicTraining: "blocked",
+  perplexitySearch: "blocked",
+  geminiTraining: "blocked",
+} as const;
+
 describe("robotsAsset", () => {
-  it("is null when AI bots are allowed", () => {
-    expect(robotsAsset(makePage({ robotsAllowsAiBots: true }))).toBeNull();
+  it("is null when the search crawlers are allowed", () => {
+    expect(robotsAsset(makePage())).toBeNull();
   });
 
-  it("lists Allow rules for the major AI crawlers when blocked", () => {
-    const asset = robotsAsset(makePage({ robotsAllowsAiBots: false }))!;
-    expect(asset.content).toContain("User-agent: GPTBot");
-    expect(asset.content).toContain("User-agent: ClaudeBot");
+  it("lists Allow rules for the blocked SEARCH crawlers only (never training bots)", () => {
+    const asset = robotsAsset(makePage({ crawlerAccess: { ...BLOCKED_ACCESS } }))!;
+    expect(asset.content).toContain("User-agent: OAI-SearchBot");
+    expect(asset.content).toContain("User-agent: Claude-SearchBot");
     expect(asset.content).toContain("User-agent: PerplexityBot");
+    expect(asset.content).toContain("User-agent: Googlebot");
     expect(asset.content).toContain("Allow: /");
+    // Training crawlers are never added — blocking them doesn't affect search.
+    expect(asset.content).not.toContain("GPTBot");
+    expect(asset.content).not.toContain("Google-Extended");
   });
 });
 
@@ -120,7 +134,7 @@ describe("buildOptimizations", () => {
       title: null,
       metaDescription: null,
       hasLlmsTxt: false,
-      robotsAllowsAiBots: false,
+      crawlerAccess: { ...BLOCKED_ACCESS },
     });
     const keys = buildOptimizations(page).assets.map((a) => a.key);
     expect(keys).toEqual(["schema", "meta", "llmstxt", "robots"]);

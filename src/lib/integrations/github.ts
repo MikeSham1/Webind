@@ -137,13 +137,18 @@ export interface FixFile {
   merge?: (existing: string, incoming: string) => string;
 }
 
-/** AI answer-engine crawler product tokens we ask robots.txt to allow. */
+/**
+ * AI/answer-engine SEARCH crawler tokens we ask robots.txt to allow — the ones
+ * that gate whether a site can be surfaced or cited. Training crawlers (GPTBot,
+ * ClaudeBot, Google-Extended) are deliberately NOT here: blocking those is a
+ * legitimate model-training choice that doesn't affect search inclusion, so a
+ * WeBind PR must never quietly opt a site into training.
+ */
 const AI_ROBOT_AGENTS = [
-  "GPTBot",
+  "Googlebot",
   "OAI-SearchBot",
-  "ClaudeBot",
+  "Claude-SearchBot",
   "PerplexityBot",
-  "Google-Extended",
 ];
 
 /**

@@ -206,13 +206,13 @@ describe("crawl", () => {
     }
   }, 30000);
 
-  it("reports robotsAllowsAiBots=false when an AI bot is disallowed from root", async () => {
+  it("reports robotsAllowsAiBots=false when an AI SEARCH crawler is disallowed from root", async () => {
     const context = await routedContext(async (url, route) => {
       if (url.endsWith("/robots.txt")) {
         await route.fulfill({
           status: 200,
           contentType: "text/plain",
-          body: "User-agent: GPTBot\nDisallow: /\n\nUser-agent: *\nDisallow:\n",
+          body: "User-agent: OAI-SearchBot\nDisallow: /\n\nUser-agent: *\nDisallow:\n",
         });
         return true;
       }
@@ -226,6 +226,11 @@ describe("crawl", () => {
     try {
       const page = await crawl("http://acme.test/", { context, ...offline });
       expect(page.robotsAllowsAiBots).toBe(false);
+      // Granular: only OpenAI's search crawler is blocked; its training crawler
+      // and the other engines' search crawlers remain allowed.
+      expect(page.crawlerAccess.openaiSearch).toBe("blocked");
+      expect(page.crawlerAccess.openaiTraining).toBe("allowed");
+      expect(page.crawlerAccess.anthropicSearch).toBe("allowed");
       expect(page.hasLlmsTxt).toBe(false);
     } finally {
       await context.close();
@@ -262,11 +267,29 @@ describe("crawl", () => {
 
   it("treats `Disallow: /*` as a full block, like `Disallow: /`", async () => {
     const context = await routedContext(
-      allowRobots("User-agent: GPTBot\nDisallow: /*\n"),
+      allowRobots("User-agent: PerplexityBot\nDisallow: /*\n"),
     );
     try {
       const page = await crawl("http://acme.test/", { context, ...offline });
       expect(page.robotsAllowsAiBots).toBe(false);
+      expect(page.crawlerAccess.perplexitySearch).toBe("blocked");
+    } finally {
+      await context.close();
+    }
+  }, 30000);
+
+  it("does not lower robotsAllowsAiBots when only a TRAINING crawler is blocked", async () => {
+    // Blocking GPTBot / ClaudeBot / Google-Extended is a model-training choice
+    // and must not read as "can't be surfaced" — search crawlers are untouched.
+    const context = await routedContext(
+      allowRobots("User-agent: GPTBot\nDisallow: /\n\nUser-agent: Google-Extended\nDisallow: /\n"),
+    );
+    try {
+      const page = await crawl("http://acme.test/", { context, ...offline });
+      expect(page.robotsAllowsAiBots).toBe(true);
+      expect(page.crawlerAccess.openaiTraining).toBe("blocked");
+      expect(page.crawlerAccess.geminiTraining).toBe("blocked");
+      expect(page.crawlerAccess.openaiSearch).toBe("allowed");
     } finally {
       await context.close();
     }
@@ -274,7 +297,7 @@ describe("crawl", () => {
 
   it("lets an in-group `Allow: /` reopen what `Disallow: /` closed", async () => {
     const context = await routedContext(
-      allowRobots("User-agent: GPTBot\nDisallow: /\nAllow: /\n"),
+      allowRobots("User-agent: PerplexityBot\nDisallow: /\nAllow: /\n"),
     );
     try {
       const page = await crawl("http://acme.test/", { context, ...offline });

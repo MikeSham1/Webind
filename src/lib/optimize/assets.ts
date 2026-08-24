@@ -154,18 +154,36 @@ export function llmsTxtAsset(page: CrawledPage): OptimizationAsset | null {
   };
 }
 
-/** robots.txt lines to unblock AI crawlers. Null when they're already allowed. */
-export function robotsAsset(page: CrawledPage): OptimizationAsset | null {
-  if (page.robotsAllowsAiBots) return null;
+/**
+ * The AI/answer-engine SEARCH crawlers — the ones that gate whether you can be
+ * surfaced or cited. Deliberately excludes training crawlers (GPTBot, ClaudeBot,
+ * Google-Extended): blocking those is a legitimate publisher choice about model
+ * training that does NOT affect search inclusion, so we never presume to
+ * un-block them for the user.
+ */
+const SEARCH_CRAWLERS: { key: keyof CrawledPage["crawlerAccess"]; ua: string }[] = [
+  { key: "googleSearch", ua: "Googlebot" },
+  { key: "openaiSearch", ua: "OAI-SearchBot" },
+  { key: "anthropicSearch", ua: "Claude-SearchBot" },
+  { key: "perplexitySearch", ua: "PerplexityBot" },
+];
 
-  const bots = ["GPTBot", "OAI-SearchBot", "ClaudeBot", "PerplexityBot", "Google-Extended"];
+/** robots.txt lines to unblock the SEARCH crawlers that are actually blocked. */
+export function robotsAsset(page: CrawledPage): OptimizationAsset | null {
+  const blocked = SEARCH_CRAWLERS.filter((c) => page.crawlerAccess[c.key] === "blocked");
+  if (blocked.length === 0) return null;
+
+  const names = blocked.map((c) => c.ua).join(", ");
   return {
     key: "robots",
-    title: "robots.txt — allow AI crawlers",
+    title: "robots.txt — allow AI search crawlers",
     whatItFixes:
-      "AI crawlers are currently blocked. Add these to your robots.txt so ChatGPT, Claude, Perplexity, and Google AI can read your site.",
+      `These AI search crawlers are blocked in your robots.txt (${names}), so those ` +
+      "engines can't surface or cite you. Add these rules to allow them. Training " +
+      "crawlers (GPTBot, ClaudeBot, Google-Extended) are a separate opt-in about model " +
+      "training and are intentionally left out — blocking them doesn't affect search.",
     language: "text",
-    content: bots.map((b) => `User-agent: ${b}\nAllow: /`).join("\n\n"),
+    content: blocked.map((c) => `User-agent: ${c.ua}\nAllow: /`).join("\n\n"),
   };
 }
 
