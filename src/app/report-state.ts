@@ -3,7 +3,7 @@
 // their initial values live here and are imported by the action + the client.
 
 import type { OptimizationAssets } from "@/lib/optimize/assets";
-import type { ReportResult } from "@/lib/scoring/types";
+import type { ActionableSuggestion, ReportResult } from "@/lib/scoring/types";
 
 /** Result of a report run, shaped for `useActionState`. */
 export type ReportState =
@@ -14,6 +14,11 @@ export type ReportState =
       narrative: string;
       /** Ready-to-apply fixes generated from the crawl (deterministic). */
       optimizations: OptimizationAssets;
+      /**
+       * Specific, page-grounded recommendations for the top fixes. Claude-
+       * expanded when a key is set, deterministic page-aware fallback otherwise.
+       */
+      suggestions: ActionableSuggestion[];
       /** DB id of the logged run, or null when persistence is disabled. */
       requestId: string | null;
       /** Whether the signed-in visitor has a GitHub repo connected (Settings). */

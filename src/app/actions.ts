@@ -5,6 +5,7 @@ import { CrawlerBusyError } from "@/lib/crawler/browser";
 import { BlockedUrlError, normalizeUrl } from "@/lib/crawler/ssrf";
 import { buildReport } from "@/lib/scoring/report";
 import { explainReport } from "@/lib/scoring/explain";
+import { generateSuggestions } from "@/lib/scoring/suggest";
 import { predictReadiness } from "@/lib/model/predict";
 import { buildOptimizations } from "@/lib/optimize/assets";
 import { attachEmail, getReportForUser, saveReportRequest } from "@/lib/leads";
@@ -63,10 +64,16 @@ export async function runReport(
     // alongside it instead of adding its own round-trip to the request.
     const [page, user] = await Promise.all([crawl(url), getCurrentUser()]);
     const report = buildReport(page);
-    // Plain-English summary. Uses Claude when ANTHROPIC_API_KEY is set;
-    // otherwise falls back to a deterministic, network-free narrative.
-    // (Live citation checks are intentionally kept out of the request path.)
-    const narrative = await explainReport(report);
+    // Two Claude-backed products of the report, run together so the second
+    // doesn't add its own round-trip: the plain-English overview, and the
+    // specific page-grounded fix suggestions. Both use Claude when
+    // ANTHROPIC_API_KEY is set and fall back to deterministic, network-free
+    // output otherwise; neither ever throws. (Live citation checks are
+    // intentionally kept out of the request path.)
+    const [narrative, suggestions] = await Promise.all([
+      explainReport(report),
+      generateSuggestions(report, page),
+    ]);
     // Deterministic ready-to-apply assets (schema, meta, llms.txt, robots).
     const optimizations = buildOptimizations(page);
     // Best-effort logging (the preview doubles as a lead funnel). Owned by the
@@ -84,6 +91,7 @@ export async function runReport(
       status: "success",
       report,
       narrative,
+      suggestions,
       optimizations,
       requestId,
       githubConnected,
