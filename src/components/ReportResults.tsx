@@ -1,4 +1,4 @@
-import type { ReportResult } from "@/lib/scoring/types";
+import type { ActionableSuggestion, ReportResult } from "@/lib/scoring/types";
 import type { OptimizationAssets as Assets } from "@/lib/optimize/assets";
 import { computeStages } from "@/lib/scoring/stages";
 import ScoreDial from "./ScoreDial";
@@ -15,6 +15,8 @@ export interface ReportResultsProps {
   report: ReportResult;
   /** Optional plain-English summary shown above the dials. */
   narrative?: string;
+  /** Rich, page-grounded fix suggestions; falls back to plain fixes when absent. */
+  suggestions?: ActionableSuggestion[];
   /** Ready-to-apply generated assets (schema, meta, llms.txt, robots). */
   optimizations?: Assets;
   /** DB id of the logged run; enables email capture and the "open a PR" action when present. */
@@ -39,6 +41,7 @@ function hostOf(url: string): string {
 export default function ReportResults({
   report,
   narrative,
+  suggestions,
   optimizations,
   requestId,
   githubConnected = false,
@@ -146,10 +149,12 @@ export default function ReportResults({
             Your highest-impact fixes
           </h3>
           <span className="hidden font-mono text-xs uppercase tracking-[0.16em] text-muted sm:block">
-            Ranked by impact
+            {suggestions?.some((s) => s.aiGenerated)
+              ? "AI-tailored to your page"
+              : "Ranked by impact"}
           </span>
         </div>
-        <FixList fixes={report.prioritizedFixes} />
+        <FixList fixes={report.prioritizedFixes} suggestions={suggestions} />
       </div>
 
       {/* Ready-to-apply generated assets */}
