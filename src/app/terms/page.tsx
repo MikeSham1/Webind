@@ -57,6 +57,16 @@ export default function TermsPage() {
         check of whether any AI model currently recommends you.
       </P>
 
+      <H2>Usage limits</H2>
+      <P>
+        Reports, visibility checks, and fixes may be rate-limited, quota-limited,
+        or otherwise capped, and we reserve the right to limit, change, or
+        suspend the number of reports (or any other usage) available on any plan,
+        including the free tier, at any time and without notice. &ldquo;Unlimited&rdquo;
+        allowances are subject to fair use and may be limited to prevent abuse or
+        protect the service.
+      </P>
+
       <H2>Only analyze what you&apos;re allowed to</H2>
       <P>
         Only submit a URL you own or otherwise have permission to have

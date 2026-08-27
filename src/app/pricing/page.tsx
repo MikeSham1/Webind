@@ -45,6 +45,16 @@ export default async function PricingPage() {
         <PricingTable plans={PLANS} billingConfigured={billingConfigured} signedIn={Boolean(user)} />
       </div>
 
+      <p className="mx-auto mt-6 max-w-xl text-center text-xs leading-relaxed text-muted">
+        &ldquo;Unlimited&rdquo; allowances are subject to fair use. We reserve the
+        right to limit, change, or suspend the number of reports and other usage
+        on any plan — including the free tier — at any time. See{" "}
+        <Link href="/terms" className="text-accent hover:underline">
+          Terms
+        </Link>
+        .
+      </p>
+
       <section className="mt-14 space-y-4">
         <h2 className="font-display text-lg font-semibold text-ink">Questions</h2>
         <dl className="space-y-3">

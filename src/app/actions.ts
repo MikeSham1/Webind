@@ -34,6 +34,19 @@ export async function runReport(
   formData: FormData,
 ): Promise<ReportState> {
   const raw = String(formData.get("url") ?? "");
+
+  // The field already supplies the scheme (the https:// shown to its left), so
+  // a typed-in scheme means a doubled address — reject it with a specific nudge
+  // instead of silently accepting something like "https://https://example.com".
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw.trim())) {
+    return {
+      status: "error",
+      error:
+        "Leave off the https:// — just enter the domain, like example.com.",
+      url: raw,
+    };
+  }
+
   const url = normalizeUrl(raw);
 
   if (!url) {

@@ -11,17 +11,22 @@ export default function ReportForm() {
     initialReportState,
   );
   const [url, setUrl] = useState("");
+  const [clientError, setClientError] = useState<string | null>(null);
 
-  const showError = !isPending && state.status === "error";
+  // The https:// is supplied by the field, so a typed-in scheme would double it.
+  const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(url.trim());
+  const schemeError = "Leave off the https:// — just enter the domain, like example.com.";
+
   const showResults = !isPending && state.status === "success";
+  // Instant client-side error takes precedence over the last server error.
+  const errorMessage = clientError ?? (!isPending && state.status === "error" ? state.error : null);
+  const showError = Boolean(errorMessage);
 
   const statusMessage = isPending
     ? `Analyzing ${url.trim() || "your site"}…`
     : state.status === "success"
       ? "Report ready."
-      : state.status === "error"
-        ? state.error
-        : "";
+      : errorMessage ?? "";
 
   return (
     <div>
@@ -30,14 +35,24 @@ export default function ReportForm() {
       <p className="sr-only" role="status" aria-live="polite">
         {statusMessage}
       </p>
-      <form action={formAction} className="mx-auto w-full max-w-xl">
+      <form
+        action={formAction}
+        onSubmit={(e) => {
+          // Block the doubled-scheme case before it round-trips to the server.
+          if (hasScheme) {
+            e.preventDefault();
+            setClientError(schemeError);
+          }
+        }}
+        className="mx-auto w-full max-w-xl"
+      >
         <label htmlFor="url" className="sr-only">
           Website address
         </label>
         <div className="scan-frame flex flex-col gap-3 border border-line bg-surface p-2 shadow-[0_1px_0_rgba(0,0,0,0.02)] sm:flex-row sm:items-center sm:pl-5">
           <div className="flex flex-1 items-center gap-3 px-3 sm:px-0">
             <span
-              className="hidden font-mono text-sm text-muted sm:inline"
+              className="font-mono text-sm text-muted"
               aria-hidden="true"
             >
               https://
@@ -50,7 +65,10 @@ export default function ReportForm() {
               autoComplete="url"
               placeholder="yourdomain.com"
               value={url}
-              onChange={(e) => setUrl(e.target.value)}
+              onChange={(e) => {
+                setUrl(e.target.value);
+                if (clientError) setClientError(null);
+              }}
               disabled={isPending}
               aria-describedby="url-hint"
               aria-invalid={showError}
@@ -86,7 +104,7 @@ export default function ReportForm() {
             className="mx-auto mt-4 max-w-md rounded-xl border border-bad/40 bg-surface px-4 py-3 text-center text-sm text-ink"
           >
             <span className="font-semibold text-bad">Couldn&apos;t run that. </span>
-            {state.error}
+            {errorMessage}
           </p>
         )}
       </form>
