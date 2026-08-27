@@ -276,16 +276,52 @@ describe("scoreContentQuality", () => {
 });
 
 describe("scoreTopicalAuthority", () => {
-  it("rewards heading breadth and internal links", () => {
-    const thin = scoreTopicalAuthority(makePage({ headings: [], internalLinkCount: 0 }));
+  it("maxes with breadth, internal links, AND a focused topic", () => {
+    const thin = scoreTopicalAuthority(
+      makePage({ headings: [], internalLinkCount: 0, renderedText: "" }),
+    );
     const deep = scoreTopicalAuthority(
       makePage({
-        headings: Array.from({ length: 12 }, (_, i) => ({ level: (i % 4) + 1, text: `H${i}` })),
+        title: "Widget Buying Handbook",
+        // 12 headings across 4 levels, every one on-topic (widget/buying/handbook).
+        headings: Array.from({ length: 12 }, (_, i) => ({
+          level: (i % 4) + 1,
+          text: `Widget buying handbook ${i}`,
+        })),
+        renderedText:
+          "This widget buying handbook covers widget buying, handbook to handbook.",
         internalLinkCount: 25,
       }),
     );
     expect(thin.score).toBe(0);
     expect(deep.score).toBe(100);
+  });
+
+  it("penalizes a structurally-rich page that lacks topical focus", () => {
+    const base = { internalLinkCount: 25, title: "Widget Buying Handbook" };
+    const focused = scoreTopicalAuthority(
+      makePage({
+        ...base,
+        headings: Array.from({ length: 12 }, (_, i) => ({
+          level: (i % 4) + 1,
+          text: `Widget buying handbook ${i}`,
+        })),
+        renderedText: "widget buying handbook, all about widget buying.",
+      }),
+    );
+    const scattered = scoreTopicalAuthority(
+      makePage({
+        ...base,
+        headings: Array.from({ length: 12 }, (_, i) => ({
+          level: (i % 4) + 1,
+          text: `Miscellaneous section ${i}`,
+        })),
+        renderedText: "assorted unrelated commentary on sundry matters.",
+      }),
+    );
+    // Same structure and link count; only topical focus differs.
+    expect(focused.score as number).toBeGreaterThan(scattered.score as number);
+    expect(scattered.fix).toMatch(/core topic terms/);
   });
 });
 

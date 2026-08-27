@@ -52,7 +52,7 @@ const TRAD_LABELS: Record<keyof typeof TRADITIONAL_WEIGHTS, { label: string; not
   },
   topicalAuthority: {
     label: "Topical Authority",
-    note: "Internal linking and topical depth on the page itself.",
+    note: "Whether the page covers one subject in depth: heading structure, internal linking to related pages, and topical focus — how consistently the page's own core terms (from its title and H1) recur across its headings and body, rather than a topic named once in passing.",
   },
   onPageOptimization: {
     label: "On-page Optimization",

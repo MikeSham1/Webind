@@ -532,24 +532,97 @@ export function scoreTechnicalSeo(page: CrawledPage): SignalScore {
   };
 }
 
+/**
+ * Common English function words plus generic web boilerplate, stripped before
+ * we treat the remaining title/H1 words as the page's topic terms.
+ */
+const TERM_STOPWORDS = new Set([
+  "the", "and", "for", "with", "your", "you", "our", "are", "how", "why", "what",
+  "when", "where", "who", "this", "that", "from", "into", "out", "get", "best",
+  "top", "guide", "home", "page", "welcome", "site", "website", "com", "www",
+  "new", "all", "more", "about", "can", "will", "has", "have", "not",
+]);
+
+/** Content terms (lowercased, deduped, ≥3 chars, non-stopword) from `text`. */
+function extractTerms(text: string | null): string[] {
+  if (!text) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const w of text.toLowerCase().match(/[a-z0-9]+/g) ?? []) {
+    if (w.length < 3 || TERM_STOPWORDS.has(w) || seen.has(w)) continue;
+    seen.add(w);
+    out.push(w);
+  }
+  return out;
+}
+
+/** Loose presence check tolerating a simple singular/plural difference. */
+function termPresent(haystack: string, term: string): boolean {
+  if (haystack.includes(term)) return true;
+  if (term.endsWith("s") && term.length > 3) return haystack.includes(term.slice(0, -1));
+  return false;
+}
+
+/**
+ * Topical authority = does the page cover ONE subject in depth, not just "has
+ * many headings". Three parts:
+ *   - structure: heading breadth + level variety (a page broken into sections),
+ *   - internal links: topic-cluster signal (links to related pages),
+ *   - topical focus (NEW): whether the page's own subject — the content terms
+ *     in its title and H1 — actually recurs across its headings and body. A
+ *     focused page repeats its core terms; a grab-bag names a topic once and
+ *     wanders. Counting headings alone rewarded the grab-bag equally, which is
+ *     exactly what "topical authority" is supposed to distinguish.
+ */
 export function scoreTopicalAuthority(page: CrawledPage): SignalScore {
   const levels = new Set(page.headings.map((h) => h.level));
-  const headingScore =
-    (Math.min(page.headings.length, 12) / 12) * 30 +
-    (Math.min(levels.size, 4) / 4) * 15;
-  const internalScore = (Math.min(page.internalLinkCount, 20) / 20) * 55;
-  const score = clamp(Math.round(headingScore + internalScore));
+  const structureScore =
+    (Math.min(page.headings.length, 12) / 12) * 18 +
+    (Math.min(levels.size, 4) / 4) * 12; // up to 30
+  const internalScore = (Math.min(page.internalLinkCount, 20) / 20) * 35; // up to 35
+
+  const h1 = page.headings.find((h) => h.level === 1)?.text ?? null;
+  const terms = [...new Set([...extractTerms(page.title), ...extractTerms(h1)])];
+  const headingText = page.headings.map((h) => h.text.toLowerCase()).join(" ");
+  const bodyText = page.renderedText.toLowerCase();
+
+  let focus: number;
+  let focusKnown: boolean;
+  if (terms.length === 0) {
+    // Nothing to check (generic or missing title). Give neutral partial credit
+    // when there's still real content, but nothing when the page is essentially
+    // empty — so a broken, title-less page isn't handed free topical points.
+    const hasContent = page.headings.length > 0 || page.wordCount > 50;
+    focus = hasContent ? 0.6 : 0;
+    focusKnown = false;
+  } else {
+    const inHeadings =
+      terms.filter((t) => termPresent(headingText, t)).length / terms.length;
+    const inBody = terms.filter((t) => termPresent(bodyText, t)).length / terms.length;
+    focus = 0.6 * inHeadings + 0.4 * inBody;
+    focusKnown = true;
+  }
+  const focusScore = focus * 35; // up to 35
+
+  const score = clamp(Math.round(structureScore + internalScore + focusScore));
+
+  const fixes: string[] = [];
+  if (page.internalLinkCount < 8) fixes.push("link to related pages to build a topic cluster");
+  if (page.headings.length < 4) fixes.push("break the topic into clear sections and subheadings");
+  if (focusKnown && focus < 0.5)
+    fixes.push("work your core topic terms into your headings and opening paragraphs so the page reads as clearly about one subject");
 
   return {
     key: "topicalAuthority",
     label: "Topical Authority",
     score,
     weight: TRADITIONAL_WEIGHTS.topicalAuthority,
-    reason: `${page.headings.length} headings, ${page.internalLinkCount} internal links (topic-cluster signal).`,
-    fix:
-      score < 75
-        ? "Deepen the topic: add sections and internal links to related pages (build a cluster)."
-        : null,
+    reason:
+      `${page.headings.length} headings, ${page.internalLinkCount} internal links` +
+      (focusKnown
+        ? `; ${Math.round(focus * 100)}% topic focus (title terms recurring in headings/body).`
+        : "; topic focus not assessable from a generic title."),
+    fix: score < 75 && fixes.length > 0 ? `Deepen topical authority: ${fixes.join("; ")}.` : null,
   };
 }
 
