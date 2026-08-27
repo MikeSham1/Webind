@@ -48,3 +48,7 @@ next-env.d.ts
 
 # Real-outcome training data is derived from customer visibility checks — never commit it.
 scripts/model/real-dataset.jsonl
+
+# Fix Generator SFT export is derived from customer reviews — never commit it.
+scripts/model/sft-dataset.jsonl
+scripts/model/sft-provenance.jsonl

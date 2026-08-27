@@ -57,9 +57,11 @@ import { buildSnapshot } from "@/lib/fixgen/snapshot";
 import { buildMetaDescriptionContext } from "@/lib/fixgen/context";
 import {
   getRunWithCandidates,
+  listReviewedExamples,
   persistFixRun,
   saveReview,
 } from "@/lib/fixgen/store";
+import { buildSftDataset } from "@/lib/fixgen/sft-export";
 import type { GenerateFixesOutcome } from "@/lib/fixgen/generate";
 import type { FixCandidate } from "@/lib/fixgen/types";
 import {
@@ -812,5 +814,78 @@ describe("fix generator persistence", () => {
       humanFinal: '<meta name="description" content="Durable Acme widgets for small businesses.">',
     });
     expect(reviewId).not.toBeNull();
+  });
+});
+
+describe("SFT export eligibility", () => {
+  function fix(overrides: Partial<FixCandidate> = {}): FixCandidate {
+    return {
+      candidateId: "c1",
+      action: "fix",
+      category: "metadata",
+      target: "<head>",
+      before: null,
+      after: '<meta name="description" content="A description drawn from the page.">',
+      rationale: "Summarizes the page.",
+      evidenceSpanIds: [],
+      confidence: "high",
+      applyVia: "github-snippet",
+      noFixReason: null,
+      ...overrides,
+    };
+  }
+
+  it("exports only accepted reviews (edited-final target), never rejected/unreviewed", async () => {
+    const owner = await createUser("sft@example.com", "correcthorse7");
+    if (!owner.ok) throw new Error("setup failed");
+
+    const snapshot = buildSnapshot(makePage({ url: "https://sft.test/p", metaDescription: null }));
+    const gate = buildMetaDescriptionContext(snapshot);
+    if (gate.kind !== "context") throw new Error("expected a context");
+
+    const outcome: GenerateFixesOutcome = {
+      accepted: [fix({ candidateId: "a" }), fix({ candidateId: "b" }), fix({ candidateId: "c" })],
+      rejected: [],
+      generation: {
+        provider: "fake",
+        model: "fake-1",
+        text: "{}",
+        inputTokens: 0,
+        outputTokens: 0,
+        durationMs: 0,
+        purpose: "fix_generate",
+        fallback: false,
+      },
+    };
+    const ids = await persistFixRun(snapshot, gate.context, outcome, owner.user.id);
+    if (!ids) throw new Error("persist failed");
+    const loaded = await getRunWithCandidates(ids.runId);
+    const cands = loaded!.candidates;
+    expect(cands.length).toBe(3);
+
+    // One accepted-unedited, one edited-and-accepted (the training target is the
+    // human's final), one rejected (must be excluded from SFT).
+    await saveReview({ candidateId: cands[0].id, reviewerUserId: owner.user.id, decision: "accepted_unedited" });
+    await saveReview({
+      candidateId: cands[1].id,
+      reviewerUserId: owner.user.id,
+      decision: "accepted_minor_edit",
+      humanFinal: '<meta name="description" content="HUMAN EDITED FINAL.">',
+    });
+    await saveReview({ candidateId: cands[2].id, reviewerUserId: owner.user.id, decision: "rejected" });
+
+    const mine = (await listReviewedExamples()).filter((e) => e.runId === ids.runId);
+    expect(mine.length).toBe(3);
+
+    const { rows, provenance } = buildSftDataset(mine);
+    // Only the two accepted reviews become training rows; the rejected is dropped.
+    expect(rows.length).toBe(2);
+    expect(provenance.every((p) => p.decision.startsWith("accepted"))).toBe(true);
+
+    const modelTurns = rows.map((r) => r.contents.find((c) => c.role === "model")!.parts[0].text);
+    // The edited row trains on the HUMAN final, not the model's original.
+    expect(modelTurns.some((t) => t.includes("HUMAN EDITED FINAL"))).toBe(true);
+    // The user turn is the reconstructed context (system instruction is separate).
+    expect(rows[0].systemInstruction.parts[0].text).toMatch(/WeBind Fix Generator/);
   });
 });

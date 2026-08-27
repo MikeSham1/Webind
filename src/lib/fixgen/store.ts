@@ -10,7 +10,7 @@ import {
   type FixRunRow,
 } from "@/lib/db/schema";
 import type { PageSnapshot } from "./snapshot";
-import type { FixContextPackage } from "./types";
+import type { FixCandidate, FixContextPackage } from "./types";
 import type { GenerateFixesOutcome } from "./generate";
 import { PROMPT_VERSION } from "./prompt";
 
@@ -161,6 +161,50 @@ export async function saveReview(input: {
       })
       .returning({ id: fixReviews.id });
     return row?.id ?? null;
+  });
+}
+
+/** One reviewed example, joined across review → candidate → run → snapshot. */
+export interface ReviewedExample {
+  reviewId: string;
+  decision: string;
+  humanFinal: string | null;
+  candidate: FixCandidate;
+  category: string;
+  snapshot: PageSnapshot | null;
+  snapshotId: string;
+  runId: string;
+  generatorModel: string;
+  promptVersion: string;
+}
+
+/**
+ * Every reviewed candidate with the context needed to build a training row.
+ * The consumer decides eligibility (never train on rejected/unreviewed) — this
+ * just returns the raw joined rows, newest first.
+ */
+export async function listReviewedExamples(limit = 20000): Promise<ReviewedExample[]> {
+  return withDb("listReviewedExamples", [], async (db) => {
+    const rows = await db
+      .select({
+        reviewId: fixReviews.id,
+        decision: fixReviews.decision,
+        humanFinal: fixReviews.humanFinal,
+        candidate: fixCandidates.candidate,
+        category: fixRuns.category,
+        snapshot: pageSnapshots.snapshot,
+        snapshotId: pageSnapshots.id,
+        runId: fixRuns.id,
+        generatorModel: fixRuns.generatorModel,
+        promptVersion: fixRuns.promptVersion,
+      })
+      .from(fixReviews)
+      .innerJoin(fixCandidates, eq(fixReviews.candidateId, fixCandidates.id))
+      .innerJoin(fixRuns, eq(fixCandidates.runId, fixRuns.id))
+      .innerJoin(pageSnapshots, eq(fixRuns.snapshotId, pageSnapshots.id))
+      .orderBy(desc(fixReviews.createdAt))
+      .limit(limit);
+    return rows as ReviewedExample[];
   });
 }
 
