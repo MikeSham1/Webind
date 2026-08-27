@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 const AI_LABELS: Record<keyof typeof AI_WEIGHTS, { label: string; note: string }> = {
   eeat: {
     label: "E-E-A-T Signals",
-    note: "Author bylines, about/contact pages, and other trust markers — 2026 research found 96% of AI-Overview citations carry strong E-E-A-T, and unauthored pages are cited ~40% less.",
+    note: "Who's behind the site and whether it's trustworthy: Organization/WebSite schema, an about/contact page, official social profiles, cited authoritative sources, and named authorship. Judged from one page, so on a homepage a missing author byline isn't penalized — bylines live on the article pages a single-page scan can't see; there we read entity identity instead.",
   },
   answerability: {
     label: "Answer-ready Structure",

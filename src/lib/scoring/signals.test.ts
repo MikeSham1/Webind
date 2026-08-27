@@ -88,9 +88,12 @@ describe("scoreEeat", () => {
     renderedText: "short thin page",
   };
 
-  it("maxes with author, 3 cited hosts, and an about/contact link", () => {
+  it("maxes with author, about link, org+social schema, and 3 cited hosts", () => {
     const s = scoreEeat(
       makePage({
+        metaAuthor: "Jane Doe",
+        hasAboutOrContactLink: true,
+        jsonLdBlocks: [{ "@type": "Organization", name: "Acme", sameAs: ["https://x.com/acme"] }],
         outboundLinks: [
           "https://en.wikipedia.org/a",
           "https://www.reuters.com/b",
@@ -99,33 +102,50 @@ describe("scoreEeat", () => {
       }),
     );
     expect(s.weight).toBe(0.2);
+    // author 35 + about 20 + org 15 + social 10 + citations 30 = 110 → clamp 100.
     expect(s.score).toBe(100);
     expect(s.fix).toBeNull();
   });
 
-  it("graduates citation credit by distinct host count", () => {
-    const oneHost = scoreEeat(makePage({ ...bare, outboundLinks: ["https://a.com/x"] }));
+  it("graduates citation credit by distinct host count (on an article page)", () => {
+    // A non-homepage page so authorship (0) doesn't add a homepage floor.
+    const at = "https://example.com/post";
+    const oneHost = scoreEeat(makePage({ ...bare, url: at, outboundLinks: ["https://a.com/x"] }));
     const twoHosts = scoreEeat(
-      makePage({ ...bare, outboundLinks: ["https://a.com/x", "https://b.com/y"] }),
+      makePage({ ...bare, url: at, outboundLinks: ["https://a.com/x", "https://b.com/y"] }),
     );
-    // author 0 + about 0 → citation portion only: 1 host → 18, 2 hosts → 28.
-    expect(oneHost.score).toBe(18);
-    expect(twoHosts.score).toBe(28);
+    expect(oneHost.score).toBe(15);
+    expect(twoHosts.score).toBe(22);
   });
 
-  it("credits a named author (45) via meta, JSON-LD, or byline", () => {
-    expect(scoreEeat(makePage({ ...bare, metaAuthor: "Jane Doe" })).score).toBe(45);
+  it("credits a named author (35) via meta, JSON-LD, or byline", () => {
+    expect(scoreEeat(makePage({ ...bare, metaAuthor: "Jane Doe" })).score).toBe(35);
     expect(
       scoreEeat(makePage({ ...bare, jsonLdBlocks: [{ "@type": "Article", author: "Jane" }] }))
         .score,
-    ).toBe(45);
-    expect(scoreEeat(makePage({ ...bare, renderedText: "By Jane Doe\nPublished." })).score).toBe(45);
+    ).toBe(35);
+    expect(scoreEeat(makePage({ ...bare, renderedText: "By Jane Doe\nPublished." })).score).toBe(35);
   });
 
-  it("does not treat 'authoritative' prose as authorship", () => {
-    expect(
-      scoreEeat(makePage({ ...bare, renderedText: "An authoritative, authentic guide." })).score,
-    ).toBe(0);
+  it("does not tank a homepage for a missing byline (bylines live on article pages)", () => {
+    // A bare homepage with no byline still gets the identity floor, not zero.
+    const homepage = scoreEeat(makePage({ ...bare, url: "https://example.com/" }));
+    expect(homepage.score).toBe(12);
+    // A homepage that identifies its owner (about link) scores meaningfully...
+    const identified = scoreEeat(
+      makePage({ ...bare, url: "https://example.com/", hasAboutOrContactLink: true }),
+    );
+    expect(identified.score).toBe(40); // author-floor 20 + about 20
+    // ...and the "no byline" nag never appears on a homepage.
+    expect(identified.fix ?? "").not.toMatch(/byline/);
+  });
+
+  it("does not treat 'authoritative' prose as authorship (no 35-pt author credit)", () => {
+    const s = scoreEeat(
+      makePage({ ...bare, url: "https://example.com/post", renderedText: "An authoritative, authentic guide." }),
+    );
+    // Article page, no real byline → no author credit at all.
+    expect(s.score).toBe(0);
   });
 });
 

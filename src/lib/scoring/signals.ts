@@ -240,37 +240,114 @@ export function scoreFreshness(page: CrawledPage): SignalScore {
   };
 }
 
-const CITATION_POINTS = [0, 18, 28, 35];
+const CITATION_POINTS = [0, 15, 22, 30];
 
+/** True when the analyzed URL is the site root (a homepage). */
+function isRootPage(url: string): boolean {
+  try {
+    const p = new URL(url).pathname;
+    return p === "/" || p === "";
+  } catch {
+    return false;
+  }
+}
+
+/** Recursively test whether any JSON-LD node (incl. inside `@graph`) has a wanted `@type`. */
+function jsonLdHasType(blocks: unknown[], wanted: Set<string>): boolean {
+  const visit = (b: unknown): boolean => {
+    if (!b || typeof b !== "object") return false;
+    const rec = b as Record<string, unknown>;
+    const t = rec["@type"];
+    if (typeof t === "string" && wanted.has(t)) return true;
+    if (Array.isArray(t) && t.some((x) => typeof x === "string" && wanted.has(x))) return true;
+    const graph = rec["@graph"];
+    return Array.isArray(graph) && graph.some(visit);
+  };
+  return blocks.some(visit);
+}
+
+const ENTITY_TYPES = new Set([
+  "Organization",
+  "LocalBusiness",
+  "WebSite",
+  "NewsMediaOrganization",
+]);
+
+/** Organization/WebSite identity — "who runs this site", visible on a homepage. */
+function hasEntityIdentity(blocks: unknown[]): boolean {
+  return jsonLdHasType(blocks, ENTITY_TYPES);
+}
+
+/** A `sameAs` with at least one URL — official social/authority profiles. */
+function hasSocialProfiles(blocks: unknown[]): boolean {
+  const isUrl = (x: unknown) => typeof x === "string" && /^https?:\/\//i.test(x);
+  const visit = (b: unknown): boolean => {
+    if (!b || typeof b !== "object") return false;
+    const rec = b as Record<string, unknown>;
+    if (isUrl(rec.sameAs) || (Array.isArray(rec.sameAs) && rec.sameAs.some(isUrl))) return true;
+    const graph = rec["@graph"];
+    return Array.isArray(graph) && graph.some(visit);
+  };
+  return blocks.some(visit);
+}
+
+/**
+ * E-E-A-T / trust. Rebalanced so a homepage isn't tanked for a missing author
+ * byline — bylines live on the ARTICLE pages we don't crawl from a single-page
+ * analysis, so on a root page an absent byline is not treated as a deficiency.
+ * Instead, trust is read from signals a homepage actually carries: who runs the
+ * site (Organization/WebSite schema, an about/contact page, official social
+ * profiles) and whether it cites authoritative sources. On a non-homepage
+ * (an article), a named byline is still expected and rewarded.
+ */
 export function scoreEeat(page: CrawledPage): SignalScore {
+  const homepage = isRootPage(page.url);
   const hasAuthor =
     Boolean(page.metaAuthor?.trim()) ||
     hasJsonLdAuthor(page.jsonLdBlocks) ||
     BYLINE_RE.test(page.renderedText);
 
   const citedHosts = outboundHostCount(page);
-  const citationScore = CITATION_POINTS[Math.min(citedHosts, 3)];
+  const citationScore = CITATION_POINTS[Math.min(citedHosts, 3)]; // 0..30
+
+  const hasIdentity = hasEntityIdentity(page.jsonLdBlocks);
+  const hasSocial = hasSocialProfiles(page.jsonLdBlocks);
+
+  // Authorship: expected on an article; on a homepage a missing byline earns
+  // partial credit (identity is what matters there) rather than a zero.
+  let authorScore: number;
+  if (hasAuthor) authorScore = 35;
+  else if (homepage) authorScore = page.hasAboutOrContactLink ? 20 : 12;
+  else authorScore = 0;
 
   const score = clamp(
-    (hasAuthor ? 45 : 0) + citationScore + (page.hasAboutOrContactLink ? 20 : 0),
+    authorScore +
+      (page.hasAboutOrContactLink ? 20 : 0) +
+      (hasIdentity ? 15 : 0) +
+      (hasSocial ? 10 : 0) +
+      citationScore,
   );
 
   const missing: string[] = [];
-  if (!hasAuthor) missing.push("add a named author byline or Person/author schema");
+  // Only nag about a byline where one is actually expected (article pages).
+  if (!hasAuthor && !homepage) {
+    missing.push("add a named author byline or Person/author schema");
+  }
+  if (!hasIdentity) missing.push("add Organization/WebSite schema identifying who runs the site");
+  if (!page.hasAboutOrContactLink) missing.push("link to an about/contact page");
   if (citedHosts < 2)
     missing.push("cite 2+ authoritative outbound sources (studies, docs, data)");
-  if (!page.hasAboutOrContactLink) missing.push("link to an about/contact page");
 
+  const strong = score >= 80 || missing.length === 0;
   return {
     key: "eeat",
     label: "E-E-A-T Signals",
     score,
     weight: AI_WEIGHTS.eeat,
-    reason:
-      missing.length === 0
-        ? `Named author, ${citedHosts} cited sources, and clear ownership — strong trust signals.`
-        : `Weak trust signals: ${missing.join("; ")}.`,
-    fix: missing.length === 0 ? null : `Strengthen E-E-A-T: ${missing.join("; ")}.`,
+    reason: strong
+      ? `Clear ownership${hasAuthor ? ", a named author," : ""} and ${citedHosts} cited sources — strong trust signals.`
+      : `Weak trust signals: ${missing.join("; ")}.`,
+    fix: strong ? null : `Strengthen E-E-A-T: ${missing.join("; ")}.`,
   };
 }
 
