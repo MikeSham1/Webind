@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { logInfo } from "../log";
 import type { AnswerEngine } from "./types";
 
@@ -42,6 +43,22 @@ export interface VisibilityProvider {
   probe(keyword: string, ctx: ProbeContext): Promise<ProbeVerdict>;
 }
 
+/**
+ * The unbiased probe prompt, shared by every provider: answer the user's real
+ * query WITHOUT naming the brand we're measuring, so the model isn't primed to
+ * surface it. The brand is then detected deterministically in the answer.
+ */
+function buildProbePrompt(keyword: string): string {
+  return (
+    `A user asks an AI assistant: "${keyword}".\n\n` +
+    `Using web search, answer exactly as you would for that user — recommend ` +
+    `the best brands, products, or sources based on real, independent ` +
+    `coverage. Then, on a FINAL line, list the specific brands, products, or ` +
+    `websites your answer recommends or cites, most important first:\n` +
+    `SOURCES: <comma-separated brands or domains, in order, or none>`
+  );
+}
+
 // --- Claude provider (fully implemented) ------------------------------------
 
 const WEB_SEARCH_TOOL = {
@@ -56,16 +73,9 @@ const claudeProvider: VisibilityProvider = {
   async probe(keyword, ctx) {
     const client = new Anthropic();
 
-    // Unbiased probe: answer the user's real query WITHOUT naming the brand we
-    // are measuring, so the model isn't primed to surface it. The brand is then
-    // detected deterministically in the answer (see detectVisibility).
-    const prompt =
-      `A user asks an AI assistant: "${keyword}".\n\n` +
-      `Using web search, answer exactly as you would for that user — recommend ` +
-      `the best brands, products, or sources based on real, independent ` +
-      `coverage. Then, on a FINAL line, list the specific brands, products, or ` +
-      `websites your answer recommends or cites, most important first:\n` +
-      `SOURCES: <comma-separated brands or domains, in order, or none>`;
+    // Unbiased probe (see buildProbePrompt): the brand is never named, so a
+    // "present" verdict reflects the model surfacing it on its own.
+    const prompt = buildProbePrompt(keyword);
 
     // Server-side web search runs an internal loop; a "pause_turn" means we
     // must resend to let it continue. Bound the continuations.
@@ -182,6 +192,45 @@ export function detectVisibility(text: string, ctx: ProbeContext): ProbeVerdict 
   return { present, prominence, competitors, evidence };
 }
 
+// --- Gemini provider (fully implemented) ------------------------------------
+
+const geminiProvider: VisibilityProvider = {
+  engine: "gemini",
+  isConfigured: () => Boolean(process.env.GEMINI_API_KEY),
+  async probe(keyword, ctx) {
+    const model = process.env.GEMINI_VISIBILITY_MODEL || "gemini-3.7-flash";
+    const startedAt = Date.now();
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+    const response = await ai.models.generateContent({
+      model,
+      contents: buildProbePrompt(keyword),
+      config: {
+        // Ground the answer in real Google Search results, the same way the
+        // Claude probe uses live web search. LOW thinking keeps it a fast draft.
+        tools: [{ googleSearch: {} }],
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        maxOutputTokens: 2048,
+      },
+    });
+
+    const grounding = response.candidates?.[0]?.groundingMetadata;
+    logInfo("ai_call.ok", {
+      provider: "gemini",
+      purpose: "visibility_probe",
+      model,
+      inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
+      outputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
+      durationMs: Date.now() - startedAt,
+      // Grounding provenance, for reproducibility.
+      groundingQueries: grounding?.webSearchQueries?.length ?? 0,
+      groundingChunks: grounding?.groundingChunks?.length ?? 0,
+    });
+
+    return detectVisibility(response.text ?? "", ctx);
+  },
+};
+
 // --- Stub providers ---------------------------------------------------------
 //
 // Intentionally NOT implemented against a guessed request/response shape. Each
@@ -205,8 +254,8 @@ function stubProvider(
 
 export const PROVIDERS: VisibilityProvider[] = [
   claudeProvider,
+  geminiProvider,
   stubProvider("openai", "OPENAI_API_KEY", "OpenAI / ChatGPT"),
-  stubProvider("gemini", "GEMINI_API_KEY", "Gemini"),
   stubProvider("perplexity", "PERPLEXITY_API_KEY", "Perplexity"),
   stubProvider("google", "SERPAPI_API_KEY", "Google SERP"),
 ];
