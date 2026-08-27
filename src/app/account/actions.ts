@@ -39,12 +39,17 @@ export async function signupAction(
 
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
   if (!EMAIL_RE.test(email)) {
     return { status: "error", error: "Enter a valid email address." };
   }
   if (password.length < 8) {
     return { status: "error", error: "Password must be at least 8 characters." };
+  }
+  // Checked server-side too: a client-only match check is trivially bypassed.
+  if (password !== confirmPassword) {
+    return { status: "error", error: "The two passwords don't match." };
   }
 
   const result = await createUser(email, password);

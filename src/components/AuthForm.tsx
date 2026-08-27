@@ -66,6 +66,22 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
           )}
         </label>
 
+        {!isLogin && (
+          <label className="block">
+            <span className="font-sans text-sm font-medium text-ink">
+              Confirm password
+            </span>
+            <input
+              name="confirmPassword"
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={8}
+              className={inputClass}
+            />
+          </label>
+        )}
+
         {state.status === "error" && (
           <p role="alert" className="text-sm text-bad">
             {state.error}
