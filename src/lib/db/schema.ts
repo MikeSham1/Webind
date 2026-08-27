@@ -406,3 +406,24 @@ export const modelVersions = pgTable("model_versions", {
   metadata: jsonb("metadata"),
 });
 export type ModelVersionRow = typeof modelVersions.$inferSelect;
+
+/**
+ * A user's Stripe subscription. Cascade-deleted with the user (billing state
+ * is meaningless without the account). `plan` mirrors the active plan id; the
+ * app treats a user with no row (or a non-active status) as the free plan.
+ */
+export const subscriptions = pgTable("subscriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  userId: uuid("user_id")
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: "cascade" }),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  plan: text("plan").notNull().default("free"),
+  status: text("status").notNull().default("inactive"),
+  currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+});
+export type SubscriptionRow = typeof subscriptions.$inferSelect;
