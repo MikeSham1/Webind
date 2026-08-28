@@ -40,6 +40,7 @@ export async function signupAction(
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const confirmPassword = String(formData.get("confirmPassword") ?? "");
+  const termsAccepted = formData.get("termsAccepted") === "accepted";
 
   if (!EMAIL_RE.test(email)) {
     return { status: "error", error: "Enter a valid email address." };
@@ -50,6 +51,12 @@ export async function signupAction(
   // Checked server-side too: a client-only match check is trivially bypassed.
   if (password !== confirmPassword) {
     return { status: "error", error: "The two passwords don't match." };
+  }
+  if (!termsAccepted) {
+    return {
+      status: "error",
+      error: "You must agree to the Terms of Service and acknowledge the Privacy Policy to create an account.",
+    };
   }
 
   const result = await createUser(email, password);
