@@ -6,6 +6,7 @@ import {
   generateSuggestions,
   parseSuggestions,
   rankedDeficiencies,
+  structuredToSuggestions,
 } from "./suggest";
 import type { SignalScore } from "./types";
 
@@ -121,6 +122,46 @@ describe("parseSuggestions", () => {
     const text =
       '[{"key":"factDensity","title":"T","steps":["a","b","c","d","e","f"],"rationale":"r"}]';
     expect(parseSuggestions(text, targets).get("factDensity")!.steps).toHaveLength(4);
+  });
+});
+
+describe("structuredToSuggestions (forced-tool input)", () => {
+  const targets: SignalScore[] = [
+    sig({ key: "factDensity" }),
+    sig({ key: "answerability" }),
+  ];
+
+  it("accepts the tool's {suggestions:[...]} object and keeps only requested keys", () => {
+    const input = {
+      suggestions: [
+        { key: "factDensity", title: "Back your claims", steps: ["Cite the source"], rationale: "Cited claims get quoted" },
+        { key: "unknownKey", title: "nope", steps: ["x"], rationale: "y" },
+      ],
+    };
+    const map = structuredToSuggestions(input, targets);
+    expect(map.has("factDensity")).toBe(true);
+    expect(map.has("unknownKey")).toBe(false);
+    expect(map.get("factDensity")!.aiGenerated).toBe(true);
+  });
+
+  it("drops entries missing a title or steps, and dedupes repeated keys", () => {
+    const input = {
+      suggestions: [
+        { key: "factDensity", title: "", steps: ["x"], rationale: "r" },
+        { key: "answerability", title: "Ok", steps: [], rationale: "r" },
+        { key: "factDensity", title: "First wins", steps: ["a"], rationale: "r" },
+        { key: "factDensity", title: "Second ignored", steps: ["b"], rationale: "r" },
+      ],
+    };
+    const map = structuredToSuggestions(input, targets);
+    expect(map.size).toBe(1);
+    expect(map.get("factDensity")!.title).toBe("First wins");
+  });
+
+  it("returns empty on a shape that isn't {suggestions:[...]}", () => {
+    expect(structuredToSuggestions({}, targets).size).toBe(0);
+    expect(structuredToSuggestions(null, targets).size).toBe(0);
+    expect(structuredToSuggestions([{ key: "factDensity" }], targets).size).toBe(0);
   });
 });
 
