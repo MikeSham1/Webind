@@ -5,19 +5,21 @@ import type { AiProvider, GenerateRequest, GenerateResult } from "./types";
 /**
  * Gemini generator adapter (default: gemini-3.7-flash).
  *
- * Notes grounded in the current @google/genai SDK + Google's 3.7 guidance:
- *  - No temperature / top_p / top_k — Google says to drop those on 3.7 Flash.
- *  - Thinking is controlled by thinkingLevel; LOW is aimed at drafting/writing
- *    workloads like ours. Configurable via GEMINI_THINKING_LEVEL.
- *  - JSON mode uses responseMimeType. For a FUTURE tuned model, structured/
- *    response-schema output can hurt quality (structure isn't applied during
- *    tuning), so JSON mode is a per-request flag the router can turn off.
+ * Notes grounded in current Google guidance:
+ *  - No temperature / top_p / top_k on the 3.7 default path.
+ *  - Base 3.7 writing defaults to LOW thinking.
+ *  - Supervised-tuned Gemini 3+ models default to MINIMAL thinking because the
+ *    tuned task behavior is learned from the examples rather than hidden
+ *    reasoning. GEMINI_THINKING_LEVEL can override either default.
+ *  - JSON mode uses responseMimeType. Controlled generation can reduce quality
+ *    on tuned models, so content writing keeps free-text Markdown output.
  */
 
 const DEFAULT_MODEL = "gemini-3.7-flash";
 
-function thinkingLevel(): ThinkingLevel {
-  const raw = (process.env.GEMINI_THINKING_LEVEL ?? "low").toUpperCase();
+function thinkingLevel(isExplicitModel: boolean): ThinkingLevel {
+  const fallback = isExplicitModel ? "minimal" : "low";
+  const raw = (process.env.GEMINI_THINKING_LEVEL ?? fallback).toUpperCase();
   switch (raw) {
     case "MINIMAL":
       return ThinkingLevel.MINIMAL;
@@ -35,11 +37,12 @@ export function geminiModelId(): string {
 }
 
 /**
- * @param modelId Optional model override — e.g. a fine-tuned content-writer
- *   endpoint. Falls back to GEMINI_GENERATOR_MODEL, then the default.
+ * @param modelId Optional model override, such as a supervised-tuned content
+ *   writer endpoint. Falls back to GEMINI_GENERATOR_MODEL, then the default.
  */
 export function geminiProvider(modelId?: string): AiProvider {
   const model = modelId || geminiModelId();
+  const isExplicitModel = Boolean(modelId);
   return {
     name: "gemini",
     model,
@@ -53,9 +56,7 @@ export function geminiProvider(modelId?: string): AiProvider {
         config: {
           systemInstruction: req.system,
           maxOutputTokens: req.maxOutputTokens ?? 2048,
-          thinkingConfig: { thinkingLevel: thinkingLevel() },
-          // Live web grounding when asked. Not combined with JSON mode — the
-          // grounded tasks (writing content) use free-text output.
+          thinkingConfig: { thinkingLevel: thinkingLevel(isExplicitModel) },
           ...(req.grounded ? { tools: [{ googleSearch: {} }] } : {}),
           ...(req.json && !req.grounded ? { responseMimeType: "application/json" } : {}),
         },
