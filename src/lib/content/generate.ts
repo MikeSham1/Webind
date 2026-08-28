@@ -18,7 +18,7 @@ export function contentWriterProvider(): AiProvider {
   return gemini37Provider();
 }
 
-function contentWriterProviders(): AiProvider[] {
+export function contentWriterProviders(): AiProvider[] {
   const primary = contentWriterProvider();
   // A tuned Vertex endpoint is an optional enhancement, never a new single
   // point of failure. If its auth, endpoint, quota, or network call fails, the
@@ -49,14 +49,16 @@ function titleFromMarkdown(markdown: string): string | null {
  */
 export async function generateDraft(
   inputs: ContentInputs,
-  deps: { provider?: AiProvider } = {},
+  deps: { provider?: AiProvider; providers?: AiProvider[] } = {},
 ): Promise<ContentDraft> {
   const fallback = assembleDraft(inputs);
   let title = fallback.title;
   let markdown = fallback.markdown;
   let writtenBy: ContentDraft["writtenBy"] = "template";
 
-  const providers = deps.provider ? [deps.provider] : contentWriterProviders();
+  const providers = deps.provider
+    ? [deps.provider]
+    : deps.providers ?? contentWriterProviders();
   for (const provider of providers) {
     if (!provider.isConfigured()) continue;
     const result = await generate(
