@@ -20,8 +20,8 @@ const AI_LABELS: Record<keyof typeof AI_WEIGHTS, { label: string; note: string }
     note: "Lists, tables, question-style headings, and scannable prose that let a model lift a passage cleanly. We score the structure, not FAQ markup: Google removed FAQ rich results in 2026 and needs no special schema for AI Search, so FAQPage schema earns nothing here.",
   },
   factDensity: {
-    label: "Fact Density & Evidence",
-    note: "Concrete numbers, statistics, and cited data. Princeton's GEO study found this the single strongest lever they tested, at +41%.",
+    label: "Evidence Integrity",
+    note: "Whether the page's factual claims are actually supported — each verifiable figure cited to a source in place, not just numbers stacked up. We grade supported-claim coverage, not raw statistic count, because newer evaluations found 'add more stats' unreliable while genuinely backing claims tracks what engines cite. (Verifying that a cited source truly supports its claim is a further step we don't yet perform.)",
   },
   schema: {
     label: "Schema Markup",

@@ -201,25 +201,28 @@ describe("scoreAnswerability", () => {
   });
 });
 
-describe("scoreFactDensity", () => {
-  it("rewards ~1 statistic per 100 words plus a quote", () => {
+describe("scoreFactDensity (Evidence Integrity)", () => {
+  it("rewards a claim cited to an external source in place", () => {
     const s = scoreFactDensity(
       makePage({
-        wordCount: 100,
-        renderedText: "Revenue rose 42% to $1,200 in 2024 across 3,400 firms.",
+        url: "https://acme.com/a",
+        html: `<html><body><p>Revenue rose 42%, per <a href="https://sec.gov/x">the SEC filing</a>.</p></body></html>`,
+        outboundLinks: ["https://sec.gov/x"],
         blockquoteCount: 1,
       }),
     );
-    // 4+ stat tokens over 100 words → density ≥ 1 → 60, plus blockquote → 40.
     expect(s.key).toBe("factDensity");
-    expect(s.score).toBe(100);
+    expect(s.label).toBe("Evidence Integrity");
+    expect(s.score).toBeGreaterThan(70); // full coverage + a source + a quote
+    expect(s.fix).toBeNull();
   });
 
-  it("scores thin, quote-less prose low", () => {
+  it("scores thin, source-less prose low and asks for sources", () => {
     const s = scoreFactDensity(
       makePage({
-        wordCount: 500,
-        renderedText: "We help businesses grow with our great service and support.",
+        url: "https://acme.com/a",
+        html: `<html><body><p>We help businesses grow with great service and support.</p></body></html>`,
+        outboundLinks: [],
         blockquoteCount: 0,
       }),
     );

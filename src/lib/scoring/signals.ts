@@ -1,5 +1,6 @@
 import type { CrawledPage, SignalScore } from "./types";
 import { AI_WEIGHTS, TRADITIONAL_WEIGHTS } from "./weights";
+import { scoreEvidence } from "./evidence-integrity";
 
 // --- shared helpers ---------------------------------------------------------
 
@@ -74,13 +75,6 @@ function hasJsonLdAuthor(blocks: unknown[]): boolean {
 const BYLINE_RE =
   /\b(?:written by|authored by|author:)\s+[A-Z]|(?:^|[\n.!?]\s*)By\s+[A-Z][a-z]+/m;
 
-/** Count verifiable-figure tokens (percentages, currency, multi-digit numbers). */
-function countStatTokens(text: string): number {
-  const matches = text.match(
-    /[$£€]\s?\d[\d,.]*|\d[\d,.]*\s?%|\b\d{2,}(?:[.,]\d+)?\b|\b\d+\.\d+\b/g,
-  );
-  return matches ? matches.length : 0;
-}
 
 /** Headings phrased as a question (end with "?") — an FAQ/answer signal. */
 function questionHeadingCount(page: CrawledPage): number {
@@ -413,38 +407,21 @@ export function scoreAnswerability(page: CrawledPage): SignalScore {
  * statistics was the single strongest method in Princeton's GEO study (+41%);
  * the practical target is roughly one figure per 100 words.
  */
+/**
+ * Evidence Integrity. Grades whether the page *supports* its factual claims
+ * with in-place citations, not how many numbers it contains. Keeps the
+ * `factDensity` key (so weights and the Evidence & Citation stage are unchanged)
+ * while relabeling to reflect the claim-centric measure. See evidence-integrity.ts.
+ */
 export function scoreFactDensity(page: CrawledPage): SignalScore {
-  const stats = countStatTokens(page.renderedText);
-  const per100 = page.wordCount > 0 ? stats / (page.wordCount / 100) : 0;
-
-  let statScore: number;
-  if (stats === 0) statScore = 0;
-  else if (per100 >= 1) statScore = 60;
-  else if (per100 >= 0.5) statScore = 45;
-  else if (per100 >= 0.2) statScore = 28;
-  else statScore = 12;
-
-  const hasQuote =
-    page.blockquoteCount > 0 || /[“"][^“”"]{15,}[”"]/.test(page.renderedText);
-  const quoteScore = page.blockquoteCount > 0 ? 40 : hasQuote ? 20 : 0;
-
-  const score = clamp(statScore + quoteScore);
-
-  const missing: string[] = [];
-  if (statScore < 60)
-    missing.push("add verifiable statistics/figures (aim for ~1 per 100 words)");
-  if (quoteScore < 40) missing.push("include an expert quote or blockquote");
-
+  const { score, reason, fix } = scoreEvidence(page);
   return {
     key: "factDensity",
-    label: "Fact Density & Evidence",
+    label: "Evidence Integrity",
     score,
     weight: AI_WEIGHTS.factDensity,
-    reason:
-      score >= 70
-        ? `Specific and evidence-backed (${stats} figures detected).`
-        : `Thin on citable evidence (${stats} figures for ${page.wordCount} words).`,
-    fix: score >= 70 ? null : `Add evidence: ${missing.join("; ")}.`,
+    reason,
+    fix,
   };
 }
 
