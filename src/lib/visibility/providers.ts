@@ -6,16 +6,15 @@ import type { AnswerEngine } from "./types";
 /**
  * Pluggable answer-engine providers for keyword-visibility probing.
  *
- * Only the Claude provider is fully implemented — it uses the Anthropic
- * server-side web-search tool to judge, for a given query, whether the brand
- * would surface and who gets recommended instead. The others (OpenAI/ChatGPT,
- * Gemini, Perplexity, and Google organic/AI-Overviews via a SERP API) are
- * honest stubs: inert without a key, and a clearly-marked "not implemented"
- * error when a key is present, which the orchestrator catches and degrades to
- * an unknown verdict. Nothing here fabricates a result.
+ * Claude and Gemini are fully implemented here. Claude uses Anthropic's
+ * server-side web-search tool; Gemini uses Google Search grounding through the
+ * Gemini Developer API. OpenAI/ChatGPT, Perplexity, and Google organic /
+ * AI-Overviews via the SERPAPI slot remain honest stubs: inert without a key,
+ * and a clearly-marked "not implemented" error when a key is present, which
+ * the orchestrator catches and degrades to an unknown verdict.
  *
- * Model and tool versions follow the `claude-api` skill and match the existing
- * citation checker: `claude-opus-4-8`, adaptive thinking, `web_search_20260209`.
+ * Claude model/tool versions match the citation checker:
+ * `claude-opus-4-8`, adaptive thinking, `web_search_20260209`.
  */
 
 const MODEL = "claude-opus-4-8";
@@ -222,7 +221,6 @@ const geminiProvider: VisibilityProvider = {
       inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
       outputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
       durationMs: Date.now() - startedAt,
-      // Grounding provenance, for reproducibility.
       groundingQueries: grounding?.webSearchQueries?.length ?? 0,
       groundingChunks: grounding?.groundingChunks?.length ?? 0,
     });
