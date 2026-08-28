@@ -27,15 +27,18 @@ export default async function ReportDetailPage({
   const row = user.isAdmin ? await getReportById(id) : await getReportForUser(id, user.id);
   if (!row || !row.report) notFound();
 
-  // GitHub connection and any opened PR belong to the report's owner, not
-  // necessarily the viewer — an admin reviewing someone else's report must
-  // see (and open PRs against) that owner's repo, never their own.
-  const [githubConnected, pr] = await Promise.all([
-    row.userId
-      ? getGitHubConnectionStatus(row.userId).then((status) => status !== null)
-      : Promise.resolve(false),
-    getPrForReport(row.id),
-  ]);
+  // Admins may inspect any saved report, including anonymous reports and reports
+  // owned by another account. That is intentionally read-only: all mutation
+  // actions (Fix Generator, GitHub PRs, review/deployment records) remain scoped
+  // to the report owner. Do not render controls that the server will reject.
+  const canManageReport = row.userId === user.id;
+
+  const [githubConnected, pr] = canManageReport
+    ? await Promise.all([
+        getGitHubConnectionStatus(user.id).then((status) => status !== null),
+        getPrForReport(row.id),
+      ])
+    : [false, null] as const;
 
   return (
     <main className="mx-auto w-full max-w-3xl px-6 py-12">
@@ -48,14 +51,29 @@ export default async function ReportDetailPage({
       <div className="mt-10">
         <ReportResults
           report={row.report}
-          requestId={row.id}
+          // requestId enables owner-only mutation controls inside ReportResults
+          // (notably OpenPrBar). Admin read-only views must not expose them.
+          requestId={canManageReport ? row.id : null}
           optimizations={row.optimizations ?? undefined}
           githubConnected={githubConnected}
           initialPr={pr ? { prUrl: pr.prUrl, prNumber: pr.prNumber } : null}
         />
       </div>
       <div className="mt-10">
-        <FixGeneratorPanel requestId={row.id} />
+        {canManageReport ? (
+          <FixGeneratorPanel requestId={row.id} />
+        ) : (
+          <section className="scan-frame border border-line bg-surface p-6 sm:p-7">
+            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              <span aria-hidden="true">[ </span>
+              Fix Generator · read-only
+              <span aria-hidden="true"> ]</span>
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-muted">
+              This report is not owned by the account you are signed in with, so owner-only fix generation is disabled. Run a new report while signed in to generate and review fixes.
+            </p>
+          </section>
+        )}
       </div>
     </main>
   );
