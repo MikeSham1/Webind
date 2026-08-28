@@ -85,17 +85,25 @@ function stats(markdown: string): MarkdownStats {
   };
 }
 
+/** Count complete normalized token sequences, never substrings inside words. */
 function phraseFrequency(markdown: string, phrase: string): number {
-  const haystack = words(markdown).join(" ");
-  const needle = words(phrase).join(" ");
-  if (!needle) return 0;
+  const haystack = words(markdown);
+  const needle = words(phrase);
+  if (needle.length === 0 || needle.length > haystack.length) return 0;
+
   let count = 0;
-  let from = 0;
-  while (true) {
-    const i = haystack.indexOf(needle, from);
-    if (i < 0) break;
-    count++;
-    from = i + needle.length;
+  for (let i = 0; i <= haystack.length - needle.length; i++) {
+    let matches = true;
+    for (let j = 0; j < needle.length; j++) {
+      if (haystack[i + j] !== needle[j]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) {
+      count++;
+      i += needle.length - 1;
+    }
   }
   return count;
 }
@@ -114,7 +122,9 @@ function intentScore(inputs: ContentInputs, markdown: string, s: MarkdownStats):
     const occurrences = phraseFrequency(markdown, kw);
     const perThousand = s.wordCount ? (occurrences * 1000) / s.wordCount : 0;
     if (occurrences === 0) keywordNaturalness -= 0.08;
-    if (perThousand > 12) {
+    // Density is meaningful only after actual repetition. This avoids punishing
+    // one natural mention on a short landing/product page.
+    if (occurrences >= 3 && perThousand > 12) {
       keywordNaturalness -= Math.min(0.35, (perThousand - 12) / 50);
       warnings.push(`Target term appears unusually often: ${kw}`);
     }
@@ -143,16 +153,11 @@ export function scoreContentQuality(inputs: ContentInputs, markdown: string): Co
   const target = WORD_TARGETS[inputs.pageType];
   const warnings: string[] = [];
 
-  // Mirrors teacher.ts: depth rises quickly then saturates, while truly thin
-  // pages are explicitly penalized. Thresholds are page-type aware here because
-  // a product page and a long-form article should not be forced to the same size.
   const depth = saturating(s.wordCount, target.half);
   const thinPenalty = s.wordCount < target.min ? 0.55 : 1;
   const substance = clamp(depth * thinPenalty);
   if (s.wordCount < target.min) warnings.push(`Thin for ${inputs.pageType} intent (${s.wordCount} words)`);
 
-  // Same extraction primitives as the readiness teacher, with the weights
-  // renormalized because Markdown cannot express every page-level feature.
   const structure =
     0.45 * saturating(s.listItemCount, 8) +
     0.35 * saturating(s.tableCount, 2) +
@@ -163,9 +168,6 @@ export function scoreContentQuality(inputs: ContentInputs, markdown: string): Co
   const readability = clamp(1 - 0.6 * s.longParagraphRatio);
   if (s.longParagraphRatio > 0.3) warnings.push("Too many long, unbroken paragraphs");
 
-  // Evidence is intentionally modest. External links can support claims, while
-  // placeholders are preferable to fabrication when facts are missing. Neither
-  // is rewarded enough to encourage citation spam or placeholder-heavy copy.
   const evidence = clamp(
     0.65 * saturating(s.outboundLinkCount, inputs.pageType === "blog" ? 3 : 2) +
       0.35 * saturating(s.placeholderCount, 2),
