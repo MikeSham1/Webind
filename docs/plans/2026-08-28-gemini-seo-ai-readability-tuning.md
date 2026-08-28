@@ -68,13 +68,20 @@ Outputs include Vertex-ready `train.jsonl` and `validation.jsonl`, a local-only 
 
 See `docs/tuning/synthetic-content-sft.md` for the executable workflow.
 
-## Vertex tuning
+## Vertex tuning and runtime authentication
 
 The checked-in `scripts/tuning/submit-vertex-sft.sh` uploads only train and validation JSONL and creates a Vertex supervised tuning job using Gemini 3.5 Flash.
 
 Defaults are deliberately conservative for the first experiment: two epochs and a learning-rate multiplier of 1.0. Tune these only by validation/locked-benchmark results rather than assuming larger values are better.
 
 The actual managed job requires a Google Cloud project, billing, Vertex permissions, a GCS bucket, and authenticated Google credentials. Those credentials are infrastructure inputs, not repository data and must never be committed.
+
+The runtime has two intentionally separate Gemini transports:
+
+- `GEMINI_API_KEY` stays on the Gemini Developer API and serves base Gemini 3.7 planning / untuned fallback.
+- `CONTENT_WRITER_VERTEX_ENDPOINT` identifies the tuned model's `tunedModel.endpoint` and is served through Vertex AI using Application Default Credentials.
+
+A Vertex-tuned endpoint must not be passed into the API-key-only 3.7 client. The app now routes it through `src/lib/ai/vertex-gemini.ts` instead. This preserves today's deployment behavior until a tuned endpoint and Vertex credentials are deliberately configured.
 
 ## Quantitative evaluation
 
@@ -134,7 +141,7 @@ Key conclusions:
 
 ## Promotion rule
 
-Do not set `CONTENT_WRITER_MODEL` to a tuned endpoint unless it:
+Do not set `CONTENT_WRITER_VERTEX_ENDPOINT` to a tuned endpoint unless it:
 
 1. has zero unsupported-claim regression on the locked holdout,
 2. beats or matches the current 3.7 writer on blinded usefulness,
