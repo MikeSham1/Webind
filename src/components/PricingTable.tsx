@@ -12,8 +12,28 @@ interface Props {
   signedIn: boolean;
 }
 
-function price(plan: Plan): string {
-  return plan.priceMonthly === 0 ? "$0" : `$${plan.priceMonthly}`;
+/** A single instrument-panel stat: big display value over a mono label. */
+function Spec({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="flex flex-col items-center gap-1 text-center">
+      <span className="font-display text-2xl font-semibold leading-none text-ink tabular-nums">
+        {value}
+      </span>
+      <span className="font-mono text-[10px] uppercase leading-tight tracking-[0.14em] text-muted">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+/** The three metered allowances, read out like the score gauges. */
+function specs(plan: Plan): { value: string; label: string }[] {
+  const { sites, visibilityPromptsPerMonth: probes, fixGenerationsPerMonth: fixes } = plan.limits;
+  return [
+    { value: String(sites), label: sites === 1 ? "Site" : "Sites" },
+    { value: probes === 0 ? "—" : String(probes), label: "AI probes / mo" },
+    { value: fixes === -1 ? "∞" : fixes === 0 ? "—" : String(fixes), label: "Fixes / mo" },
+  ];
 }
 
 export default function PricingTable({ plans, billingConfigured, signedIn }: Props) {
@@ -44,37 +64,58 @@ export default function PricingTable({ plans, billingConfigured, signedIn }: Pro
 
   return (
     <div>
-      <div className="grid gap-4 md:grid-cols-3">
-        {plans.map((plan) => {
+      <div className="grid items-start gap-4 md:grid-cols-3">
+        {plans.map((plan, i) => {
           const paid = Boolean(plan.stripePriceEnv);
+          const busy = pending === plan.id;
+          const primary = Boolean(plan.highlight);
           return (
             <div
               key={plan.id}
-              className={`flex flex-col rounded-2xl border p-6 ${
+              className={`reveal relative flex h-full flex-col rounded-xl border bg-surface p-6 ${
                 plan.highlight
-                  ? "border-accent bg-surface shadow-sm"
-                  : "border-line bg-surface"
+                  ? "scan-frame border-accent md:-mt-2 md:pb-8 md:pt-8"
+                  : "border-line"
               }`}
+              style={{ animationDelay: `${i * 80}ms` }}
             >
-              <div className="flex items-center justify-between">
+              {/* The two extra scan-frame corners: the recommended plan is the
+                  one the instrument is "locked onto". */}
+              {plan.highlight && (
+                <>
+                  <span className="scan-corner-tr" aria-hidden="true" />
+                  <span className="scan-corner-bl" aria-hidden="true" />
+                </>
+              )}
+
+              <div className="flex items-center justify-between gap-3">
                 <h2 className="font-display text-lg font-semibold text-ink">{plan.name}</h2>
                 {plan.highlight && (
-                  <span className="rounded-full bg-accent/10 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-accent">
-                    Most popular
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">
+                    <span aria-hidden="true">[ </span>recommended<span aria-hidden="true"> ]</span>
                   </span>
                 )}
               </div>
 
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="font-display text-4xl font-semibold text-ink">{price(plan)}</span>
-                <span className="font-mono text-xs text-muted">/mo</span>
+              <div className="mt-4 flex items-baseline gap-1.5">
+                <span className="font-display text-5xl font-semibold leading-none tracking-tight text-ink tabular-nums">
+                  {plan.priceMonthly === 0 ? "$0" : `$${plan.priceMonthly}`}
+                </span>
+                <span className="font-mono text-xs uppercase tracking-[0.12em] text-muted">/mo</span>
               </div>
-              <p className="mt-2 text-sm leading-relaxed text-muted">{plan.tagline}</p>
+              <p className="mt-3 text-sm leading-relaxed text-muted">{plan.tagline}</p>
 
-              <ul className="mt-5 space-y-2 text-sm text-ink">
+              {/* Spec readout — the metered allowances at a glance. */}
+              <div className="mt-5 grid grid-cols-3 gap-2 border-y border-line py-4">
+                {specs(plan).map((s) => (
+                  <Spec key={s.label} value={s.value} label={s.label} />
+                ))}
+              </div>
+
+              <ul className="mt-5 space-y-2.5 text-sm text-ink">
                 {plan.features.map((f) => (
-                  <li key={f} className="flex gap-2">
-                    <span aria-hidden className="mt-0.5 text-accent">
+                  <li key={f} className="flex gap-2.5">
+                    <span aria-hidden className="mt-[3px] font-mono text-xs text-accent">
                       ✓
                     </span>
                     <span className="leading-relaxed">{f}</span>
@@ -82,22 +123,15 @@ export default function PricingTable({ plans, billingConfigured, signedIn }: Pro
                 ))}
               </ul>
 
-              <div className="mt-6 pt-2">
+              <div className="mt-7 pt-1">
                 {!paid ? (
-                  <Link
-                    href="/signup"
-                    className="block w-full rounded-lg border border-line bg-paper px-4 py-2.5 text-center text-sm font-semibold text-ink transition hover:border-accent hover:text-accent"
-                  >
+                  <Link href="/signup" className={ctaClass(false)}>
                     {plan.cta}
                   </Link>
                 ) : !signedIn ? (
                   <Link
                     href={`/signup?next=${encodeURIComponent("/pricing")}`}
-                    className={`block w-full rounded-lg px-4 py-2.5 text-center text-sm font-semibold transition ${
-                      plan.highlight
-                        ? "bg-accent text-white hover:opacity-90"
-                        : "border border-line bg-paper text-ink hover:border-accent hover:text-accent"
-                    }`}
+                    className={ctaClass(primary)}
                   >
                     {plan.cta}
                   </Link>
@@ -105,14 +139,18 @@ export default function PricingTable({ plans, billingConfigured, signedIn }: Pro
                   <button
                     type="button"
                     disabled={!billingConfigured || pending !== null}
+                    aria-busy={busy}
                     onClick={() => subscribe(plan)}
-                    className={`w-full rounded-lg px-4 py-2.5 text-center text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                      plan.highlight
-                        ? "bg-accent text-white hover:opacity-90"
-                        : "border border-line bg-paper text-ink hover:border-accent hover:text-accent"
-                    }`}
+                    className={`${ctaClass(primary)} disabled:cursor-not-allowed disabled:opacity-50`}
                   >
-                    {pending === plan.id ? "Starting checkout…" : plan.cta}
+                    {busy ? (
+                      <span className="inline-flex items-center gap-2">
+                        <Spinner primary={primary} />
+                        Starting checkout…
+                      </span>
+                    ) : (
+                      plan.cta
+                    )}
                   </button>
                 )}
               </div>
@@ -121,13 +159,45 @@ export default function PricingTable({ plans, billingConfigured, signedIn }: Pro
         })}
       </div>
 
-      {error && <p className="mt-4 text-center text-sm text-red-600">{error}</p>}
+      {error && (
+        <p
+          role="alert"
+          className="mx-auto mt-5 max-w-md rounded-xl border border-bad/40 bg-surface px-4 py-3 text-center text-sm text-ink"
+        >
+          <span className="font-semibold text-bad">Checkout didn&apos;t start. </span>
+          {error}
+        </p>
+      )}
 
       {!billingConfigured && (
-        <p className="mt-6 text-center font-mono text-xs uppercase tracking-[0.14em] text-muted">
-          Paid plans open at launch — start free today.
+        <p className="mt-6 text-center font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
+          <span aria-hidden="true">[ </span>
+          Paid plans open at launch — start free today
+          <span aria-hidden="true"> ]</span>
         </p>
       )}
     </div>
+  );
+}
+
+/** Shared CTA shape — a full pill, accent-filled for the primary plan. */
+function ctaClass(primary: boolean): string {
+  const base =
+    "block w-full rounded-full px-5 py-3 text-center font-sans text-sm font-semibold transition-colors";
+  return primary
+    ? `${base} bg-accent text-accent-ink hover:bg-accent-hover`
+    : `${base} border border-line text-ink hover:border-accent hover:text-accent`;
+}
+
+function Spinner({ primary }: { primary: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`h-4 w-4 animate-spin rounded-full border-2 ${
+        primary
+          ? "border-accent-ink/40 border-t-accent-ink"
+          : "border-accent/40 border-t-accent"
+      }`}
+    />
   );
 }
