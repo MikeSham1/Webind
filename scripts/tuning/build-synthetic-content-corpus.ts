@@ -1,13 +1,15 @@
 /**
  * Generate the research-derived synthetic SFT corpus.
  *
- * Requires GOOGLE_CLOUD_PROJECT + Google ADC (or the project's existing Gemini
- * auth) for the Gemini 3.7 teacher. If ANTHROPIC_API_KEY is present, Claude is
- * used as the independent judge; otherwise Gemini judges with a separate prompt.
+ * Requires the existing GEMINI_API_KEY for the pinned Gemini 3.7 teacher and,
+ * by default, the separate Gemini 3.7 judge prompt. Existing ANTHROPIC_API_KEY
+ * presence does not change this workload. To deliberately use Claude as the
+ * independent judge, run with TUNING_JUDGE_PROVIDER=anthropic (which then also
+ * requires ANTHROPIC_API_KEY).
  *
  * Examples:
  *   npx tsx scripts/tuning/build-synthetic-content-corpus.ts --count=500 --candidates=4
- *   npx tsx scripts/tuning/build-synthetic-content-corpus.ts --count=2000 --out=tuning/v1
+ *   TUNING_JUDGE_PROVIDER=anthropic npx tsx scripts/tuning/build-synthetic-content-corpus.ts --count=500
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -52,7 +54,7 @@ async function main() {
 
   if (selected.length === 0) {
     throw new Error(
-      "No synthetic examples were accepted. Check Gemini credentials/model configuration and judge availability.",
+      "No synthetic examples were accepted. Check GEMINI_API_KEY and, if explicitly selected, tuning judge credentials.",
     );
   }
 
