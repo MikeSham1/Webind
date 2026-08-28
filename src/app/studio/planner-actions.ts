@@ -1,7 +1,7 @@
 "use server";
 
 import { generate } from "@/lib/ai/generator";
-import { geminiProvider } from "@/lib/ai/gemini";
+import { gemini37Provider } from "@/lib/ai/gemini";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import { getCurrentUser } from "@/lib/auth";
 import { getClientIp } from "@/lib/requestIp";
@@ -41,7 +41,7 @@ export async function planContentAction(
       maxOutputTokens: 700,
       purpose: "content_plan",
     },
-    { provider: geminiProvider() },
+    { provider: gemini37Provider() },
   );
 
   if (result.fallback || !result.text.trim()) {
