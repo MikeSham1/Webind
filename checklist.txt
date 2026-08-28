@@ -62,11 +62,20 @@ B. UNBLOCK THE ROADMAP (credentials / decisions the deferred items need)
     add the AI-citation cohort (reuse Gemini grounding) and locale/page-type
     gating — say the word.
 
-[ ] SEARCH CONSOLE + CORE WEB VITALS (#6) — provide Google access.
-    - Search Console: authorize a Google account (OAuth) and tell me which
-      properties. Needed for real impressions/clicks + AI Overviews/AI Mode data.
-    - Core Web Vitals: get a PageSpeed Insights / CrUX API key (PSI_API_KEY) for
-      real 75th-percentile field data.
+[~] CORE WEB VITALS (#6a) — BUILT. Just set the key:
+      PSI_API_KEY=your_cloud_api_key       (in .env.local AND Railway)
+    Google Cloud -> enable "PageSpeed Insights API" -> Credentials ->
+    Create Credentials -> API key (this is "Application data" / public — NOT
+    OAuth, NOT "User data"). When set, every report shows a real-user Page
+    Experience panel; without it (or for a low-traffic URL) the panel is omitted.
+
+[ ] SEARCH CONSOLE (#6b) — DEFERRED until post-launch (your call).
+    This is per-CUSTOMER: each user connects THEIR OWN verified Search Console
+    via OAuth (like the WordPress/GitHub connections), and we read their real
+    impressions/clicks/queries + AI Overviews data. It's dead weight until you
+    have users with trafficked properties, so it waits. When ready: Google Cloud
+    -> Credentials -> OAuth client ID (Web app) -> GOOGLE_OAUTH_CLIENT_ID +
+    GOOGLE_OAUTH_CLIENT_SECRET. (This one IS "User data".)
 
 [ ] QUERY CONTEXT (#5) — per site, list the target queries you actually want to
     win (or approve automatic query expansion). Content scoring becomes
@@ -100,7 +109,9 @@ CODE STATUS — the 11-item priority list
       (serper SERP client + cohort + bootstrap-CI percentile + /benchmark page;
        AI-citation cohort and locale/page-type gating are optional follow-ons)
 5.  Query + page-type context in scoring ............... NOT STARTED (needs B)
-6.  Ingest Search Console + Core Web Vitals ............ NOT STARTED (needs B)
+6.  Ingest Search Console + Core Web Vitals ............ CWV BUILT (set PSI_API_KEY)
+      (Core Web Vitals field-data panel shipped in the report; Search Console
+       deferred to post-launch — it's a per-customer OAuth connection)
 7.  AI visibility multi-run & multi-provider ........... MULTI-RUN DONE
       (Beta-Binomial credible intervals shipped; Claude + Gemini providers
        live, OpenAI/Perplexity/Google still stubs awaiting keys)

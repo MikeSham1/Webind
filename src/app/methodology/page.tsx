@@ -167,6 +167,25 @@ export default function MethodologyPage() {
 
       <section className="mt-10 space-y-3">
         <h2 className="font-display text-lg font-semibold text-ink">
+          Page experience (real-user field data)
+        </h2>
+        <p className="text-[15px] leading-relaxed text-muted">
+          When available, the report also shows{" "}
+          <strong className="text-ink">Core Web Vitals</strong> — LCP, INP, and
+          CLS — from Google&apos;s Chrome UX Report via the PageSpeed Insights
+          API. These are the only signals measured from{" "}
+          <strong className="text-ink">actual visitors</strong> rather than
+          inferred from the HTML, so they&apos;re shown on their own with the
+          real 75th-percentile values, rated against Google&apos;s published
+          thresholds — deliberately not folded into the heuristic score. Field
+          data only exists for pages or sites with enough Chrome traffic, so a
+          new or quiet site has none, and the panel is simply omitted rather
+          than estimated.
+        </p>
+      </section>
+
+      <section className="mt-10 space-y-3">
+        <h2 className="font-display text-lg font-semibold text-ink">
           What this is not
         </h2>
         <ul className="list-disc space-y-2 pl-5 text-[15px] leading-relaxed text-muted">

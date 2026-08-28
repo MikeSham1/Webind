@@ -7,6 +7,7 @@ import { buildReport } from "@/lib/scoring/report";
 import { explainReport } from "@/lib/scoring/explain";
 import { generateSuggestions } from "@/lib/scoring/suggest";
 import { predictReadiness } from "@/lib/model/predict";
+import { fetchFieldVitals } from "@/lib/vitals/psi";
 import { buildOptimizations } from "@/lib/optimize/assets";
 import { attachEmail, getReportForUser, saveReportRequest } from "@/lib/leads";
 import { getCurrentUser } from "@/lib/auth";
@@ -75,8 +76,16 @@ export async function runReport(
     // guard; this endpoint is anonymous, so the check cannot live at the edge.
     // The session lookup depends only on cookies, not on the crawl, so it runs
     // alongside it instead of adding its own round-trip to the request.
-    const [page, user] = await Promise.all([crawl(url), getCurrentUser()]);
+    // Core Web Vitals come from a separate API (PSI/CrUX), independent of the
+    // crawl, so fetch them alongside it — best-effort, null when unconfigured or
+    // the URL has no field data. It never blocks or fails the report.
+    const [page, user, vitals] = await Promise.all([
+      crawl(url),
+      getCurrentUser(),
+      fetchFieldVitals(url),
+    ]);
     const report = buildReport(page);
+    const pageExperience = vitals.ok ? vitals.vitals : null;
     // Two Claude-backed products of the report, run together so the second
     // doesn't add its own round-trip: the plain-English overview, and the
     // specific page-grounded fix suggestions. Both use Claude when
@@ -109,6 +118,7 @@ export async function runReport(
       requestId,
       githubConnected,
       modelReadiness,
+      pageExperience,
     };
   } catch (err) {
     // These two carry messages written for a visitor; anything else is an
