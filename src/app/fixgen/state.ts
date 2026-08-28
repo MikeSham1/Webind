@@ -22,3 +22,10 @@ export type ReviewState =
   | { status: "error"; error: string };
 
 export const initialReviewState: ReviewState = { status: "idle" };
+
+export type DeployState =
+  | { status: "idle" }
+  | { status: "recorded"; candidateId: string }
+  | { status: "error"; error: string };
+
+export const initialDeployState: DeployState = { status: "idle" };

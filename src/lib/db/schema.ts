@@ -392,6 +392,31 @@ export const fixReviews = pgTable("fix_reviews", {
 export type FixReviewRow = typeof fixReviews.$inferSelect;
 
 /**
+ * When an accepted fix is actually shipped to a live site. Closes the loop
+ * between "a human accepted this" and "it went live", so the learning dataset
+ * can tell a merely-accepted fix from a deployed one — the precondition for
+ * ever measuring real outcomes. Only accepted reviews get a row (enforced in
+ * the store). The deployed text is captured because what ships can differ from
+ * what was reviewed. Outcome measurement (14/28/56-day) is a separate, later
+ * concern that keys off this deployment timestamp.
+ */
+export const fixDeployments = pgTable("fix_deployments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  /** Deployment timestamp — the clock outcome windows are measured from. */
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  reviewId: uuid("review_id")
+    .notNull()
+    .references(() => fixReviews.id, { onDelete: "cascade" }),
+  /** github_pr | wordpress | manual */
+  target: text("target").notNull(),
+  /** PR URL, post id, commit sha, or similar pointer to the live change. */
+  ref: text("ref"),
+  /** The exact text that went live, which may differ from the reviewed version. */
+  deployedText: text("deployed_text"),
+});
+export type FixDeploymentRow = typeof fixDeployments.$inferSelect;
+
+/**
  * Registry of every generator/reranker/fix-value model version, so a run,
  * a ranking, or an outcome can always be traced to the exact model + config
  * that produced it. Promotion is a config change recorded here, never a delete.

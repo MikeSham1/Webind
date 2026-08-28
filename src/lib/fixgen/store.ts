@@ -2,6 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   fixCandidates,
+  fixDeployments,
   fixReviews,
   fixRuns,
   modelVersions,
@@ -164,6 +165,50 @@ export async function saveReview(input: {
   });
 }
 
+export type DeploymentTarget = "github_pr" | "wordpress" | "manual";
+
+const ACCEPTED_DECISIONS = new Set<ReviewDecision>([
+  "accepted_unedited",
+  "accepted_minor_edit",
+  "accepted_major_edit",
+]);
+
+/**
+ * Record that a candidate's accepted fix actually shipped. Refuses unless the
+ * candidate has an accepted review — you can't deploy a rejected or unreviewed
+ * fix, and the dataset must never claim otherwise. Returns the deployment id,
+ * or null (no accepted review, or DB unavailable).
+ */
+export async function recordFixDeployment(input: {
+  candidateId: string;
+  target: DeploymentTarget;
+  ref?: string | null;
+  deployedText?: string | null;
+}): Promise<string | null> {
+  return withDb("recordFixDeployment", null, async (db) => {
+    // The most recent accepted review for this candidate is what shipped.
+    const [review] = await db
+      .select({ id: fixReviews.id, decision: fixReviews.decision })
+      .from(fixReviews)
+      .where(eq(fixReviews.candidateId, input.candidateId))
+      .orderBy(desc(fixReviews.createdAt))
+      .limit(1);
+    if (!review || !ACCEPTED_DECISIONS.has(review.decision as ReviewDecision)) {
+      return null;
+    }
+    const [row] = await db
+      .insert(fixDeployments)
+      .values({
+        reviewId: review.id,
+        target: input.target,
+        ref: input.ref ?? null,
+        deployedText: input.deployedText ?? null,
+      })
+      .returning({ id: fixDeployments.id });
+    return row?.id ?? null;
+  });
+}
+
 /** One reviewed example, joined across review → candidate → run → snapshot. */
 export interface ReviewedExample {
   reviewId: string;
@@ -176,6 +221,10 @@ export interface ReviewedExample {
   runId: string;
   generatorModel: string;
   promptVersion: string;
+  /** Deployment status — null until the accepted fix is shipped. */
+  deployedAt: Date | null;
+  deploymentTarget: string | null;
+  deploymentRef: string | null;
 }
 
 /**
@@ -197,11 +246,15 @@ export async function listReviewedExamples(limit = 20000): Promise<ReviewedExamp
         runId: fixRuns.id,
         generatorModel: fixRuns.generatorModel,
         promptVersion: fixRuns.promptVersion,
+        deployedAt: fixDeployments.createdAt,
+        deploymentTarget: fixDeployments.target,
+        deploymentRef: fixDeployments.ref,
       })
       .from(fixReviews)
       .innerJoin(fixCandidates, eq(fixReviews.candidateId, fixCandidates.id))
       .innerJoin(fixRuns, eq(fixCandidates.runId, fixRuns.id))
       .innerJoin(pageSnapshots, eq(fixRuns.snapshotId, pageSnapshots.id))
+      .leftJoin(fixDeployments, eq(fixDeployments.reviewId, fixReviews.id))
       .orderBy(desc(fixReviews.createdAt))
       .limit(limit);
     return rows as ReviewedExample[];

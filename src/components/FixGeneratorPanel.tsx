@@ -1,8 +1,13 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { generateFixAction, submitReviewAction } from "@/app/fixgen/actions";
 import {
+  generateFixAction,
+  markFixDeployedAction,
+  submitReviewAction,
+} from "@/app/fixgen/actions";
+import {
+  initialDeployState,
   initialFixGenState,
   initialReviewState,
   type ReviewCandidate,
@@ -27,10 +32,14 @@ function CandidateReview({ item }: { item: ReviewCandidate }) {
   const disabled = item.dbId === "";
 
   if (state.status === "saved") {
+    const accepted = state.decision.startsWith("accepted");
     return (
-      <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.14em] text-good">
-        Saved · {state.decision.replace(/_/g, " ")}
-      </p>
+      <div className="mt-3">
+        <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-good">
+          Saved · {state.decision.replace(/_/g, " ")}
+        </p>
+        {accepted && <DeployControl candidateId={state.candidateId} />}
+      </div>
     );
   }
 
@@ -136,6 +145,47 @@ function CandidateReview({ item }: { item: ReviewCandidate }) {
         </form>
       )}
     </div>
+  );
+}
+
+/**
+ * After a fix is accepted, let the reviewer record that it actually shipped —
+ * optionally with a link to the live change (PR, commit, post). This logs the
+ * deployment event for the learning dataset; it does not push anything live.
+ */
+function DeployControl({ candidateId }: { candidateId: string }) {
+  const [state, action, pending] = useActionState(markFixDeployedAction, initialDeployState);
+
+  if (state.status === "recorded") {
+    return (
+      <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+        Deployment recorded
+      </p>
+    );
+  }
+
+  return (
+    <form action={action} className="mt-2 flex flex-wrap items-center gap-2">
+      <input type="hidden" name="candidateId" value={candidateId} />
+      <input type="hidden" name="target" value="manual" />
+      <input
+        name="ref"
+        placeholder="Link to the live change (optional)"
+        className="min-w-0 flex-1 rounded-lg border border-line bg-paper px-3 py-1.5 font-sans text-xs text-ink placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-none"
+      />
+      <button
+        type="submit"
+        disabled={pending}
+        className="whitespace-nowrap rounded-full border border-line px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+      >
+        {pending ? "Saving…" : "Mark as deployed"}
+      </button>
+      {state.status === "error" && (
+        <span role="alert" className="w-full text-xs text-bad">
+          {state.error}
+        </span>
+      )}
+    </form>
   );
 }
 
