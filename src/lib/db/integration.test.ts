@@ -204,7 +204,7 @@ describe("draft ownership + moderation", () => {
       tone: "professional",
       keyFacts: ["24/7 helpdesk"],
     };
-    const draft = generateDraft(inputs);
+    const draft = await generateDraft(inputs);
     const id = await saveDraft(inputs, draft, owner.user.id);
     expect(id).toBeTruthy();
     if (!id) return;
@@ -259,7 +259,7 @@ describe("publications (pending -> wp_draft -> published -> rolled_back)", () =>
       tone: "professional",
       keyFacts: ["24/7 helpdesk"],
     };
-    const draftId = await saveDraft(inputs, generateDraft(inputs), userId);
+    const draftId = await saveDraft(inputs, await generateDraft(inputs), userId);
     if (!draftId) throw new Error("setup failed");
     return draftId;
   }
@@ -514,7 +514,7 @@ describe("account deletion", () => {
       tone: "professional",
       keyFacts: ["ships worldwide"],
     };
-    const draftId = await saveDraft(inputs, generateDraft(inputs), userId);
+    const draftId = await saveDraft(inputs, await generateDraft(inputs), userId);
 
     const result = await deleteAccount(userId, "correctpass1");
     expect(result).toEqual({ ok: true });

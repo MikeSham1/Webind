@@ -7,6 +7,7 @@ import {
   runSafetyGates,
 } from "./gates";
 import { generateDraft } from "./generate";
+import { fakeProvider, setFakeResponse } from "@/lib/ai/generator";
 import type { ContentInputs } from "./types";
 
 function inputs(overrides: Partial<ContentInputs> = {}): ContentInputs {
@@ -97,16 +98,41 @@ describe("runSafetyGates / generateDraft", () => {
     expect(report.blocked).toBe(true);
   });
 
-  it("appends a disclaimer for YMYL drafts", () => {
-    const draft = generateDraft(
+  it("appends a disclaimer for YMYL drafts", async () => {
+    const draft = await generateDraft(
       inputs({ topic: "Understanding your mortgage refinance options" }),
     );
     expect(draft.markdown).toMatch(/Disclaimer:/);
     expect(draft.gates.results.find((g) => g.key === "ymyl")?.status).toBe("warn");
   });
 
-  it("does not append a disclaimer for a neutral draft", () => {
-    const draft = generateDraft(inputs());
+  it("does not append a disclaimer for a neutral draft", async () => {
+    const draft = await generateDraft(inputs());
     expect(draft.markdown).not.toMatch(/Disclaimer:/);
+  });
+
+  it("writes with the AI provider when configured, taking its H1 as the title", async () => {
+    setFakeResponse("# AI-Written Guide\n\nLead with the answer, then expand.");
+    try {
+      const draft = await generateDraft(inputs(), { provider: fakeProvider() });
+      expect(draft.writtenBy).toBe("model");
+      expect(draft.title).toBe("AI-Written Guide");
+      expect(draft.markdown).toMatch(/Lead with the answer/);
+      // Gates still run on the model's output.
+      expect(draft.gates.results.length).toBeGreaterThan(0);
+    } finally {
+      setFakeResponse("{}");
+    }
+  });
+
+  it("falls back to the deterministic template when the AI call fails", async () => {
+    setFakeResponse(null); // forces the fake provider to throw
+    try {
+      const draft = await generateDraft(inputs(), { provider: fakeProvider() });
+      expect(draft.writtenBy).toBe("template");
+      expect(draft.markdown).toBe(assembleDraft(inputs()).markdown);
+    } finally {
+      setFakeResponse("{}");
+    }
   });
 });

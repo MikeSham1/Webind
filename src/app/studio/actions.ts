@@ -86,7 +86,7 @@ export async function createDraftAction(
       error: "Add a topic and at least one key fact to generate a draft.",
     };
   }
-  const draft = generateDraft(inputs);
+  const draft = await generateDraft(inputs);
   const draftId = await saveDraft(inputs, draft, user?.id ?? null); // best-effort
   return { status: "created", draft, draftId };
 }

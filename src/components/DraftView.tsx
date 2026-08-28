@@ -84,9 +84,16 @@ export default function DraftView({
       {/* Draft */}
       <div className="overflow-hidden rounded-2xl border border-line bg-surface">
         <div className="flex items-center justify-between gap-4 border-b border-line p-5">
-          <h2 className="font-display text-xl font-semibold text-ink">
-            {draft.title || "Draft"}
-          </h2>
+          <div className="min-w-0">
+            <h2 className="truncate font-display text-xl font-semibold text-ink">
+              {draft.title || "Draft"}
+            </h2>
+            {draft.writtenBy && (
+              <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+                {draft.writtenBy === "model" ? "Written by AI · review before use" : "Template draft"}
+              </p>
+            )}
+          </div>
           <button
             type="button"
             onClick={copy}

@@ -34,4 +34,9 @@ export interface ContentDraft {
   title: string;
   markdown: string;
   gates: GateReport;
+  /**
+   * How the draft was produced — an AI writer, or the deterministic fallback.
+   * Set on fresh generation; absent on a reloaded draft (not persisted).
+   */
+  writtenBy?: "model" | "template";
 }
