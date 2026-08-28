@@ -179,6 +179,15 @@ const JUDGE_SYSTEM = [
   "Scores are 0..100. Do not reward keyword repetition, arbitrary length, citation count, or formatting for its own sake.",
 ].join("\n");
 
+function defaultJudgeProvider(): AiProvider {
+  // Existing production keys must not silently opt a new offline workload into
+  // another vendor. Gemini 3.7 is the default; use TUNING_JUDGE_PROVIDER=anthropic
+  // deliberately when an independent Claude judge is desired.
+  return process.env.TUNING_JUDGE_PROVIDER?.trim().toLowerCase() === "anthropic"
+    ? anthropicProvider()
+    : gemini37Provider();
+}
+
 function parseJudge(text: string): CandidateJudge | null {
   try {
     const raw = JSON.parse(text) as Partial<CandidateJudge>;
@@ -267,8 +276,7 @@ export async function generateSyntheticExample(
 ): Promise<SelectedSyntheticExample | null> {
   const candidateCount = Math.max(2, Math.min(8, opts.candidateCount ?? 4));
   const teacher = opts.teacherProvider ?? gemini37Provider();
-  const anthropicJudge = anthropicProvider();
-  const judge = opts.judgeProvider ?? (anthropicJudge.isConfigured() ? anthropicJudge : gemini37Provider());
+  const judge = opts.judgeProvider ?? defaultJudgeProvider();
   if (!teacher.isConfigured() || !judge.isConfigured()) return null;
 
   const evaluated: SyntheticCandidate[] = [];
