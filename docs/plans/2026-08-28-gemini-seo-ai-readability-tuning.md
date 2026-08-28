@@ -42,8 +42,8 @@ The v1 training corpus does not require customer data.
 
 1. Generate deterministic fictional briefs across page type, industry, intent, audience, evidence density, and ordinary/YMYL risk slices.
 2. Give each brief an explicit set of fictional key facts. Those facts are the complete universe for business-specific factual claims.
-3. Have base Gemini 3.7 Flash generate multiple candidate pages with MEDIUM thinking.
-4. Evaluate each candidate with an independent judge for factual grounding, usefulness, intent fit, and extractability. Prefer Claude as the independent judge when configured; otherwise use a separate Gemini judge prompt.
+3. Have pinned base Gemini 3.7 Flash generate multiple candidate pages with MEDIUM thinking through the existing `GEMINI_API_KEY` Developer API path.
+4. Evaluate each candidate with a separate judge prompt for factual grounding, usefulness, intent fit, and extractability. Default to pinned Gemini 3.7 so the presence of an existing production `ANTHROPIC_API_KEY` cannot silently opt the offline workload into Claude. Use `TUNING_JUDGE_PROVIDER=anthropic` only as an explicit cross-vendor evaluation choice.
 5. Score the same candidate with Webind's content-only quantitative evaluator.
 6. Hard-reject unsupported claims, weak usefulness/intent fit, keyword-stuffing warnings, and very low Webind content scores.
 7. Select the highest-scoring passing candidate as the supervised target.
@@ -62,6 +62,8 @@ Run:
 npm run tuning:synthetic -- --count=500 --candidates=4 --out=tuning/synthetic-v1
 ```
 
+The default build uses the existing `GEMINI_API_KEY`; Vertex credentials are not required until job submission. An existing `.env.local` does not need to be replaced or regenerated. Optional new variables use safe defaults when absent.
+
 For broader first-run coverage, request 2,000 fictional briefs with four candidates each if generation budget permits. Generated files are build artifacts and are gitignored.
 
 Outputs include Vertex-ready `train.jsonl` and `validation.jsonl`, a local-only `locked-benchmark.jsonl`, provenance, rejection records, and a manifest.
@@ -78,10 +80,14 @@ The actual managed job requires a Google Cloud project, billing, Vertex permissi
 
 The runtime has two intentionally separate Gemini transports:
 
-- `GEMINI_API_KEY` stays on the Gemini Developer API and serves base Gemini 3.7 planning / untuned fallback.
+- `GEMINI_API_KEY` stays on the Gemini Developer API and serves pinned base Gemini 3.7 planning, synthetic generation, and the untuned writer fallback.
 - `CONTENT_WRITER_VERTEX_ENDPOINT` identifies the tuned model's `tunedModel.endpoint` and is served through Vertex AI using Application Default Credentials.
 
-A Vertex-tuned endpoint must not be passed into the API-key-only 3.7 client. The app now routes it through `src/lib/ai/vertex-gemini.ts` instead. This preserves today's deployment behavior until a tuned endpoint and Vertex credentials are deliberately configured.
+A Vertex-tuned endpoint must not be passed into the API-key-only 3.7 client. The app routes it through `src/lib/ai/vertex-gemini.ts` instead. Generic Fix Generator overrides such as `GEMINI_GENERATOR_MODEL` and `GEMINI_THINKING_LEVEL` retain their existing behavior for that subsystem but cannot silently change the Content Studio planner, synthetic teacher, or base writer fallback.
+
+The final-drafting factual boundary is also consistent across transports: neither the 3.7 writer fallback nor the tuned Vertex writer attaches live search. Both are constrained to the explicit brief. Gemini Keyword Visibility remains separately Google-Search-grounded because that subsystem is measuring live answer-engine surfacing rather than drafting user content.
+
+A tuned endpoint is an optional enhancement, not a new single point of failure. If its endpoint, ADC, quota, or network call fails, Content Studio retries the same draft on the existing Gemini 3.7 API-key provider before using the deterministic template.
 
 ## Quantitative evaluation
 
