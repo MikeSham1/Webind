@@ -101,10 +101,11 @@ CODE STATUS — the 11-item priority list
 ================================================================================
 1.  Hide neural score from customers .................... DONE
 2.  Fix Authority & Trust presentation (40% = coverage) . DONE
-3.  Replace Fact Density with Evidence Integrity ........ PARTIAL
-      (removed universal "1 stat / 100 words", ">=3 sources", "question
-       headings" prescriptions from the advice; the fact-density SCORER still
-       uses the old heuristic — full claim-extraction/entailment is roadmap)
+3.  Replace Fact Density with Evidence Integrity ........ SCORER DONE
+      (claim-centric scorer: grades whether factual claims are cited to a source
+       in place, not statistic count. Deferred: the live entailment step that
+       fetches each cited source and verifies it supports the claim — needs the
+       crawler + model credits, so it's scaffolded/documented, not faked.)
 4.  Competitive benchmarking crawler ................... BUILT (set SERPER_API_KEY)
       (serper SERP client + cohort + bootstrap-CI percentile + /benchmark page;
        AI-citation cohort and locale/page-type gating are optional follow-ons)
@@ -115,12 +116,14 @@ CODE STATUS — the 11-item priority list
 7.  AI visibility multi-run & multi-provider ........... MULTI-RUN DONE
       (Beta-Binomial credible intervals shipped; Claude + Gemini providers
        live, OpenAI/Perplexity/Google still stubs awaiting keys)
-8.  Fix Agent grounding + structured outputs ........... PARTIAL
-      (evidence-grounded Fix Generator + hard validators already exist;
-       provider-enforced JSON-schema output not yet swapped into suggest.ts)
-9.  Collect accepted/edited/rejected/deployed fixes .... PARTIAL
-      (accepted/edited/rejected captured via the review UI; deploy + outcome
-       tracking not yet)
+8.  Fix Agent grounding + structured outputs ........... DONE
+      (suggest.ts now uses a provider-enforced forced tool with a per-run JSON
+       schema — key-constrained, no more bracket-hunting. Fixgen validators/
+       grounding already existed.)
+9.  Collect accepted/edited/rejected/deployed fixes .... DONE
+      (accepted/edited/rejected via review UI; NOW the deployed dimension too —
+       fix_deployments table + 'Mark as deployed' control, only for accepted
+       fixes. Outcome MEASUREMENT over 14/28/56 days is #10, time+GSC gated.)
 10. Train intervention-uplift model ................... NOT STARTED (needs 6+9)
 11. New learned readiness model ....................... NOT STARTED (last)
 
