@@ -4,19 +4,28 @@ import { CONTENT_WRITER_SYSTEM, serializeContentInputs } from "./prompt";
 import type { ContentDraft, ContentInputs } from "./types";
 import type { AiProvider } from "@/lib/ai/types";
 import { generate } from "@/lib/ai/generator";
-import { geminiProvider } from "@/lib/ai/gemini";
+import { gemini37Provider } from "@/lib/ai/gemini";
 import { vertexGeminiProvider } from "@/lib/ai/vertex-gemini";
 
 /**
- * The app currently uses GEMINI_API_KEY for the base Gemini Developer API path
- * (3.7 planner / fallback). A tuned model produced by Vertex AI is a different
- * backend and auth surface, so it is selected only through the explicit Vertex
- * endpoint variable and uses Google Cloud ADC instead of GEMINI_API_KEY.
+ * The primary content writer. Existing deployments remain on the pinned base
+ * Gemini 3.7 Developer API path unless a Vertex tuned endpoint is explicitly
+ * configured.
  */
 export function contentWriterProvider(): AiProvider {
   const vertexEndpoint = process.env.CONTENT_WRITER_VERTEX_ENDPOINT?.trim();
   if (vertexEndpoint) return vertexGeminiProvider(vertexEndpoint);
-  return geminiProvider();
+  return gemini37Provider();
+}
+
+function contentWriterProviders(): AiProvider[] {
+  const primary = contentWriterProvider();
+  // A tuned Vertex endpoint is an optional enhancement, never a new single
+  // point of failure. If its auth, endpoint, quota, or network call fails, the
+  // existing GEMINI_API_KEY-backed 3.7 writer gets the same request next.
+  return process.env.CONTENT_WRITER_VERTEX_ENDPOINT?.trim()
+    ? [primary, gemini37Provider()]
+    : [primary];
 }
 
 const YMYL_DISCLAIMER =
@@ -31,10 +40,12 @@ function titleFromMarkdown(markdown: string): string | null {
 /**
  * Produce a reviewed draft.
  *
- * Base mode: Gemini Developer API via GEMINI_API_KEY (currently 3.7 Flash).
- * Tuned mode: Vertex endpoint via CONTENT_WRITER_VERTEX_ENDPOINT + Google Cloud
- * ADC. When no provider is configured or a call fails, generation degrades to
- * the deterministic assembler. Safety gates always run on the selected output.
+ * Runtime order when no test/provider override is injected:
+ *   tuned Vertex writer -> base Gemini 3.7 -> deterministic template.
+ *
+ * This makes the new tuned path backward-compatible with an existing env file:
+ * no new variable is required, and a broken/missing Vertex credential cannot
+ * remove today's 3.7 behavior. Safety gates always run on the selected output.
  */
 export async function generateDraft(
   inputs: ContentInputs,
@@ -45,8 +56,9 @@ export async function generateDraft(
   let markdown = fallback.markdown;
   let writtenBy: ContentDraft["writtenBy"] = "template";
 
-  const provider = deps.provider ?? contentWriterProvider();
-  if (provider.isConfigured()) {
+  const providers = deps.provider ? [deps.provider] : contentWriterProviders();
+  for (const provider of providers) {
+    if (!provider.isConfigured()) continue;
     const result = await generate(
       {
         system: CONTENT_WRITER_SYSTEM,
@@ -65,6 +77,7 @@ export async function generateDraft(
       markdown = text;
       title = titleFromMarkdown(text) ?? fallback.title;
       writtenBy = "model";
+      break;
     }
   }
 
