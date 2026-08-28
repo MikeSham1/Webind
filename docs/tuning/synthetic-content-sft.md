@@ -68,9 +68,35 @@ Defaults:
 
 The script uploads only `train.jsonl` and `validation.jsonl`. It deliberately does not upload the locked benchmark.
 
+## Runtime wiring: Developer API vs Vertex
+
+The existing Webind Gemini integration uses `GEMINI_API_KEY` with the Gemini Developer API. That remains the base Gemini 3.7 path for conversational planning and the untuned fallback.
+
+A supervised-tuned Gemini 3.5 model created by Vertex is served through a Vertex endpoint and must **not** be addressed by merely swapping a model ID into the API-key client. The app therefore has a separate runtime adapter:
+
+- `GEMINI_API_KEY` -> Gemini Developer API -> base Gemini 3.7 planner / fallback.
+- `CONTENT_WRITER_VERTEX_ENDPOINT` -> Vertex AI -> tuned Gemini writer.
+- Vertex authentication -> Application Default Credentials, such as workload identity, an attached service account, or `GOOGLE_APPLICATION_CREDENTIALS`.
+
+After the tuning job reaches `JOB_STATE_SUCCEEDED`, fetch the job and copy its exact `tunedModel.endpoint`, for example:
+
+```text
+projects/123456789012/locations/us-central1/endpoints/123456789012345
+```
+
+Set that value as:
+
+```bash
+CONTENT_WRITER_VERTEX_ENDPOINT=projects/123456789012/locations/us-central1/endpoints/123456789012345
+```
+
+When that variable is absent, Content Studio keeps using the current 3.7 API-key path. When it is present, only the final content writer is routed through Vertex; the conversational planner remains on the base 3.7 Developer API path.
+
+The Vertex tuned writer intentionally does not attach live Google Search grounding. Its factual universe is the supplied writing brief, matching the SFT corpus and reducing the risk that inference-time retrieval breaks the grounding contract.
+
 ## Promotion
 
-Do not point `CONTENT_WRITER_MODEL` at the tuned endpoint merely because tuning completed. Compare the tuned 3.5 model against base 3.7 and base 3.5 on the locked benchmark.
+Do not set `CONTENT_WRITER_VERTEX_ENDPOINT` merely because tuning completed. Compare the tuned 3.5 model against base 3.7 and base 3.5 on the locked benchmark.
 
 Promotion requires:
 
@@ -81,7 +107,7 @@ Promotion requires:
 - acceptable latency, failure rate, and cost;
 - a limited real-world canary before broad rollout.
 
-For tuned Gemini 3+ inference, Webind defaults explicit model endpoints to MINIMAL thinking. The untuned Gemini 3.7 planner remains MEDIUM thinking.
+For tuned Gemini 3+ inference, Webind defaults the Vertex writer to MINIMAL thinking. The untuned Gemini 3.7 planner remains MEDIUM thinking.
 
 ## Scientific limits
 
