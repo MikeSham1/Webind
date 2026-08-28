@@ -7,18 +7,11 @@ import type { AiProvider, GenerateRequest, GenerateResult } from "./types";
  *
  * This adapter is intentionally API-key-only. Vertex tuned endpoints belong in
  * vertex-gemini.ts and must never be passed through GEMINI_API_KEY.
- *
- * Notes grounded in current Google guidance:
- *  - No temperature / top_p / top_k on the 3.7 path.
- *  - Untuned 3.7 defaults to MEDIUM thinking for planning and generation.
- *  - GEMINI_THINKING_LEVEL can override the Developer API default when an
- *    existing non-content caller deliberately needs a different level.
- *  - JSON mode uses responseMimeType.
  */
 
 export const BASE_GEMINI_MODEL = "gemini-3.7-flash";
 
-function thinkingLevel(): ThinkingLevel {
+function envThinkingLevel(): ThinkingLevel {
   const raw = (process.env.GEMINI_THINKING_LEVEL ?? "medium").toUpperCase();
   switch (raw) {
     case "MINIMAL":
@@ -38,11 +31,15 @@ export function geminiModelId(): string {
 
 /**
  * Generic Gemini Developer API provider used by existing fix-generation code.
- * An optional model override is still supported for those existing callers;
- * it does not imply a tuned model or change the default thinking level.
+ * Existing GEMINI_GENERATOR_MODEL / GEMINI_THINKING_LEVEL behavior is preserved
+ * for those callers.
  */
-export function geminiProvider(modelId?: string): AiProvider {
+export function geminiProvider(
+  modelId?: string,
+  opts: { thinkingLevel?: ThinkingLevel } = {},
+): AiProvider {
   const model = modelId || geminiModelId();
+  const resolvedThinkingLevel = opts.thinkingLevel ?? envThinkingLevel();
   return {
     name: "gemini",
     model,
@@ -56,7 +53,7 @@ export function geminiProvider(modelId?: string): AiProvider {
         config: {
           systemInstruction: req.system,
           maxOutputTokens: req.maxOutputTokens ?? 2048,
-          thinkingConfig: { thinkingLevel: thinkingLevel() },
+          thinkingConfig: { thinkingLevel: resolvedThinkingLevel },
           ...(req.grounded ? { tools: [{ googleSearch: {} }] } : {}),
           ...(req.json && !req.grounded ? { responseMimeType: "application/json" } : {}),
         },
@@ -90,10 +87,10 @@ export function geminiProvider(modelId?: string): AiProvider {
 }
 
 /**
- * Content-specific base provider. It is deliberately pinned to 3.7 so an
- * unrelated GEMINI_GENERATOR_MODEL override cannot silently change the planner,
- * synthetic teacher, or tuned-writer fallback model.
+ * Content-specific base provider. It is deliberately pinned to Gemini 3.7 with
+ * MEDIUM thinking so stale generic generator overrides in an existing env file
+ * cannot silently change the planner, synthetic teacher, or writer fallback.
  */
 export function gemini37Provider(): AiProvider {
-  return geminiProvider(BASE_GEMINI_MODEL);
+  return geminiProvider(BASE_GEMINI_MODEL, { thinkingLevel: ThinkingLevel.MEDIUM });
 }
