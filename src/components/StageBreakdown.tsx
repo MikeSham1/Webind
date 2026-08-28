@@ -14,48 +14,49 @@ function gradeVar(score: number): string {
   return "var(--good)";
 }
 
-const LOW_CONFIDENCE = 0.6;
+// Below this share of a stage's signal weight, we've measured too little to put
+// a number on it: showing one would imply a measurement we didn't make. The
+// authority stage sits here on the free report (its backlink and brand-mention
+// evidence is off-page), so it reads "Insufficient data / 40% measured" rather
+// than a score that looks like an independently discovered 40/100.
+const MIN_SCOREABLE_CONFIDENCE = 0.6;
 
 function StageRow({ stage }: { stage: StageScore }) {
   const pct = Math.round(stage.confidence * 100);
-  const measured = stage.score !== null;
-  const lowConf = stage.confidence < LOW_CONFIDENCE;
+  const nothingMeasured = stage.score === null;
+  // Enough of the stage measured to stand behind a number.
+  const scoreable = !nothingMeasured && stage.confidence >= MIN_SCOREABLE_CONFIDENCE;
+  const score = stage.score as number;
 
   return (
     <li className="py-4">
       <div className="flex items-baseline justify-between gap-3">
         <span className="font-sans text-sm font-semibold text-ink">{stage.label}</span>
         <span className="shrink-0 font-mono text-xs text-muted">
-          {measured ? (
+          {scoreable ? (
             <>
-              <span className="text-ink" style={{ color: gradeVar(stage.score as number) }}>
-                {lowConf ? "~" : ""}
-                {stage.score}
+              <span className="text-ink" style={{ color: gradeVar(score) }}>
+                {score}
               </span>
               <span>/100</span>
             </>
           ) : (
-            <span className="text-muted">not measured</span>
+            <span className="text-muted">
+              {nothingMeasured ? "Not measured" : "Insufficient data"}
+            </span>
           )}
         </span>
       </div>
 
       <p className="mt-1 text-xs leading-relaxed text-muted">{stage.question}</p>
 
-      {/* Score bar. Low-confidence stages are hatched so the fill visibly reads
-          as "estimated from partial data", not a solid measurement. */}
+      {/* Score bar only when we have the coverage to stand behind a number;
+          otherwise a dashed placeholder — no fill that could read as a score. */}
       <div className="mt-2.5 h-2 w-full overflow-hidden bg-surface-2">
-        {measured ? (
+        {scoreable ? (
           <div
             className="h-full"
-            style={{
-              width: `${stage.score}%`,
-              backgroundColor: gradeVar(stage.score as number),
-              opacity: lowConf ? 0.55 : 1,
-              backgroundImage: lowConf
-                ? "repeating-linear-gradient(45deg, transparent 0 4px, rgba(0,0,0,0.18) 4px 8px)"
-                : undefined,
-            }}
+            style={{ width: `${score}%`, backgroundColor: gradeVar(score) }}
           />
         ) : (
           <div className="h-full w-full border border-dashed border-line" />
@@ -95,7 +96,8 @@ export default function StageBreakdown({ stages }: { stages: StageScore[] }) {
           crawlable → retrievable → citable → trusted → useful. A weak early
           stage caps everything after it, so the vector matters more than the
           headline number. Each stage shows how much of it we could actually
-          measure.
+          measure — where that&apos;s too little to be sure, we say so instead of
+          printing a number.
         </p>
       </header>
       <ul className="divide-y divide-line">

@@ -195,7 +195,7 @@ export function parseSuggestions(
 const RATIONALE: Record<string, string> = {
   eeat: "Answer engines cite pages that show clear authorship, evidence, and trust.",
   answerability: "Content structured as extractable answers is far likelier to be quoted.",
-  factDensity: "Adding verifiable statistics was the single strongest lever in GEO studies.",
+  factDensity: "Answer engines cite claims they can attribute to a credible source — support the important ones with primary evidence.",
   schema: "Structured data helps engines understand and confidently cite the page.",
   aiCrawlability: "If AI search crawlers can't read the page, it can't be cited at all.",
   freshness: "A clear, recent update date signals the answer is still current.",
@@ -252,11 +252,12 @@ const ENRICHERS: Record<string, (p: CrawledPage) => Enrichment> = {
     }
     return {};
   },
-  factDensity: (p) => ({
-    step: `Your page runs ~${p.wordCount} words — aim for roughly ${Math.max(1, Math.round(p.wordCount / 100))} verifiable statistics, each with a source.`,
+  factDensity: () => ({
+    step:
+      "List the page's key factual claims and attach a credible, primary source to each important one — original data, first-hand results, or a named authority. Support the claims that matter rather than padding in statistics to hit a count.",
   }),
   answerability: (p) => ({
-    step: `You have ${p.headings.length} headings and ${p.listItemCount} list items — turn the main ones into question-style headings answered in the first line.`,
+    step: `You have ${p.headings.length} headings and ${p.listItemCount} list items — make sure each main point is stated as a directly extractable answer in the first line under its heading (a question-style heading is one way, not a requirement).`,
     example: page_qExample(p),
   }),
   freshness: () => ({
@@ -265,7 +266,7 @@ const ENRICHERS: Record<string, (p: CrawledPage) => Enrichment> = {
       '<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","dateModified":"2026-01-15"}</script>',
   }),
   eeat: (p) => ({
-    step: `The page links to ${outboundHosts(p).length} external source(s) — add a named author byline and cite ≥3 independent, authoritative sources.`,
+    step: `The page links to ${outboundHosts(p).length} external source(s) — add a named author byline, and cite the primary, authoritative source behind each important claim (the source that best supports the claim, not a fixed number of links).`,
   }),
   schema: () => ({
     step: "Add Organization and WebSite JSON-LD to the homepage (see the ready-to-apply asset in the report).",

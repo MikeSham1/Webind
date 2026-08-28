@@ -64,13 +64,17 @@ describe("deterministicSuggestion", () => {
     expect(s.rationale).toMatch(/technical/i);
   });
 
-  it("references the page's real word count for fact density", () => {
+  it("frames fact density as supporting claims with sources, not a per-word stat quota", () => {
     const s = deterministicSuggestion(
       sig({ key: "factDensity", label: "Fact Density", reason: "Thin.", fix: "Add evidence: add statistics." }),
       deficientPage,
     );
-    // wordCount 90 → ~1 statistic target; the step cites the actual count.
-    expect(s.steps.join(" ")).toMatch(/90 words/);
+    const joined = s.steps.join(" ");
+    // The advice is about attributing important claims to primary sources —
+    // never a mechanical "N statistics per 100 words" target (see suggest.ts).
+    expect(joined).toMatch(/claim/i);
+    expect(joined).toMatch(/source/i);
+    expect(joined).not.toMatch(/per 100|100 words/i);
   });
 
   it("suggests adding a <title> when the page has none", () => {
