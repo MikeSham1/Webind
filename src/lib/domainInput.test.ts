@@ -4,6 +4,7 @@ import {
   RESTRICTED_DOMAIN_ERROR,
   isRestrictedHostname,
   parseDomainInput,
+  parsePageInput,
 } from "./domainInput";
 
 describe("parseDomainInput", () => {
@@ -61,5 +62,44 @@ describe("parseDomainInput", () => {
   it("does not reject benign domains that merely contain 'sex'", () => {
     expect(isRestrictedHostname("essex.ac.uk")).toBe(false);
     expect(isRestrictedHostname("sussex.com")).toBe(false);
+  });
+});
+
+describe("parsePageInput", () => {
+  it("accepts a bare domain and canonicalizes to the root", () => {
+    expect(parsePageInput("Example.com")).toEqual({
+      ok: true,
+      domain: "example.com",
+      url: "https://example.com/",
+    });
+  });
+
+  it("accepts a specific page path and preserves it (with query, minus fragment)", () => {
+    expect(parsePageInput("example.com/blog/my-post?ref=x#top")).toEqual({
+      ok: true,
+      domain: "example.com",
+      url: "https://example.com/blog/my-post?ref=x",
+    });
+  });
+
+  it.each([
+    "https://example.com", // scheme
+    "example.com:8080", // explicit port
+    "user@example.com", // credentials
+    "has space.com", // whitespace
+    "localhost", // internal / single-label
+  ])("rejects non-page input: %s", (raw) => {
+    const r = parsePageInput(raw);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("invalid");
+  });
+
+  it("rejects an adult-content host with the restricted reason", () => {
+    const r = parsePageInput("pornhub.com/page");
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.reason).toBe("restricted");
+      expect(r.error).toBe(RESTRICTED_DOMAIN_ERROR);
+    }
   });
 });

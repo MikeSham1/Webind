@@ -3,7 +3,7 @@
 import { crawl } from "@/lib/crawler/crawl";
 import { CrawlerBusyError } from "@/lib/crawler/browser";
 import { BlockedUrlError } from "@/lib/crawler/ssrf";
-import { parseDomainInput } from "@/lib/domainInput";
+import { parsePageInput } from "@/lib/domainInput";
 import { buildReport } from "@/lib/scoring/report";
 import { explainReport } from "@/lib/scoring/explain";
 import { generateSuggestions } from "@/lib/scoring/suggest";
@@ -37,15 +37,18 @@ export async function runReport(
   formData: FormData,
 ): Promise<ReportState> {
   const raw = String(formData.get("url") ?? "");
-  const domainInput = parseDomainInput(raw);
-  if (!domainInput.ok) {
+  // The Report is page-level, so accept a specific page (example.com/blog/post),
+  // not just a bare domain — that's what makes page-type-aware scoring reachable.
+  // The crawler's SSRF guard still re-validates the resulting URL.
+  const pageInput = parsePageInput(raw);
+  if (!pageInput.ok) {
     return {
       status: "error",
-      error: domainInput.error,
+      error: pageInput.error,
       url: raw,
     };
   }
-  const url = domainInput.url;
+  const url = pageInput.url;
 
   // Anonymous endpoint, each run launches a real browser and (optionally) a
   // Claude call — cap per-visitor throughput before any of that work starts.
@@ -84,24 +87,26 @@ export async function runReport(
     // any score that looks wrong for this page, so we catch scoring bugs. It's
     // admin-only (it's meta-commentary on our own algorithm, not for customers)
     // and best-effort. Runs alongside the other AI calls to add no round-trip.
-    const [narrative, suggestions, scoreAudit] = await Promise.all([
-      explainReport(report),
-      generateSuggestions(report, page),
-      user?.isAdmin ? auditReport(report, page) : Promise.resolve(null),
-    ]);
-    // Deterministic ready-to-apply assets (schema, meta, llms.txt, robots).
+    // Deterministic ready-to-apply assets (schema, meta, llms.txt, robots) and
+    // the model prediction — computed before the awaits so the DB write can run
+    // in the same batch as the model calls rather than after them.
     const optimizations = buildOptimizations(page);
-    // Best-effort logging (the preview doubles as a lead funnel). Owned by the
-    // visitor when they're logged in, anonymous otherwise. Never blocks or
-    // breaks the report — returns null when persistence is disabled.
-    // `optimizations` is stored too, so a signed-in user's saved report still
-    // has its ready-to-apply fixes (and the "open a PR" action) on revisit.
-    const requestId = await saveReportRequest(report, user?.id ?? null, optimizations);
-    const githubConnected = user
-      ? (await getGitHubConnectionStatus(user.id)) !== null
-      : false;
-    // Experimental Claude-distilled model prediction — deterministic, no network.
     const modelReadiness = predictReadiness(page);
+
+    // Everything that needs a round-trip runs together, so the report's wall
+    // time is the SLOWEST of these, not their sum. The DB write and the GitHub
+    // status lookup used to run sequentially after the AI calls — that added
+    // their latency on top for no reason.
+    const [narrative, suggestions, scoreAudit, requestId, githubConnected] =
+      await Promise.all([
+        explainReport(report),
+        generateSuggestions(report, page),
+        user?.isAdmin ? auditReport(report, page) : Promise.resolve(null),
+        saveReportRequest(report, user?.id ?? null, optimizations),
+        user
+          ? getGitHubConnectionStatus(user.id).then((s) => s !== null)
+          : Promise.resolve(false),
+      ]);
     return {
       status: "success",
       report,

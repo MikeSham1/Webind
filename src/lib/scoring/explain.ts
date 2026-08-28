@@ -32,6 +32,8 @@ export async function explainReport(
       system: EXPLAIN_SYSTEM,
       prompt: buildPrompt(report),
       maxOutputTokens: 600,
+      // Narrating a handful of numbers needs no deep reasoning — keep it fast.
+      thinkingLevel: "low",
       purpose: "explain_report",
     },
     { provider },

@@ -12,16 +12,22 @@ import type { AiProvider, GenerateRequest, GenerateResult } from "./types";
 export const BASE_GEMINI_MODEL = "gemini-3.7-flash";
 
 function envThinkingLevel(): ThinkingLevel {
-  const raw = (process.env.GEMINI_THINKING_LEVEL ?? "medium").toUpperCase();
-  switch (raw) {
+  return toThinkingLevel(process.env.GEMINI_THINKING_LEVEL, ThinkingLevel.MEDIUM);
+}
+
+/** Map a string level to the SDK enum, falling back to `dflt`. */
+function toThinkingLevel(raw: string | undefined, dflt: ThinkingLevel): ThinkingLevel {
+  switch ((raw ?? "").toUpperCase()) {
     case "MINIMAL":
       return ThinkingLevel.MINIMAL;
     case "LOW":
       return ThinkingLevel.LOW;
+    case "MEDIUM":
+      return ThinkingLevel.MEDIUM;
     case "HIGH":
       return ThinkingLevel.HIGH;
     default:
-      return ThinkingLevel.MEDIUM;
+      return dflt;
   }
 }
 
@@ -39,7 +45,7 @@ export function geminiProvider(
   opts: { thinkingLevel?: ThinkingLevel } = {},
 ): AiProvider {
   const model = modelId || geminiModelId();
-  const resolvedThinkingLevel = opts.thinkingLevel ?? envThinkingLevel();
+  const providerThinkingLevel = opts.thinkingLevel ?? envThinkingLevel();
   return {
     name: "gemini",
     model,
@@ -47,13 +53,18 @@ export function geminiProvider(
     async generate(req: GenerateRequest): Promise<GenerateResult> {
       const startedAt = Date.now();
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      // A per-request level (e.g. "low" for quick narration) overrides the
+      // provider default, so latency-sensitive tasks don't pay for MEDIUM thinking.
+      const thinkingLevel = req.thinkingLevel
+        ? toThinkingLevel(req.thinkingLevel, providerThinkingLevel)
+        : providerThinkingLevel;
       const response = await ai.models.generateContent({
         model,
         contents: req.prompt,
         config: {
           systemInstruction: req.system,
           maxOutputTokens: req.maxOutputTokens ?? 2048,
-          thinkingConfig: { thinkingLevel: resolvedThinkingLevel },
+          thinkingConfig: { thinkingLevel },
           ...(req.grounded ? { tools: [{ googleSearch: {} }] } : {}),
           ...(req.json && !req.grounded ? { responseMimeType: "application/json" } : {}),
         },

@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { runReport } from "@/app/actions";
 import { initialReportState } from "@/app/report-state";
-import { parseDomainInput } from "@/lib/domainInput";
+import { parsePageInput } from "@/lib/domainInput";
 import ReportResults from "./ReportResults";
 
 export default function ReportForm() {
@@ -35,7 +35,7 @@ export default function ReportForm() {
       <form
         action={formAction}
         onSubmit={(e) => {
-          const validation = parseDomainInput(url);
+          const validation = parsePageInput(url);
           if (!validation.ok) {
             e.preventDefault();
             setClientError(validation.error);
@@ -44,7 +44,7 @@ export default function ReportForm() {
         className="mx-auto w-full max-w-xl"
       >
         <label htmlFor="url" className="sr-only">
-          Website domain
+          Website domain or page
         </label>
         <div className="scan-frame flex flex-col gap-3 border border-line bg-surface p-2 shadow-[0_1px_0_rgba(0,0,0,0.02)] sm:flex-row sm:items-center sm:pl-5">
           <div className="flex flex-1 items-center gap-3 px-3 sm:px-0">
@@ -60,7 +60,7 @@ export default function ReportForm() {
               type="text"
               inputMode="url"
               autoComplete="url"
-              placeholder="yourdomain.com"
+              placeholder="yourdomain.com/page"
               value={url}
               onChange={(e) => {
                 setUrl(e.target.value);

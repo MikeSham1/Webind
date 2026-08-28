@@ -3,6 +3,9 @@
 export const DOMAIN_INPUT_ERROR =
   "Enter only a domain, like example.com. Don't include https://, a path, a port, or other text.";
 
+export const PAGE_INPUT_ERROR =
+  "Enter a domain or page, like example.com or example.com/blog/post. Don't include https:// or a port.";
+
 export const RESTRICTED_DOMAIN_ERROR =
   "Webind doesn't analyze adult-content websites.";
 
@@ -102,6 +105,65 @@ export function isRestrictedHostname(hostname: string): boolean {
   );
 }
 
+/** Shared host validation: 2+ DNS-valid labels, a lettered TLD, not internal. */
+function hostIsValid(domain: string): boolean {
+  const labels = domain.split(".");
+  const tld = labels.at(-1) ?? "";
+  return (
+    labels.length >= 2 &&
+    /[a-z]/i.test(tld) &&
+    !isInternalHostname(domain) &&
+    labels.every(
+      (label) =>
+        label.length > 0 &&
+        label.length <= 63 &&
+        /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label),
+    )
+  );
+}
+
+/**
+ * Parse a form value that may be a bare domain OR a specific page path
+ * (example.com/blog/post), but never a full URL with a scheme or a port. Used
+ * by the page-level Report so a specific article/product page can be analyzed —
+ * the SSRF guard in the crawler still re-validates the resulting URL. Benchmark
+ * and Keyword Visibility use {@link parseDomainInput} (domain only) instead.
+ */
+export function parsePageInput(raw: string): DomainInputResult {
+  const input = raw.trim();
+  // The field supplies the scheme, so a typed scheme is a mistake; reject
+  // whitespace and embedded credentials too. Paths/queries ARE allowed.
+  if (
+    !input ||
+    input.length > 2000 ||
+    /^[a-z][a-z0-9+.-]*:\/\//i.test(input) ||
+    /[\s@\\]/.test(input)
+  ) {
+    return { ok: false, error: PAGE_INPUT_ERROR, reason: "invalid" };
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(`https://${input}`);
+  } catch {
+    return { ok: false, error: PAGE_INPUT_ERROR, reason: "invalid" };
+  }
+  if (parsed.port || parsed.username || parsed.password) {
+    return { ok: false, error: PAGE_INPUT_ERROR, reason: "invalid" };
+  }
+
+  const domain = cleanHostname(parsed.hostname);
+  if (!hostIsValid(domain)) {
+    return { ok: false, error: PAGE_INPUT_ERROR, reason: "invalid" };
+  }
+  if (isRestrictedHostname(domain)) {
+    return { ok: false, error: RESTRICTED_DOMAIN_ERROR, reason: "restricted" };
+  }
+
+  // Preserve the path + query the user asked to analyze; drop the fragment.
+  return { ok: true, domain, url: `https://${domain}${parsed.pathname}${parsed.search}` };
+}
+
 /**
  * Parse a form value that must be a bare public domain, never a URL.
  * Successful values are canonicalized to an HTTPS origin for the crawler.
@@ -125,21 +187,7 @@ export function parseDomainInput(raw: string): DomainInputResult {
   }
 
   const domain = cleanHostname(parsed.hostname);
-  const labels = domain.split(".");
-  const validLabels = labels.every(
-    (label) =>
-      label.length > 0 &&
-      label.length <= 63 &&
-      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label),
-  );
-  const tld = labels.at(-1) ?? "";
-
-  if (
-    labels.length < 2 ||
-    !validLabels ||
-    !/[a-z]/i.test(tld) ||
-    isInternalHostname(domain)
-  ) {
+  if (!hostIsValid(domain)) {
     return { ok: false, error: DOMAIN_INPUT_ERROR, reason: "invalid" };
   }
 

@@ -24,6 +24,12 @@ export interface GenerateRequest {
    * content), NOT for tasks that must stay grounded only in supplied data.
    */
   grounded?: boolean;
+  /**
+   * Reasoning depth for models that support it (Gemini's thinkingLevel). Quick
+   * text tasks (narrating a report, auditing scores) should use "low"/"minimal"
+   * to cut latency; leave unset to use the provider's configured default.
+   */
+  thinkingLevel?: "minimal" | "low" | "medium" | "high";
   /** Short label for observability (ai_call.ok/error), e.g. "fix_generate". */
   purpose: string;
 }

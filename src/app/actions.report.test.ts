@@ -3,9 +3,9 @@ import { runReport } from "./actions";
 import { initialReportState } from "./report-state";
 
 /**
- * runReport must reject anything except a bare domain before any crawl, cookie
- * read, or rate-limit work, which is why this can run without mocking those
- * dependencies.
+ * runReport accepts a domain OR a specific page (example.com/blog/post) but not
+ * a scheme or a port, and rejects adult-content hosts — all before any crawl,
+ * cookie read, or rate-limit work, which is why this runs without mocking those.
  */
 function form(url: string): FormData {
   const fd = new FormData();
@@ -13,23 +13,23 @@ function form(url: string): FormData {
   return fd;
 }
 
-describe("runReport domain validation", () => {
+describe("runReport page-input validation", () => {
   it.each([
-    "https://example.com",
+    "https://example.com", // scheme (the field supplies it)
     "http://example.com",
     "HTTPS://example.com",
     "  https://example.com  ",
     "https://https://example.com",
     "ftp://example.com",
-    "example.com/path",
-    "example.com?ref=test",
-    "example.com:443",
-    "not a domain",
-  ])("rejects malformed or non-domain input: %s", async (url) => {
+    "example.com:8080", // explicit non-default port
+    "user@example.com", // embedded credentials
+    "not a domain", // whitespace
+    "localhost", // single-label / internal
+  ])("rejects malformed or non-page input: %s", async (url) => {
     const state = await runReport(initialReportState, form(url));
     expect(state.status).toBe("error");
     if (state.status === "error") {
-      expect(state.error).toMatch(/only a domain/i);
+      expect(state.error).toMatch(/domain or page|https:\/\/ or a port/i);
     }
   });
 

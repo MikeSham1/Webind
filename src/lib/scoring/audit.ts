@@ -135,6 +135,7 @@ export async function auditReport(
       prompt: buildAuditPrompt(report, page),
       json: true,
       maxOutputTokens: 1200,
+      thinkingLevel: "low",
       purpose: "score_audit",
     });
     if (result.fallback || !result.text.trim()) {
