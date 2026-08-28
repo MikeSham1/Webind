@@ -78,6 +78,25 @@ describe("deterministicSuggestion", () => {
     expect(joined).not.toMatch(/per 100|100 words/i);
   });
 
+  it("gives scannability advice (not question-heading mangling) on a homepage", () => {
+    const s = deterministicSuggestion(
+      sig({ key: "answerability", label: "Answer-ready Structure", reason: "Thin.", fix: "Make it scannable: ..." }),
+      makePage({ url: "https://example.com/", headings: [{ level: 2, text: "Shop" }] }),
+    );
+    const joined = s.steps.join(" ");
+    expect(joined).not.toMatch(/what is/i); // never "What is Shop?"
+    expect(joined).toMatch(/scannable|bullet/i);
+  });
+
+  it("gives answer-first advice on an article, without mangling a heading", () => {
+    const s = deterministicSuggestion(
+      sig({ key: "answerability", label: "Answer-ready Structure", reason: "Thin.", fix: "Make it answer-ready: ..." }),
+      makePage({ url: "https://example.com/blog/x", headings: [{ level: 2, text: "Shop" }] }),
+    );
+    expect(s.steps.join(" ")).toMatch(/one-sentence answer|opening line/i);
+    expect(s.example ?? "").not.toMatch(/what is shop/i);
+  });
+
   it("suggests adding a <title> when the page has none", () => {
     const s = deterministicSuggestion(sig(), makePage({ ...deficientPage, title: null }));
     expect(s.example).toMatch(/<title>/);

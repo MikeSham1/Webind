@@ -360,6 +360,12 @@ export function scoreEeat(page: CrawledPage): SignalScore {
  * shapes that get pulled into AI answers.
  */
 export function scoreAnswerability(page: CrawledPage): SignalScore {
+  // Question-style headings and answer-first restructuring are article/
+  // informational-content advice — a homepage, product, or category page's job
+  // is navigation and positioning, so we don't score them on Q&A structure or
+  // ever tell them to turn "Shop" into "What is Shop?".
+  const qaApplies = classifyPageType(page) === "article";
+
   // Lists.
   let listScore = 0;
   if (page.listCount > 0) listScore = page.listItemCount >= 6 ? 25 : 15;
@@ -371,11 +377,13 @@ export function scoreAnswerability(page: CrawledPage): SignalScore {
   // user asked. Scored on the STRUCTURE (which genuinely helps an engine lift a
   // passage), NOT on FAQPage schema: Google removed FAQ rich results in 2026
   // and says no special schema is needed for generative Search, so rewarding
-  // the markup would be scoring an outdated trick.
+  // the markup would be scoring an outdated trick. Only on articles.
   const questions = questionHeadingCount(page);
   let qaScore = 0;
-  if (questions >= 2) qaScore = 25;
-  else if (questions >= 1) qaScore = 12;
+  if (qaApplies) {
+    if (questions >= 2) qaScore = 25;
+    else if (questions >= 1) qaScore = 12;
+  }
 
   // Heading structure.
   const levels = new Set(page.headings.map((h) => h.level));
@@ -391,10 +399,15 @@ export function scoreAnswerability(page: CrawledPage): SignalScore {
   }
 
   const score = clamp(listScore + tableScore + qaScore + headingScore + proseScore);
+  // Articles are held to the full answer-ready bar; other page types just need
+  // to be scannable, since Q&A structure isn't counted for them.
+  const bar = qaApplies ? 80 : 55;
+  const good = score >= bar;
 
   const missing: string[] = [];
   if (listScore < 25) missing.push("break key points into bullet/numbered lists");
-  if (qaScore < 25) missing.push("answer common questions with clear question-style headings");
+  if (qaApplies && qaScore < 25)
+    missing.push("answer common questions with question-style headings, each answered in the first line");
   if (tableScore === 0) missing.push("use a comparison table where it fits");
   if (proseScore < 15) missing.push("shorten long paragraphs into scannable chunks");
 
@@ -403,11 +416,14 @@ export function scoreAnswerability(page: CrawledPage): SignalScore {
     label: "Answer-ready Structure",
     score,
     weight: AI_WEIGHTS.answerability,
-    reason:
-      score >= 80
-        ? "Well-structured for extraction: lists, headings, and scannable prose."
-        : "Content is hard for AI to lift into an answer.",
-    fix: score >= 80 ? null : `Make it answer-ready: ${missing.slice(0, 3).join("; ")}.`,
+    reason: good
+      ? "Well-structured for extraction: lists, headings, and scannable prose."
+      : qaApplies
+        ? "Content is hard for AI to lift into an answer."
+        : "Could be more scannable for AI to lift a clean passage.",
+    fix: good
+      ? null
+      : `Make it ${qaApplies ? "answer-ready" : "scannable"}: ${missing.slice(0, 3).join("; ")}.`,
   };
 }
 

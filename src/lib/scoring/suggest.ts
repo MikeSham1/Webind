@@ -7,6 +7,7 @@ import type {
   SignalScore,
 } from "./types";
 import { fixPriority } from "./report";
+import { classifyPageType } from "./page-type";
 
 /**
  * Turn a report's top deficiencies into specific, page-grounded, step-by-step
@@ -341,10 +342,23 @@ const ENRICHERS: Record<string, (p: CrawledPage) => Enrichment> = {
     step:
       "List the page's key factual claims and attach a credible, primary source to each important one — original data, first-hand results, or a named authority. Support the claims that matter rather than padding in statistics to hit a count.",
   }),
-  answerability: (p) => ({
-    step: `You have ${p.headings.length} headings and ${p.listItemCount} list items — make sure each main point is stated as a directly extractable answer in the first line under its heading (a question-style heading is one way, not a requirement).`,
-    example: page_qExample(p),
-  }),
+  answerability: (p) => {
+    // Answer-first / question-heading advice only makes sense on article-style
+    // content. For a homepage/product/category page, keep it to scannability —
+    // and never mangle a nav label like "Shop" into "What is Shop?".
+    if (classifyPageType(p) === "article") {
+      return {
+        step:
+          "Lead each section with a one-sentence answer to the question a reader would ask, then expand — so an engine can lift that opening line cleanly.",
+        example:
+          'e.g. under a "Pricing" heading, open with "Plans start at $19/month, billed monthly." before the detail.',
+      };
+    }
+    return {
+      step:
+        "Make the page scannable: break the key points into short bullet lists and keep paragraphs tight, so an engine can lift a clean passage.",
+    };
+  },
   freshness: () => ({
     step: "Publish an explicit machine-readable update date so engines can verify recency.",
     example:
@@ -415,12 +429,6 @@ function firstSentence(text: string): string {
 function excerpt(text: string, max: number): string {
   const clean = text.replace(/\s+/g, " ").trim();
   return clean.length <= max ? clean : `${clean.slice(0, max)}…`;
-}
-
-function page_qExample(p: CrawledPage): string | undefined {
-  const h = p.headings.find((x) => x.level >= 2 && x.text.length > 3);
-  if (!h) return undefined;
-  return `Rewrite "${h.text}" as e.g. "What is ${h.text.toLowerCase()}?" and answer it in the first sentence below.`;
 }
 
 function attr(s: string): string {

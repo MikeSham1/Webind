@@ -161,6 +161,7 @@ describe("scoreAnswerability", () => {
   it("maxes with lists, table, Q&A headings, structure, and short paragraphs (no FAQ schema needed)", () => {
     const s = scoreAnswerability(
       makePage({
+        url: "https://example.com/blog/guide", // Q&A structure applies to articles
         listCount: 2,
         listItemCount: 8,
         tableCount: 1,
@@ -178,18 +179,21 @@ describe("scoreAnswerability", () => {
     expect(s.score).toBe(100);
   });
 
-  it("credits question headings even without FAQ schema", () => {
-    const s = scoreAnswerability(
-      makePage({
-        jsonLdBlocks: [],
-        headings: [
-          { level: 2, text: "What is a widget?" },
-          { level: 2, text: "How much does it cost?" },
-        ],
-      }),
-    );
-    // faq: 2 question headings → 25 of the 100.
-    expect(s.score).toBeGreaterThanOrEqual(25);
+  it("credits question headings on an article, but not on a homepage", () => {
+    const opts = {
+      jsonLdBlocks: [],
+      headings: [
+        { level: 2, text: "What is a widget?" },
+        { level: 2, text: "How much does it cost?" },
+      ],
+    };
+    // Article: 2 question headings → 25 of the 100.
+    const article = scoreAnswerability(makePage({ ...opts, url: "https://example.com/blog/widgets" }));
+    expect(article.score).toBeGreaterThanOrEqual(25);
+    // Homepage: Q&A structure isn't its job, so those headings earn no Q&A credit
+    // and it's never told to add question headings.
+    const home = scoreAnswerability(makePage({ ...opts, url: "https://example.com/" }));
+    expect(home.fix ?? "").not.toMatch(/question-style headings/);
   });
 
   it("scores low for an unstructured wall of text", () => {
