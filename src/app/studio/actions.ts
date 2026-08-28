@@ -2,6 +2,7 @@
 
 import { generateDraft } from "@/lib/content/generate";
 import {
+  getDraftById,
   getDraftForUser,
   saveDraft,
   setAnyDraftStatus,
@@ -111,10 +112,21 @@ export async function decideDraftAction(
     return { status: "error", error: "Log in to approve or reject this draft." };
   }
 
+  // Capture the human's edits on approval — the highest-value training target.
+  // Only stored when the text actually changed from the model's draft.
+  let humanFinal: string | null | undefined;
+  if (status === "approved") {
+    const edited = String(formData.get("markdown") ?? "").trim();
+    const existing = await getDraftById(draftId);
+    if (existing && edited && edited !== (existing.markdown ?? "").trim()) {
+      humanFinal = edited;
+    }
+  }
+
   // Admins can moderate any draft; everyone else only their own.
   const ok = user.isAdmin
-    ? await setAnyDraftStatus(draftId, status)
-    : await setDraftStatus(draftId, user.id, status);
+    ? await setAnyDraftStatus(draftId, status, humanFinal)
+    : await setDraftStatus(draftId, user.id, status, humanFinal);
 
   return ok
     ? { status: "done", decision: status }

@@ -35,6 +35,9 @@ export default function DraftView({
   initialPublication?: PublicationSnapshot | null;
 }) {
   const [copied, setCopied] = useState(false);
+  // Editable: the reviewer can tweak the draft before approving, and the edit
+  // is captured as the training target (see decideDraftAction).
+  const [markdown, setMarkdown] = useState(draft.markdown);
   const [decisionState, decisionFormAction, isDeciding] = useActionState(
     decideDraftAction,
     initialDecisionState,
@@ -42,10 +45,11 @@ export default function DraftView({
 
   const currentStatus: DraftStatus =
     decisionState.status === "done" ? decisionState.decision : initialStatus;
+  const edited = markdown.trim() !== draft.markdown.trim();
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(draft.markdown);
+      await navigator.clipboard.writeText(markdown);
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {
@@ -91,14 +95,24 @@ export default function DraftView({
             {copied ? "Copied ✓" : "Copy markdown"}
           </button>
         </div>
-        <pre className="max-h-[28rem] overflow-auto whitespace-pre-wrap bg-paper p-5 font-mono text-[13px] leading-relaxed text-ink">
-          <code>{draft.markdown}</code>
-        </pre>
+        <textarea
+          value={markdown}
+          onChange={(e) => setMarkdown(e.target.value)}
+          spellCheck={false}
+          aria-label="Draft markdown (editable)"
+          className="block max-h-[28rem] min-h-[16rem] w-full resize-y overflow-auto bg-paper p-5 font-mono text-[13px] leading-relaxed text-ink focus:outline-none"
+        />
+        {edited && (
+          <p className="border-t border-line px-5 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+            Edited — your version is saved as the approved copy
+          </p>
+        )}
       </div>
 
       <DecisionBar
         draftId={draftId}
         blocked={draft.gates.blocked}
+        markdown={markdown}
         state={decisionState}
         formAction={decisionFormAction}
         isPending={isDeciding}
@@ -118,12 +132,14 @@ export default function DraftView({
 function DecisionBar({
   draftId,
   blocked,
+  markdown,
   state,
   formAction,
   isPending,
 }: {
   draftId: string | null;
   blocked: boolean;
+  markdown: string;
   state: DecisionState;
   formAction: (formData: FormData) => void;
   isPending: boolean;
@@ -158,6 +174,8 @@ function DecisionBar({
   return (
     <form action={formAction} className="flex flex-wrap items-center gap-3">
       <input type="hidden" name="draftId" value={draftId} />
+      {/* The (possibly edited) draft — captured as the approved training target. */}
+      <input type="hidden" name="markdown" value={markdown} />
       <button
         type="submit"
         name="decision"

@@ -58,11 +58,12 @@ export async function setDraftStatus(
   id: string,
   userId: string,
   status: DraftStatus,
+  humanFinal?: string | null,
 ): Promise<boolean> {
   return withDb("setDraftStatus", false, async (db) => {
     const updated = await db
       .update(contentDrafts)
-      .set({ status, updatedAt: new Date() })
+      .set({ status, updatedAt: new Date(), ...(humanFinal !== undefined ? { humanFinal } : {}) })
       .where(and(eq(contentDrafts.id, id), eq(contentDrafts.userId, userId)))
       .returning({ id: contentDrafts.id });
     return updated.length > 0;
@@ -119,11 +120,12 @@ export async function getDraftById(id: string): Promise<ContentDraftRow | null> 
 export async function setAnyDraftStatus(
   id: string,
   status: DraftStatus,
+  humanFinal?: string | null,
 ): Promise<boolean> {
   return withDb("setAnyDraftStatus", false, async (db) => {
     const updated = await db
       .update(contentDrafts)
-      .set({ status, updatedAt: new Date() })
+      .set({ status, updatedAt: new Date(), ...(humanFinal !== undefined ? { humanFinal } : {}) })
       .where(eq(contentDrafts.id, id))
       .returning({ id: contentDrafts.id });
     return updated.length > 0;

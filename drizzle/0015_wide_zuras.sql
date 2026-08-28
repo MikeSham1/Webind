@@ -1,0 +1,1 @@
+ALTER TABLE "content_drafts" ADD COLUMN "human_final" text;

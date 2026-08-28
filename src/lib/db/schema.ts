@@ -86,6 +86,12 @@ export const contentDrafts = pgTable("content_drafts", {
   inputs: jsonb("inputs").$type<ContentInputs>(),
   title: text("title"),
   markdown: text("markdown"),
+  /**
+   * The human's edited-and-approved version, when they changed the draft before
+   * approving. The real fine-tuning target (vs the model's original `markdown`);
+   * null means approved as-is or not yet approved.
+   */
+  humanFinal: text("human_final"),
   gates: jsonb("gates").$type<GateReport>(),
   status: text("status").$type<DraftStatus>().notNull().default("pending_review"),
 });
