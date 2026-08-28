@@ -8,6 +8,7 @@ import { explainReport } from "@/lib/scoring/explain";
 import { generateSuggestions } from "@/lib/scoring/suggest";
 import { predictReadiness } from "@/lib/model/predict";
 import { fetchFieldVitals } from "@/lib/vitals/psi";
+import { auditReport } from "@/lib/scoring/audit";
 import { buildOptimizations } from "@/lib/optimize/assets";
 import { attachEmail, getReportForUser, saveReportRequest } from "@/lib/leads";
 import { getCurrentUser } from "@/lib/auth";
@@ -92,9 +93,14 @@ export async function runReport(
     // ANTHROPIC_API_KEY is set and fall back to deterministic, network-free
     // output otherwise; neither ever throws. (Live citation checks are
     // intentionally kept out of the request path.)
-    const [narrative, suggestions] = await Promise.all([
+    // Admins also get an LLM "score audit" — a Gemini second opinion that flags
+    // any score that looks wrong for this page, so we catch scoring bugs. It's
+    // admin-only (it's meta-commentary on our own algorithm, not for customers)
+    // and best-effort. Runs alongside the other AI calls to add no round-trip.
+    const [narrative, suggestions, scoreAudit] = await Promise.all([
       explainReport(report),
       generateSuggestions(report, page),
+      user?.isAdmin ? auditReport(report, page) : Promise.resolve(null),
     ]);
     // Deterministic ready-to-apply assets (schema, meta, llms.txt, robots).
     const optimizations = buildOptimizations(page);
@@ -119,6 +125,7 @@ export async function runReport(
       githubConnected,
       modelReadiness,
       pageExperience,
+      scoreAudit,
     };
   } catch (err) {
     // These two carry messages written for a visitor; anything else is an

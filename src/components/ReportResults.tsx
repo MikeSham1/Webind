@@ -5,8 +5,10 @@ import { PAGE_TYPE_LABEL } from "@/lib/scoring/page-type";
 import ScoreDial from "./ScoreDial";
 import StageBreakdown from "./StageBreakdown";
 import PageExperience from "./PageExperience";
+import ScoreAuditPanel from "./ScoreAuditPanel";
 import SignalBreakdown from "./SignalBreakdown";
 import type { FieldVitals } from "@/lib/vitals/types";
+import type { ScoreAudit } from "@/lib/scoring/audit";
 import FixList from "./FixList";
 import OptimizationAssets from "./OptimizationAssets";
 import LeadCapture from "./LeadCapture";
@@ -36,6 +38,8 @@ export interface ReportResultsProps {
   modelReadiness?: number;
   /** Core Web Vitals field data (CrUX via PSI), or null when unavailable. */
   pageExperience?: FieldVitals | null;
+  /** Admin-only LLM score audit, or null. */
+  scoreAudit?: ScoreAudit | null;
 }
 
 function hostOf(url: string): string {
@@ -55,6 +59,7 @@ export default function ReportResults({
   githubConnected = false,
   initialPr = null,
   pageExperience = null,
+  scoreAudit = null,
 }: ReportResultsProps) {
   const host = hostOf(report.url);
 
@@ -119,6 +124,13 @@ export default function ReportResults({
       {pageExperience && (
         <div className="reveal" style={{ animationDelay: "70ms" }}>
           <PageExperience vitals={pageExperience} />
+        </div>
+      )}
+
+      {/* Admin-only LLM score audit. */}
+      {scoreAudit?.configured && (
+        <div className="reveal" style={{ animationDelay: "75ms" }}>
+          <ScoreAuditPanel audit={scoreAudit} />
         </div>
       )}
 

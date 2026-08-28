@@ -5,6 +5,7 @@
 import type { OptimizationAssets } from "@/lib/optimize/assets";
 import type { ActionableSuggestion, ReportResult } from "@/lib/scoring/types";
 import type { FieldVitals } from "@/lib/vitals/types";
+import type { ScoreAudit } from "@/lib/scoring/audit";
 
 /** Result of a report run, shaped for `useActionState`. */
 export type ReportState =
@@ -35,6 +36,11 @@ export type ReportState =
        * from actual visitors, so it's shown apart from the heuristic scores.
        */
       pageExperience: FieldVitals | null;
+      /**
+       * Admin-only LLM "score audit": a Gemini second opinion flagging scores
+       * that look wrong for this page. Null for non-admins (never computed).
+       */
+      scoreAudit: ScoreAudit | null;
     }
   | { status: "error"; error: string; url: string };
 
