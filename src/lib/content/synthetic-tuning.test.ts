@@ -25,7 +25,7 @@ function fakeExample(id: string): SelectedSyntheticExample {
       rejected: false,
       rejectionReasons: [],
     },
-    row: { systemInstruction: { role: "system", parts: [{ text: "system" }] }, contents: [] },
+    row: { systemInstruction: { parts: [{ text: "system" }] }, contents: [] },
     provenance: {
       researchVersion: "test",
       principleIds: [],
