@@ -129,6 +129,11 @@ describe("normalizeUrl", () => {
     expect(normalizeUrl("http://192.168.1.1")).toBeNull();
   });
 
+  it("rejects adult-content domains", () => {
+    expect(normalizeUrl("https://porn-example.com")).toBeNull();
+    expect(normalizeUrl("https://subdomain.pornhub.com")).toBeNull();
+  });
+
   it("rejects empty input", () => {
     expect(normalizeUrl("")).toBeNull();
     expect(normalizeUrl("   ")).toBeNull();
@@ -192,6 +197,14 @@ describe("assertPublicUrl", () => {
     await expect(
       assertPublicUrl("file:///etc/passwd", resolver),
     ).rejects.toBeInstanceOf(BlockedUrlError);
+    expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it("rejects adult-content domains before resolving anything", async () => {
+    const resolver = resolvingTo("8.8.8.8");
+    await expect(
+      assertPublicUrl("https://porn-example.com/", resolver),
+    ).rejects.toThrow(/adult-content/i);
     expect(resolver).not.toHaveBeenCalled();
   });
 });

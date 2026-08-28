@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { runReport } from "@/app/actions";
 import { initialReportState } from "@/app/report-state";
+import { parseDomainInput } from "@/lib/domainInput";
 import ReportResults from "./ReportResults";
 
 export default function ReportForm() {
@@ -12,10 +13,6 @@ export default function ReportForm() {
   );
   const [url, setUrl] = useState("");
   const [clientError, setClientError] = useState<string | null>(null);
-
-  // The https:// is supplied by the field, so a typed-in scheme would double it.
-  const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(url.trim());
-  const schemeError = "Leave off the https:// — just enter the domain, like example.com.";
 
   const showResults = !isPending && state.status === "success";
   // Instant client-side error takes precedence over the last server error.
@@ -38,16 +35,16 @@ export default function ReportForm() {
       <form
         action={formAction}
         onSubmit={(e) => {
-          // Block the doubled-scheme case before it round-trips to the server.
-          if (hasScheme) {
+          const validation = parseDomainInput(url);
+          if (!validation.ok) {
             e.preventDefault();
-            setClientError(schemeError);
+            setClientError(validation.error);
           }
         }}
         className="mx-auto w-full max-w-xl"
       >
         <label htmlFor="url" className="sr-only">
-          Website address
+          Website domain
         </label>
         <div className="scan-frame flex flex-col gap-3 border border-line bg-surface p-2 shadow-[0_1px_0_rgba(0,0,0,0.02)] sm:flex-row sm:items-center sm:pl-5">
           <div className="flex flex-1 items-center gap-3 px-3 sm:px-0">

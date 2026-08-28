@@ -2,22 +2,15 @@
 
 import { crawl } from "@/lib/crawler/crawl";
 import { CrawlerBusyError } from "@/lib/crawler/browser";
-import { BlockedUrlError, normalizeUrl } from "@/lib/crawler/ssrf";
+import { BlockedUrlError } from "@/lib/crawler/ssrf";
+import { parseDomainInput } from "@/lib/domainInput";
 import { buildReport } from "@/lib/scoring/report";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import { getClientIp } from "@/lib/requestIp";
 import type { CompareSide, CompareState } from "./compare-state";
 
 /** Crawl + score one side. Never throws — same error shape as runReport. */
-async function runSide(raw: string): Promise<CompareSide> {
-  const url = normalizeUrl(raw);
-  if (!url) {
-    return {
-      status: "error",
-      error: "That doesn't look like a valid website address.",
-      url: raw,
-    };
-  }
+async function runSide(url: string): Promise<CompareSide> {
   try {
     const page = await crawl(url);
     const report = buildReport(page);
@@ -50,7 +43,16 @@ export async function runCompareAction(
   const rawA = String(formData.get("urlA") ?? "");
   const rawB = String(formData.get("urlB") ?? "");
   if (!rawA.trim() || !rawB.trim()) {
-    return { status: "error", error: "Enter two URLs to compare." };
+    return { status: "error", error: "Enter two domains to compare." };
+  }
+
+  const inputA = parseDomainInput(rawA);
+  if (!inputA.ok) {
+    return { status: "error", error: `Your site: ${inputA.error}` };
+  }
+  const inputB = parseDomainInput(rawB);
+  if (!inputB.ok) {
+    return { status: "error", error: `Competitor: ${inputB.error}` };
   }
 
   // Anonymous endpoint, each run launches two real browser crawls — cap
@@ -65,6 +67,9 @@ export async function runCompareAction(
     };
   }
 
-  const [a, b] = await Promise.all([runSide(rawA), runSide(rawB)]);
+  const [a, b] = await Promise.all([
+    runSide(inputA.url),
+    runSide(inputB.url),
+  ]);
   return { status: "success", a, b };
 }

@@ -33,6 +33,11 @@
 
 import { isIP } from "node:net";
 import { lookup } from "node:dns/promises";
+import {
+  RESTRICTED_DOMAIN_ERROR,
+  isInternalHostname,
+  isRestrictedHostname,
+} from "../domainInput";
 
 /** Thrown when a URL is refused. The message is safe to show a visitor. */
 export class BlockedUrlError extends Error {
@@ -53,26 +58,6 @@ const defaultResolver: HostResolver = async (hostname) => {
 // --- hostname rules ---------------------------------------------------------
 
 /**
- * Suffixes that only ever name something inside a private network. `.local` is
- * mDNS, `.internal` is the convention cloud providers use for instance-local
- * names (including GCP's metadata server), `.home.arpa` is RFC 8375.
- */
-const INTERNAL_SUFFIXES = [
-  ".localhost",
-  ".local",
-  ".internal",
-  ".intranet",
-  ".home.arpa",
-];
-
-/** Exact hostnames that are never legitimate crawl targets. */
-const INTERNAL_HOSTNAMES = new Set([
-  "localhost",
-  "metadata.google.internal",
-  "metadata",
-]);
-
-/**
  * Structural hostname check. Returns a human-readable reason when the host must
  * not be fetched, or null when it passes this layer. Passing here is necessary
  * but NOT sufficient — the caller must still resolve and check the addresses.
@@ -81,10 +66,7 @@ export function isBlockedHostname(hostname: string): string | null {
   const host = hostname.toLowerCase().replace(/\.$/, "");
 
   if (!host) return "The address has no hostname.";
-  if (INTERNAL_HOSTNAMES.has(host)) return "That address is internal-only.";
-  if (INTERNAL_SUFFIXES.some((s) => host.endsWith(s))) {
-    return "That address is internal-only.";
-  }
+  if (isInternalHostname(host)) return "That address is internal-only.";
 
   // Bracketed IPv6 literal, as URL.hostname reports it.
   const unbracketed = host.startsWith("[") && host.endsWith("]")
@@ -208,6 +190,7 @@ export function normalizeUrl(raw: string): string | null {
   // Credentials in the URL are a classic way to confuse downstream parsers.
   if (parsed.username || parsed.password) return null;
   if (isBlockedHostname(parsed.hostname) !== null) return null;
+  if (isRestrictedHostname(parsed.hostname)) return null;
 
   return parsed.toString();
 }
@@ -229,6 +212,10 @@ export async function assertPublicUrl(
 
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new BlockedUrlError("Only http and https addresses can be analyzed.");
+  }
+
+  if (isRestrictedHostname(parsed.hostname)) {
+    throw new BlockedUrlError(RESTRICTED_DOMAIN_ERROR);
   }
 
   const structural = isBlockedHostname(parsed.hostname);

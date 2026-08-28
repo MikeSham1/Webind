@@ -2,7 +2,8 @@
 
 import { crawl } from "@/lib/crawler/crawl";
 import { CrawlerBusyError } from "@/lib/crawler/browser";
-import { BlockedUrlError, normalizeUrl } from "@/lib/crawler/ssrf";
+import { BlockedUrlError } from "@/lib/crawler/ssrf";
+import { parseDomainInput } from "@/lib/domainInput";
 import { buildReport } from "@/lib/scoring/report";
 import { explainReport } from "@/lib/scoring/explain";
 import { generateSuggestions } from "@/lib/scoring/suggest";
@@ -36,29 +37,15 @@ export async function runReport(
   formData: FormData,
 ): Promise<ReportState> {
   const raw = String(formData.get("url") ?? "");
-
-  // The field already supplies the scheme (the https:// shown to its left), so
-  // a typed-in scheme means a doubled address — reject it with a specific nudge
-  // instead of silently accepting something like "https://https://example.com".
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw.trim())) {
+  const domainInput = parseDomainInput(raw);
+  if (!domainInput.ok) {
     return {
       status: "error",
-      error:
-        "Leave off the https:// — just enter the domain, like example.com.",
+      error: domainInput.error,
       url: raw,
     };
   }
-
-  const url = normalizeUrl(raw);
-
-  if (!url) {
-    return {
-      status: "error",
-      error:
-        "That doesn't look like a valid website address. Try something like example.com.",
-      url: raw,
-    };
-  }
+  const url = domainInput.url;
 
   // Anonymous endpoint, each run launches a real browser and (optionally) a
   // Claude call — cap per-visitor throughput before any of that work starts.
