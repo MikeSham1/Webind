@@ -34,22 +34,13 @@ function thinkingLevel(): ThinkingLevel {
   }
 }
 
-function inlineGoogleAuthOptions() {
-  const raw = process.env.VERTEX_SERVICE_ACCOUNT_JSON?.trim();
-  if (!raw) return undefined;
-  // Let an invalid secret fail inside generate(); the provider-neutral router
-  // catches that error and safely falls back instead of crashing the request.
-  return { credentials: JSON.parse(raw) };
-}
-
 /**
  * Provider for a supervised-tuned Gemini endpoint hosted on Vertex AI.
  *
  * This is intentionally separate from geminiProvider(): GEMINI_API_KEY is a
- * Gemini Developer API credential and cannot authenticate a Vertex endpoint.
- * Vertex uses Google Cloud authentication (ADC / workload identity / service
- * account credentials). For hosts where mounting an ADC file is awkward,
- * VERTEX_SERVICE_ACCOUNT_JSON can hold the service-account JSON server-side.
+ * Gemini Developer API credential and does not authenticate a normal Vertex AI
+ * project endpoint. Vertex uses Google Cloud Application Default Credentials
+ * (service account / workload identity / GOOGLE_APPLICATION_CREDENTIALS).
  */
 export function vertexGeminiProvider(model: string): AiProvider {
   const target = parseVertexEndpoint(model);
@@ -61,12 +52,10 @@ export function vertexGeminiProvider(model: string): AiProvider {
       if (!target) throw new Error("CONTENT_WRITER_VERTEX_ENDPOINT is not a valid Vertex endpoint resource name.");
 
       const startedAt = Date.now();
-      const googleAuthOptions = inlineGoogleAuthOptions();
       const ai = new GoogleGenAI({
         vertexai: true,
         project: target.project,
         location: target.location,
-        ...(googleAuthOptions ? { googleAuthOptions } : {}),
       });
 
       const response = await ai.models.generateContent({
@@ -76,8 +65,10 @@ export function vertexGeminiProvider(model: string): AiProvider {
           systemInstruction: req.system,
           maxOutputTokens: req.maxOutputTokens ?? 2048,
           thinkingConfig: { thinkingLevel: thinkingLevel() },
-          ...(req.grounded ? { tools: [{ googleSearch: {} }] } : {}),
-          ...(req.json && !req.grounded ? { responseMimeType: "application/json" } : {}),
+          // Keep the tuned writer bound to the supplied brief. Live-search tool
+          // support can differ for tuned endpoints, and attaching search would
+          // weaken the training/inference grounding contract.
+          ...(req.json ? { responseMimeType: "application/json" } : {}),
         },
       });
 
