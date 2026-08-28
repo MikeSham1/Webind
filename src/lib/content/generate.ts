@@ -5,14 +5,18 @@ import type { ContentDraft, ContentInputs } from "./types";
 import type { AiProvider } from "@/lib/ai/types";
 import { generate } from "@/lib/ai/generator";
 import { geminiProvider } from "@/lib/ai/gemini";
+import { vertexGeminiProvider } from "@/lib/ai/vertex-gemini";
 
 /**
- * The content writer's model: a fine-tuned endpoint when CONTENT_WRITER_MODEL is
- * set, otherwise base Gemini. Wired now so flipping to the tuned model is one
- * env var, no code change.
+ * The app currently uses GEMINI_API_KEY for the base Gemini Developer API path
+ * (3.7 planner / fallback). A tuned model produced by Vertex AI is a different
+ * backend and auth surface, so it is selected only through the explicit Vertex
+ * endpoint variable and uses Google Cloud ADC instead of GEMINI_API_KEY.
  */
-function contentWriterProvider(): AiProvider {
-  return geminiProvider(process.env.CONTENT_WRITER_MODEL || undefined);
+export function contentWriterProvider(): AiProvider {
+  const vertexEndpoint = process.env.CONTENT_WRITER_VERTEX_ENDPOINT?.trim();
+  if (vertexEndpoint) return vertexGeminiProvider(vertexEndpoint);
+  return geminiProvider();
 }
 
 const YMYL_DISCLAIMER =
@@ -27,18 +31,15 @@ function titleFromMarkdown(markdown: string): string | null {
 /**
  * Produce a reviewed draft.
  *
- * The writer is an LLM (Gemini by default) prompted with the content-writer
- * contract; when no key is configured or the call fails, it degrades to the
- * deterministic template assembler so the Studio always returns something. The
- * safety gates ALWAYS run on the chosen content — model or template — so nothing
- * skips the fabrication / YMYL / originality checks or the human approval step.
- * Never throws.
+ * Base mode: Gemini Developer API via GEMINI_API_KEY (currently 3.7 Flash).
+ * Tuned mode: Vertex endpoint via CONTENT_WRITER_VERTEX_ENDPOINT + Google Cloud
+ * ADC. When no provider is configured or a call fails, generation degrades to
+ * the deterministic assembler. Safety gates always run on the selected output.
  */
 export async function generateDraft(
   inputs: ContentInputs,
   deps: { provider?: AiProvider } = {},
 ): Promise<ContentDraft> {
-  // Deterministic assembly is the always-available fallback.
   const fallback = assembleDraft(inputs);
   let title = fallback.title;
   let markdown = fallback.markdown;
@@ -51,8 +52,8 @@ export async function generateDraft(
         system: CONTENT_WRITER_SYSTEM,
         prompt: serializeContentInputs(inputs),
         json: false,
-        // Let the writer consult live search for current, accurate context —
-        // still bound by "assert only supplied facts; placeholders otherwise".
+        // Base 3.7 may use Google Search grounding. The Vertex tuned provider
+        // deliberately ignores this flag and stays bound to the supplied brief.
         grounded: true,
         maxOutputTokens: 4096,
         purpose: "content_write",
@@ -60,8 +61,6 @@ export async function generateDraft(
       { provider },
     );
     const text = result.text.trim();
-    // `generate` never throws — it returns fallback:true on an unconfigured or
-    // failed call, in which case we keep the template output.
     if (!result.fallback && text) {
       markdown = text;
       title = titleFromMarkdown(text) ?? fallback.title;
