@@ -9,7 +9,7 @@ import { getGitHubConnectionStatus } from "@/lib/integrations/githubConnections"
 import { getPrForReport } from "@/lib/integrations/codeFixes";
 
 export const metadata: Metadata = {
-  title: "Report — WeBind",
+  title: "Report — WeBind Design",
   robots: { index: false, follow: false, nocache: true },
 };
 

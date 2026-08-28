@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { listAuditLog } from "@/lib/audit";
 
 export const metadata: Metadata = {
-  title: "Audit log — WeBind",
+  title: "Audit log — WeBind Design",
   robots: { index: false, follow: false, nocache: true },
 };
 

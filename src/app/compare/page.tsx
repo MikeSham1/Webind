@@ -6,7 +6,7 @@ import CompareForm from "@/components/CompareForm";
 export const runtime = "nodejs";
 
 export const metadata: Metadata = {
-  title: "Compare — WeBind",
+  title: "Compare — WeBind Design",
   description:
     "Run two sites through the same AI-readiness read and see who's ahead, signal by signal.",
   robots: { index: false, follow: false, nocache: true },
@@ -63,7 +63,7 @@ export default function ComparePage() {
 
       <footer className="border-t border-line">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-6 py-6 text-center sm:flex-row sm:text-left">
-          <span className="font-display text-sm font-semibold text-ink">WeBind</span>
+          <span className="font-display text-sm font-semibold text-ink">WeBind Design</span>
           <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
             <Link href="/methodology" className="hover:text-accent">
               Methodology

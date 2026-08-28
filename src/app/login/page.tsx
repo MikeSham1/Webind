@@ -4,7 +4,7 @@ import AuthForm from "@/components/AuthForm";
 import { getCurrentUser } from "@/lib/auth";
 
 export const metadata: Metadata = {
-  title: "Log in — WeBind",
+  title: "Log in — WeBind Design",
   robots: { index: false, follow: false, nocache: true },
 };
 

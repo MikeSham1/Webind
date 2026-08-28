@@ -6,7 +6,7 @@ import { isSerperConfigured } from "@/lib/benchmark/serper";
 import BenchmarkForm from "@/components/BenchmarkForm";
 
 export const metadata: Metadata = {
-  title: "Competitive Benchmark — WeBind",
+  title: "Competitive Benchmark — WeBind Design",
   robots: { index: false, follow: false, nocache: true },
 };
 

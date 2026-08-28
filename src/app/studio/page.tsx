@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
 
 export const metadata: Metadata = {
-  title: "Content Studio — WeBind",
+  title: "Content Studio — WeBind Design",
   robots: { index: false, follow: false, nocache: true },
 };
 

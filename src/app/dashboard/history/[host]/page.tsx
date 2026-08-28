@@ -6,7 +6,7 @@ import { listReportsForUserHost } from "@/lib/leads";
 import TrendChart from "@/components/TrendChart";
 
 export const metadata: Metadata = {
-  title: "Score history — WeBind",
+  title: "Score history — WeBind Design",
   robots: { index: false, follow: false, nocache: true },
 };
 

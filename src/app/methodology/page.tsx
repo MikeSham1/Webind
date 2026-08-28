@@ -4,7 +4,7 @@ import { AI_WEIGHTS, TRADITIONAL_WEIGHTS, SCORING_MODEL_VERSION } from "@/lib/sc
 import { MODEL_META } from "@/lib/model/predict";
 
 export const metadata: Metadata = {
-  title: "Methodology — WeBind",
+  title: "Methodology — WeBind Design",
   description: "How WeBind's AI Readiness and Traditional Authority scores are built, and what they don't yet measure.",
   // Pre-launch: keep the whole site out of search indexes (see root layout).
   robots: { index: false, follow: false, nocache: true },
@@ -75,7 +75,7 @@ export default function MethodologyPage() {
         href="/"
         className="font-mono text-xs uppercase tracking-[0.16em] text-muted hover:text-accent"
       >
-        ← WeBind
+        ← WeBind Design
       </Link>
 
       <div className="mt-6">

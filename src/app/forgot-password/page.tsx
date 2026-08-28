@@ -4,7 +4,7 @@ import ForgotPasswordForm from "@/components/ForgotPasswordForm";
 import { getCurrentUser } from "@/lib/auth";
 
 export const metadata: Metadata = {
-  title: "Forgot password — WeBind",
+  title: "Forgot password — WeBind Design",
   robots: { index: false, follow: false, nocache: true },
 };
 

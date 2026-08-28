@@ -8,7 +8,7 @@ import { isBillingConfigured } from "@/lib/billing/stripe";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Pricing — WeBind",
+  title: "Pricing — WeBind Design",
   description:
     "Simple, honest pricing for AI visibility. Diagnose free, then fix and track from $19/mo — under every other AI-visibility tool.",
   // Pre-launch: keep the whole site out of search indexes (see root layout).
@@ -41,7 +41,7 @@ export default async function PricingPage() {
       {/* Nav — same wordmark + [scan] mark as the rest of the site. */}
       <header className="mx-auto flex w-full max-w-6xl flex-col items-center gap-4 px-6 py-6 sm:flex-row sm:justify-between">
         <Link href="/" className="flex items-baseline gap-2 whitespace-nowrap">
-          <span className="font-display text-xl font-semibold tracking-tight text-ink">WeBind</span>
+          <span className="font-display text-xl font-semibold tracking-tight text-ink">WeBind Design</span>
           <span className="font-mono text-[11px] tracking-[0.22em] text-accent" aria-hidden="true">
             [scan]
           </span>
@@ -132,7 +132,7 @@ export default async function PricingPage() {
 
       <footer className="border-t border-line">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-6 py-6 text-center sm:flex-row sm:text-left">
-          <span className="font-display text-sm font-semibold text-ink">WeBind</span>
+          <span className="font-display text-sm font-semibold text-ink">WeBind Design</span>
           <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
             <Link href="/methodology" className="hover:text-accent">
               Methodology

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import ResetPasswordForm from "@/components/ResetPasswordForm";
 
 export const metadata: Metadata = {
-  title: "Reset password — WeBind",
+  title: "Reset password — WeBind Design",
   robots: { index: false, follow: false, nocache: true },
 };
 

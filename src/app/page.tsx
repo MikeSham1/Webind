@@ -11,7 +11,7 @@ export default function Home() {
       <header className="mx-auto flex w-full max-w-6xl flex-col items-center gap-4 px-6 py-6 sm:flex-row sm:justify-between">
         <Link href="/" className="flex items-baseline gap-2 whitespace-nowrap">
           <span className="font-display text-xl font-semibold tracking-tight text-ink">
-            WeBind
+            WeBind Design
           </span>
           <span
             className="font-mono text-[11px] tracking-[0.22em] text-accent"
@@ -90,7 +90,7 @@ export default function Home() {
       <footer className="border-t border-line">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-6 py-6 text-center sm:flex-row sm:text-left">
           <span className="font-display text-sm font-semibold text-ink">
-            WeBind
+            WeBind Design
           </span>
           <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
             <Link href="/methodology" className="hover:text-accent">

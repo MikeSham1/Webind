@@ -7,7 +7,7 @@ import { listAllDrafts, listDraftsForUser } from "@/lib/content/store";
 import { listAllReports, listReportsForUser } from "@/lib/leads";
 
 export const metadata: Metadata = {
-  title: "Dashboard — WeBind",
+  title: "Dashboard — WeBind Design",
   robots: { index: false, follow: false, nocache: true },
 };
 
