@@ -11,8 +11,8 @@ This is a bootstrap dataset, not proof of a universal ranking formula. The resea
 ## Architecture
 
 1. `buildSyntheticBriefs` creates deterministic fictional briefs across page type, industry, intent, audience, evidence density, and YMYL/ordinary slices.
-2. Base Gemini 3.7 Flash generates multiple candidates with MEDIUM thinking.
-3. An independent judge checks factual grounding, usefulness, intent fit, and extractability. Claude is preferred when configured; otherwise a separate Gemini judge prompt is used.
+2. Base Gemini 3.7 Flash generates multiple candidates with MEDIUM thinking through the existing `GEMINI_API_KEY` Developer API path.
+3. A separate judge prompt checks factual grounding, usefulness, intent fit, and extractability. It defaults to pinned Gemini 3.7 so an existing `ANTHROPIC_API_KEY` cannot silently add a new vendor/cost to the offline workload. Set `TUNING_JUDGE_PROVIDER=anthropic` deliberately to use Claude as the cross-vendor judge.
 4. `scoreContentQuality` supplies the Webind algorithmic signal. It is intentionally only 30% of the composite selection score.
 5. Candidates hard-fail for unsupported claims, low usefulness/intent fit, keyword repetition, or a very low Webind content score.
 6. The highest-scoring passing candidate becomes the SFT target.
@@ -21,9 +21,20 @@ This is a bootstrap dataset, not proof of a universal ranking formula. The resea
 
 ## Build the corpus
 
+The default corpus build uses the same existing `GEMINI_API_KEY` used by the base 3.7 product path. No Google Cloud/Vertex credentials are needed until the separate submission step.
+
 ```bash
 npm run tuning:synthetic -- --count=500 --candidates=4 --out=tuning/synthetic-v1
 ```
+
+To deliberately use Claude as the independent judge:
+
+```bash
+TUNING_JUDGE_PROVIDER=anthropic \
+npm run tuning:synthetic -- --count=500 --candidates=4 --out=tuning/synthetic-v1
+```
+
+That opt-in requires `ANTHROPIC_API_KEY`. Merely having that key for report summaries or visibility does not switch the tuning judge.
 
 A production-sized first run should normally target at least 500 accepted examples; 2,000 requested briefs with four candidates each provides substantially more slice coverage if budget allows.
 
@@ -70,12 +81,12 @@ The script uploads only `train.jsonl` and `validation.jsonl`. It deliberately do
 
 ## Runtime wiring: Developer API vs Vertex
 
-The existing Webind Gemini integration uses `GEMINI_API_KEY` with the Gemini Developer API. That remains the base Gemini 3.7 path for conversational planning and the untuned fallback.
+The existing Webind Gemini integration uses `GEMINI_API_KEY` with the Gemini Developer API. Content-specific base calls are pinned to Gemini 3.7 MEDIUM thinking; unrelated generic generator overrides such as `GEMINI_GENERATOR_MODEL` or `GEMINI_THINKING_LEVEL` do not silently alter the planner, synthetic teacher, or base writer fallback.
 
 A supervised-tuned Gemini 3.5 model created by Vertex is served through a Vertex endpoint and must **not** be addressed by merely swapping a model ID into the API-key client. The app therefore has a separate runtime adapter:
 
-- `GEMINI_API_KEY` -> Gemini Developer API -> base Gemini 3.7 planner / fallback.
-- `CONTENT_WRITER_VERTEX_ENDPOINT` -> Vertex AI -> tuned Gemini writer.
+- `GEMINI_API_KEY` -> Gemini Developer API -> base Gemini 3.7 planner / teacher / writer fallback.
+- `CONTENT_WRITER_VERTEX_ENDPOINT` -> Vertex AI -> tuned Gemini final writer.
 - Vertex authentication -> Application Default Credentials, such as workload identity, an attached service account, or `GOOGLE_APPLICATION_CREDENTIALS`.
 
 After the tuning job reaches `JOB_STATE_SUCCEEDED`, fetch the job and copy its exact `tunedModel.endpoint`, for example:
@@ -84,13 +95,13 @@ After the tuning job reaches `JOB_STATE_SUCCEEDED`, fetch the job and copy its e
 projects/123456789012/locations/us-central1/endpoints/123456789012345
 ```
 
-Set that value as:
+Set that value in the deployment environment when promoting the tuned writer:
 
 ```bash
 CONTENT_WRITER_VERTEX_ENDPOINT=projects/123456789012/locations/us-central1/endpoints/123456789012345
 ```
 
-When that variable is absent, Content Studio keeps using the current 3.7 API-key path. When it is present, only the final content writer is routed through Vertex; the conversational planner remains on the base 3.7 Developer API path.
+An existing `.env.local` does not need to be replaced or regenerated. When the endpoint variable is absent, Content Studio behaves as it does today. When it is present, only the final content writer tries Vertex; if the Vertex endpoint/auth/quota/network call fails, the app retries the same draft with the existing Gemini 3.7 API-key provider before falling back to the deterministic template. The conversational planner always stays on base 3.7.
 
 The Vertex tuned writer intentionally does not attach live Google Search grounding. Its factual universe is the supplied writing brief, matching the SFT corpus and reducing the risk that inference-time retrieval breaks the grounding contract.
 
@@ -107,7 +118,7 @@ Promotion requires:
 - acceptable latency, failure rate, and cost;
 - a limited real-world canary before broad rollout.
 
-For tuned Gemini 3+ inference, Webind defaults the Vertex writer to MINIMAL thinking. The untuned Gemini 3.7 planner remains MEDIUM thinking.
+For tuned Gemini 3+ inference, Webind defaults the Vertex writer to MINIMAL thinking. The untuned Gemini 3.7 content path remains MEDIUM thinking.
 
 ## Scientific limits
 
