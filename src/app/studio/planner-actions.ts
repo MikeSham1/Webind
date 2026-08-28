@@ -5,13 +5,7 @@ import { geminiProvider } from "@/lib/ai/gemini";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import { getCurrentUser } from "@/lib/auth";
 import { getClientIp } from "@/lib/requestIp";
-
-export type PlannerState =
-  | { status: "idle" }
-  | { status: "reply"; reply: string; transcript: string }
-  | { status: "error"; error: string; transcript: string };
-
-export const initialPlannerState: PlannerState = { status: "idle" };
+import type { PlannerState } from "./planner-state";
 
 const PLANNER_SYSTEM = [
   "You are Webind's content strategist. Help the user think through what they are going to write before a drafting model produces the page.",
@@ -29,7 +23,7 @@ export async function planContentAction(
   formData: FormData,
 ): Promise<PlannerState> {
   const message = String(formData.get("message") ?? "").trim();
-  const prior = prev.status === "idle" ? "" : prev.transcript;
+  const prior = prev.transcript;
   if (!message) return { status: "error", error: "Tell Gemini what you want to write.", transcript: prior };
 
   const user = await getCurrentUser();
