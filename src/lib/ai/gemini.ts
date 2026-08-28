@@ -7,10 +7,11 @@ import type { AiProvider, GenerateRequest, GenerateResult } from "./types";
  *
  * Notes grounded in current Google guidance:
  *  - No temperature / top_p / top_k on the 3.7 default path.
- *  - Base 3.7 writing defaults to LOW thinking.
+ *  - Base 3.7 defaults to MEDIUM thinking. It handles conversational planning,
+ *    clarification, and untuned drafting where stronger reasoning is useful.
  *  - Supervised-tuned Gemini 3+ models default to MINIMAL thinking because the
- *    tuned task behavior is learned from the examples rather than hidden
- *    reasoning. GEMINI_THINKING_LEVEL can override either default.
+ *    tuned task behavior is learned from examples rather than hidden reasoning.
+ *    GEMINI_THINKING_LEVEL can override either default.
  *  - JSON mode uses responseMimeType. Controlled generation can reduce quality
  *    on tuned models, so content writing keeps free-text Markdown output.
  */
@@ -18,17 +19,17 @@ import type { AiProvider, GenerateRequest, GenerateResult } from "./types";
 const DEFAULT_MODEL = "gemini-3.7-flash";
 
 function thinkingLevel(isExplicitModel: boolean): ThinkingLevel {
-  const fallback = isExplicitModel ? "minimal" : "low";
+  const fallback = isExplicitModel ? "minimal" : "medium";
   const raw = (process.env.GEMINI_THINKING_LEVEL ?? fallback).toUpperCase();
   switch (raw) {
     case "MINIMAL":
       return ThinkingLevel.MINIMAL;
-    case "MEDIUM":
-      return ThinkingLevel.MEDIUM;
+    case "LOW":
+      return ThinkingLevel.LOW;
     case "HIGH":
       return ThinkingLevel.HIGH;
     default:
-      return ThinkingLevel.LOW;
+      return ThinkingLevel.MEDIUM;
   }
 }
 
