@@ -3,43 +3,43 @@ import { logInfo } from "../log";
 import type { AiProvider, GenerateRequest, GenerateResult } from "./types";
 
 /**
- * Gemini generator adapter (default: gemini-3.7-flash).
+ * Gemini Developer API adapter (default: gemini-3.7-flash).
  *
- * Notes grounded in the current @google/genai SDK + Google's 3.7 guidance:
- *  - No temperature / top_p / top_k — Google says to drop those on 3.7 Flash.
- *  - Thinking is controlled by thinkingLevel; LOW is aimed at drafting/writing
- *    workloads like ours. Configurable via GEMINI_THINKING_LEVEL.
- *  - JSON mode uses responseMimeType. For a FUTURE tuned model, structured/
- *    response-schema output can hurt quality (structure isn't applied during
- *    tuning), so JSON mode is a per-request flag the router can turn off.
+ * This adapter is intentionally API-key-only. Vertex tuned endpoints belong in
+ * vertex-gemini.ts and must never be passed through GEMINI_API_KEY.
  */
 
-const DEFAULT_MODEL = "gemini-3.7-flash";
+export const BASE_GEMINI_MODEL = "gemini-3.7-flash";
 
-function thinkingLevel(): ThinkingLevel {
-  const raw = (process.env.GEMINI_THINKING_LEVEL ?? "low").toUpperCase();
+function envThinkingLevel(): ThinkingLevel {
+  const raw = (process.env.GEMINI_THINKING_LEVEL ?? "medium").toUpperCase();
   switch (raw) {
     case "MINIMAL":
       return ThinkingLevel.MINIMAL;
-    case "MEDIUM":
-      return ThinkingLevel.MEDIUM;
+    case "LOW":
+      return ThinkingLevel.LOW;
     case "HIGH":
       return ThinkingLevel.HIGH;
     default:
-      return ThinkingLevel.LOW;
+      return ThinkingLevel.MEDIUM;
   }
 }
 
 export function geminiModelId(): string {
-  return process.env.GEMINI_GENERATOR_MODEL || DEFAULT_MODEL;
+  return process.env.GEMINI_GENERATOR_MODEL || BASE_GEMINI_MODEL;
 }
 
 /**
- * @param modelId Optional model override — e.g. a fine-tuned content-writer
- *   endpoint. Falls back to GEMINI_GENERATOR_MODEL, then the default.
+ * Generic Gemini Developer API provider used by existing fix-generation code.
+ * Existing GEMINI_GENERATOR_MODEL / GEMINI_THINKING_LEVEL behavior is preserved
+ * for those callers.
  */
-export function geminiProvider(modelId?: string): AiProvider {
+export function geminiProvider(
+  modelId?: string,
+  opts: { thinkingLevel?: ThinkingLevel } = {},
+): AiProvider {
   const model = modelId || geminiModelId();
+  const resolvedThinkingLevel = opts.thinkingLevel ?? envThinkingLevel();
   return {
     name: "gemini",
     model,
@@ -53,9 +53,7 @@ export function geminiProvider(modelId?: string): AiProvider {
         config: {
           systemInstruction: req.system,
           maxOutputTokens: req.maxOutputTokens ?? 2048,
-          thinkingConfig: { thinkingLevel: thinkingLevel() },
-          // Live web grounding when asked. Not combined with JSON mode — the
-          // grounded tasks (writing content) use free-text output.
+          thinkingConfig: { thinkingLevel: resolvedThinkingLevel },
           ...(req.grounded ? { tools: [{ googleSearch: {} }] } : {}),
           ...(req.json && !req.grounded ? { responseMimeType: "application/json" } : {}),
         },
@@ -86,4 +84,13 @@ export function geminiProvider(modelId?: string): AiProvider {
       };
     },
   };
+}
+
+/**
+ * Content-specific base provider. It is deliberately pinned to Gemini 3.7 with
+ * MEDIUM thinking so stale generic generator overrides in an existing env file
+ * cannot silently change the planner, synthetic teacher, or writer fallback.
+ */
+export function gemini37Provider(): AiProvider {
+  return geminiProvider(BASE_GEMINI_MODEL, { thinkingLevel: ThinkingLevel.MEDIUM });
 }

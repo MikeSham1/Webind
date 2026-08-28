@@ -46,6 +46,9 @@ next-env.d.ts
 .claude/settings.local.json
 .claude/settings.json
 
+# Generated Gemini tuning corpora and provenance are reproducible build outputs.
+/tuning/
+
 # Real-outcome training data is derived from customer visibility checks — never commit it.
 scripts/model/real-dataset.jsonl
 

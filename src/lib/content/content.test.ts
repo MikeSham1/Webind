@@ -8,6 +8,7 @@ import {
 } from "./gates";
 import { generateDraft } from "./generate";
 import { fakeProvider, setFakeResponse } from "@/lib/ai/generator";
+import type { AiProvider } from "@/lib/ai/types";
 import type { ContentInputs } from "./types";
 
 function inputs(overrides: Partial<ContentInputs> = {}): ContentInputs {
@@ -118,15 +119,52 @@ describe("runSafetyGates / generateDraft", () => {
       expect(draft.writtenBy).toBe("model");
       expect(draft.title).toBe("AI-Written Guide");
       expect(draft.markdown).toMatch(/Lead with the answer/);
-      // Gates still run on the model's output.
       expect(draft.gates.results.length).toBeGreaterThan(0);
     } finally {
       setFakeResponse("{}");
     }
   });
 
+  it("tries the next writer when the preferred provider fails", async () => {
+    let preferredCalls = 0;
+    let fallbackCalls = 0;
+    const preferred: AiProvider = {
+      name: "gemini",
+      model: "vertex-tuned-test",
+      isConfigured: () => true,
+      async generate() {
+        preferredCalls++;
+        throw new Error("simulated Vertex auth failure");
+      },
+    };
+    const base37: AiProvider = {
+      name: "gemini",
+      model: "gemini-3.7-flash",
+      isConfigured: () => true,
+      async generate(req) {
+        fallbackCalls++;
+        return {
+          provider: "gemini",
+          model: "gemini-3.7-flash",
+          text: "# Base 3.7 Fallback\n\nGrounded fallback copy.",
+          inputTokens: 1,
+          outputTokens: 1,
+          durationMs: 1,
+          purpose: req.purpose,
+          fallback: false,
+        };
+      },
+    };
+
+    const draft = await generateDraft(inputs(), { providers: [preferred, base37] });
+    expect(preferredCalls).toBe(1);
+    expect(fallbackCalls).toBe(1);
+    expect(draft.writtenBy).toBe("model");
+    expect(draft.title).toBe("Base 3.7 Fallback");
+  });
+
   it("falls back to the deterministic template when the AI call fails", async () => {
-    setFakeResponse(null); // forces the fake provider to throw
+    setFakeResponse(null);
     try {
       const draft = await generateDraft(inputs(), { provider: fakeProvider() });
       expect(draft.writtenBy).toBe("template");

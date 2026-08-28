@@ -13,7 +13,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "tuning:synthetic": "npx --yes tsx scripts/tuning/build-synthetic-content-corpus.ts",
+    "tuning:submit": "bash scripts/tuning/submit-vertex-sft.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.113.0",

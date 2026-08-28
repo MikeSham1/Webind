@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import StudioForm from "@/components/StudioForm";
+import ContentPlanner from "@/components/ContentPlanner";
 import { getCurrentUser } from "@/lib/auth";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
 
@@ -33,11 +34,11 @@ export default async function StudioPage() {
           Build authority-boosting content
         </h1>
         <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-muted">
-          Answer a few questions. We assemble a draft grounded{" "}
-          <em>only</em> in the facts you provide, run safety checks, and hold it
-          for your approval — nothing is finalized automatically.
+          Talk through the page with Gemini first, then turn the clarified brief into a draft grounded{" "}
+          <em>only</em> in the facts you provide. Every draft is safety-checked and held for your approval.
         </p>
       </div>
+      <ContentPlanner />
       <StudioForm wordPressConnected={wordPressConnected} />
     </main>
   );

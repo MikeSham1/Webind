@@ -14,29 +14,36 @@ generating grounded, human-approved content that can be one-click published to
 a connected WordPress site or opened as a GitHub pull request.
 
 Built with Next.js 16 (App Router) + React 19, TypeScript, Tailwind, Playwright
-(crawling), Drizzle + Postgres (persistence), and the Anthropic SDK.
+(crawling), Drizzle + Postgres (persistence), Anthropic, and Google Gen AI.
 
 ### Provider support (honest status)
 
-Only **Claude** is a fully implemented live answer-engine provider today
-(`src/lib/visibility/providers.ts`, `src/lib/scoring/ai-citations.ts`). ChatGPT,
-Gemini, Perplexity, and Google are wired into the same interface as clearly
-labeled stubs: unconfigured until an API key is set, and a visible "not yet
-implemented" result rather than a fabricated one if a key is added before the
-integration is built. The UI only ever reports engines it actually queried.
+**Claude and Gemini are implemented live Keyword Visibility providers** in
+`src/lib/visibility/providers.ts`. Claude uses Anthropic web search; Gemini uses
+Google Search grounding through the Gemini Developer API. The separate
+`src/lib/scoring/ai-citations.ts` checker currently has a live Claude provider.
+OpenAI/ChatGPT, Perplexity, and the SERPAPI-backed Google visibility/citation
+slots remain explicit stubs: if their keys are set before their adapters are
+implemented, they fail safe to an `unknown` result rather than fabricating one.
+
+The Content Studio planner and untuned writer fallback are pinned to Gemini 3.7
+Flash through `GEMINI_API_KEY`. A future supervised-tuned writer is a separate
+Vertex AI transport and cannot be activated by changing that API key or generic
+Gemini model override; see `.env.example` and `docs/tuning/synthetic-content-sft.md`.
 
 ## Getting started
 
 ```bash
 npm install
 npx playwright install chromium   # the crawler needs a browser
-cp .env.example .env.local        # then fill in what you need
+cp .env.example .env.local        # new setups only; fill in what you need
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000). Every environment variable
 is optional — the app runs without any of them and degrades gracefully (see
-[.env.example](.env.example) for what each one enables).
+[.env.example](.env.example) for what each one enables). Existing `.env.local`
+files do not need to be replaced when new optional configuration is added.
 
 ## Scripts
 
@@ -47,6 +54,8 @@ is optional — the app runs without any of them and degrades gracefully (see
 | `npm test` | Run the Vitest suite |
 | `npm run lint` | ESLint |
 | `npm run db:generate` / `db:migrate` | Drizzle migrations |
+| `npm run tuning:synthetic` | Build the synthetic Gemini SFT corpus |
+| `npm run tuning:submit` | Submit the generated corpus to Vertex AI |
 
 ## Deployment
 
