@@ -59,7 +59,7 @@ describe("scoreContentQuality", () => {
     expect(weak.warnings.some((w) => w.includes("Thin"))).toBe(true);
   });
 
-  it("penalizes obvious target-term repetition", () => {
+  it("penalizes obvious target-term repetition but not one natural short-page mention", () => {
     const natural = scoreContentQuality(
       { ...blogInputs, pageType: "landing" },
       "# Commercial Roofing Contractor\n\nA practical roofing partner for facilities teams.\n\n## Services\n- Inspections\n- Repairs\n- Replacement planning\n\n## Next step\nTalk with the team about your roof and priorities.",
@@ -69,7 +69,21 @@ describe("scoreContentQuality", () => {
       "# Commercial Roofing Contractor\n\nCommercial roofing contractor commercial roofing contractor commercial roofing contractor commercial roofing contractor commercial roofing contractor commercial roofing contractor commercial roofing contractor commercial roofing contractor commercial roofing contractor commercial roofing contractor.",
     );
 
+    expect(natural.warnings.some((w) => w.includes("unusually often"))).toBe(false);
     expect(natural.dimensions.intent).toBeGreaterThan(stuffed.dimensions.intent);
     expect(stuffed.warnings.some((w) => w.includes("unusually often"))).toBe(true);
+  });
+
+  it("matches short target terms on token boundaries instead of inside other words", () => {
+    const result = scoreContentQuality(
+      {
+        ...blogInputs,
+        topic: "AI operations",
+        keywords: ["AI"],
+      },
+      "# AI Operations\n\nTraining, claims, details, maintainability, and availability are discussed here.\n\n## Practical use\nAI can support a workflow when the team has a clear review process.",
+    );
+
+    expect(result.warnings.some((w) => w.includes("unusually often"))).toBe(false);
   });
 });
