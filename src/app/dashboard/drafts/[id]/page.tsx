@@ -12,7 +12,7 @@ import type { ContentDraft, GateReport } from "@/lib/content/types";
 import type { PublicationRow } from "@/lib/db/schema";
 
 export const metadata: Metadata = {
-  title: "Draft — WeBind",
+  title: "Draft — WeBind Design",
   robots: { index: false, follow: false, nocache: true },
 };
 

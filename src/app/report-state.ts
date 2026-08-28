@@ -4,6 +4,7 @@
 
 import type { OptimizationAssets } from "@/lib/optimize/assets";
 import type { ActionableSuggestion, ReportResult } from "@/lib/scoring/types";
+import type { FieldVitals } from "@/lib/vitals/types";
 
 /** Result of a report run, shaped for `useActionState`. */
 export type ReportState =
@@ -28,6 +29,12 @@ export type ReportState =
        * Runs alongside — never replaces — the heuristic scores. See predict.ts.
        */
       modelReadiness: number;
+      /**
+       * Core Web Vitals field data from CrUX (via PageSpeed Insights), or null
+       * when PSI isn't configured or the URL has no real-user data yet. Measured
+       * from actual visitors, so it's shown apart from the heuristic scores.
+       */
+      pageExperience: FieldVitals | null;
     }
   | { status: "error"; error: string; url: string };
 

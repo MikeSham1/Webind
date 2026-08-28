@@ -41,6 +41,13 @@ A. MAKE EXISTING FEATURES LIVE (do these first)
     Until these are set, the pricing page shows "Paid plans open at launch" and
     checkout returns a friendly 503 — no bug, just no keys.
 
+[ ] SERPER — SET THE KEY TO TURN ON COMPETITIVE BENCHMARKING.
+    The benchmark feature (#4) is now built and live at /benchmark (linked from
+    the dashboard). It just needs the key:
+      SERPER_API_KEY=your_serper_key      (in .env.local AND Railway)
+    Without it, the page explains it's not configured. Cost is per SERP lookup
+    on your serper.dev plan; one benchmark run = one lookup + up to 12 crawls.
+
 [ ] (OPTIONAL) TIGHTEN AI VISIBILITY CONFIDENCE.
     Set VISIBILITY_SAMPLES=3 (max 5) to probe each engine multiple times and get
     a narrower credible interval. Costs proportionally more API calls. Default 1.
@@ -49,17 +56,26 @@ A. MAKE EXISTING FEATURES LIVE (do these first)
 B. UNBLOCK THE ROADMAP (credentials / decisions the deferred items need)
 ================================================================================
 
-[ ] COMPETITIVE BENCHMARKING (#4) — pick + fund a search data source.
-    Options: a SERP API (e.g. SerpAPI -> SERPAPI_API_KEY) for organic results,
-    and/or Gemini Google-Search grounding for AI-citation discovery.
-    Decide: minimum cohort size (doc suggests ~20 comparable pages), and whether
-    to gate cohorts by locale/language/page-type.
+[x] COMPETITIVE BENCHMARKING (#4) — BUILT. You chose serper.dev; the module,
+    percentile math (bootstrap CI + shrinkage), and /benchmark page are shipped.
+    Remaining for you: set SERPER_API_KEY (see section A). Later polish options:
+    add the AI-citation cohort (reuse Gemini grounding) and locale/page-type
+    gating — say the word.
 
-[ ] SEARCH CONSOLE + CORE WEB VITALS (#6) — provide Google access.
-    - Search Console: authorize a Google account (OAuth) and tell me which
-      properties. Needed for real impressions/clicks + AI Overviews/AI Mode data.
-    - Core Web Vitals: get a PageSpeed Insights / CrUX API key (PSI_API_KEY) for
-      real 75th-percentile field data.
+[~] CORE WEB VITALS (#6a) — BUILT. Just set the key:
+      PSI_API_KEY=your_cloud_api_key       (in .env.local AND Railway)
+    Google Cloud -> enable "PageSpeed Insights API" -> Credentials ->
+    Create Credentials -> API key (this is "Application data" / public — NOT
+    OAuth, NOT "User data"). When set, every report shows a real-user Page
+    Experience panel; without it (or for a low-traffic URL) the panel is omitted.
+
+[ ] SEARCH CONSOLE (#6b) — DEFERRED until post-launch (your call).
+    This is per-CUSTOMER: each user connects THEIR OWN verified Search Console
+    via OAuth (like the WordPress/GitHub connections), and we read their real
+    impressions/clicks/queries + AI Overviews data. It's dead weight until you
+    have users with trafficked properties, so it waits. When ready: Google Cloud
+    -> Credentials -> OAuth client ID (Web app) -> GOOGLE_OAUTH_CLIENT_ID +
+    GOOGLE_OAUTH_CLIENT_SECRET. (This one IS "User data".)
 
 [ ] QUERY CONTEXT (#5) — per site, list the target queries you actually want to
     win (or approve automatic query expansion). Content scoring becomes
@@ -85,22 +101,29 @@ CODE STATUS — the 11-item priority list
 ================================================================================
 1.  Hide neural score from customers .................... DONE
 2.  Fix Authority & Trust presentation (40% = coverage) . DONE
-3.  Replace Fact Density with Evidence Integrity ........ PARTIAL
-      (removed universal "1 stat / 100 words", ">=3 sources", "question
-       headings" prescriptions from the advice; the fact-density SCORER still
-       uses the old heuristic — full claim-extraction/entailment is roadmap)
-4.  Competitive benchmarking crawler ................... NOT STARTED (needs B)
+3.  Replace Fact Density with Evidence Integrity ........ SCORER DONE
+      (claim-centric scorer: grades whether factual claims are cited to a source
+       in place, not statistic count. Deferred: the live entailment step that
+       fetches each cited source and verifies it supports the claim — needs the
+       crawler + model credits, so it's scaffolded/documented, not faked.)
+4.  Competitive benchmarking crawler ................... BUILT (set SERPER_API_KEY)
+      (serper SERP client + cohort + bootstrap-CI percentile + /benchmark page;
+       AI-citation cohort and locale/page-type gating are optional follow-ons)
 5.  Query + page-type context in scoring ............... NOT STARTED (needs B)
-6.  Ingest Search Console + Core Web Vitals ............ NOT STARTED (needs B)
+6.  Ingest Search Console + Core Web Vitals ............ CWV BUILT (set PSI_API_KEY)
+      (Core Web Vitals field-data panel shipped in the report; Search Console
+       deferred to post-launch — it's a per-customer OAuth connection)
 7.  AI visibility multi-run & multi-provider ........... MULTI-RUN DONE
       (Beta-Binomial credible intervals shipped; Claude + Gemini providers
        live, OpenAI/Perplexity/Google still stubs awaiting keys)
-8.  Fix Agent grounding + structured outputs ........... PARTIAL
-      (evidence-grounded Fix Generator + hard validators already exist;
-       provider-enforced JSON-schema output not yet swapped into suggest.ts)
-9.  Collect accepted/edited/rejected/deployed fixes .... PARTIAL
-      (accepted/edited/rejected captured via the review UI; deploy + outcome
-       tracking not yet)
+8.  Fix Agent grounding + structured outputs ........... DONE
+      (suggest.ts now uses a provider-enforced forced tool with a per-run JSON
+       schema — key-constrained, no more bracket-hunting. Fixgen validators/
+       grounding already existed.)
+9.  Collect accepted/edited/rejected/deployed fixes .... DONE
+      (accepted/edited/rejected via review UI; NOW the deployed dimension too —
+       fix_deployments table + 'Mark as deployed' control, only for accepted
+       fixes. Outcome MEASUREMENT over 14/28/56 days is #10, time+GSC gated.)
 10. Train intervention-uplift model ................... NOT STARTED (needs 6+9)
 11. New learned readiness model ....................... NOT STARTED (last)
 

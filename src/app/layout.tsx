@@ -23,7 +23,7 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
-const TITLE = "WeBind — AI Readiness Report";
+const TITLE = "WeBind Design — AI Readiness Report";
 const DESCRIPTION =
   "See how well your website is structured for AI models and search engines to understand and cite. Get your AI readiness and traditional authority scores in seconds, plus the highest-impact fixes.";
 
@@ -35,7 +35,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: TITLE,
     description: DESCRIPTION,
-    siteName: "WeBind",
+    siteName: "WeBind Design",
     type: "website",
   },
   twitter: {

@@ -3,7 +3,9 @@ import type { OptimizationAssets as Assets } from "@/lib/optimize/assets";
 import { computeStages } from "@/lib/scoring/stages";
 import ScoreDial from "./ScoreDial";
 import StageBreakdown from "./StageBreakdown";
+import PageExperience from "./PageExperience";
 import SignalBreakdown from "./SignalBreakdown";
+import type { FieldVitals } from "@/lib/vitals/types";
 import FixList from "./FixList";
 import OptimizationAssets from "./OptimizationAssets";
 import LeadCapture from "./LeadCapture";
@@ -31,6 +33,8 @@ export interface ReportResultsProps {
    * the customer UX until it's retrained on real outcome data.
    */
   modelReadiness?: number;
+  /** Core Web Vitals field data (CrUX via PSI), or null when unavailable. */
+  pageExperience?: FieldVitals | null;
 }
 
 function hostOf(url: string): string {
@@ -49,6 +53,7 @@ export default function ReportResults({
   requestId,
   githubConnected = false,
   initialPr = null,
+  pageExperience = null,
 }: ReportResultsProps) {
   const host = hostOf(report.url);
 
@@ -103,6 +108,13 @@ export default function ReportResults({
       <div className="reveal" style={{ animationDelay: "60ms" }}>
         <StageBreakdown stages={computeStages(report)} />
       </div>
+
+      {/* Core Web Vitals — real-user field data, only when CrUX has it. */}
+      {pageExperience && (
+        <div className="reveal" style={{ animationDelay: "70ms" }}>
+          <PageExperience vitals={pageExperience} />
+        </div>
+      )}
 
       {/* Signal breakdown */}
       <div

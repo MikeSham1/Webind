@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import VerifyEmailForm from "@/components/VerifyEmailForm";
 
 export const metadata: Metadata = {
-  title: "Verify email — WeBind",
+  title: "Verify email — WeBind Design",
   robots: { index: false, follow: false, nocache: true },
 };
 

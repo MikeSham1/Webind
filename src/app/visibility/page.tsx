@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import VisibilityForm from "@/components/VisibilityForm";
 
 export const metadata: Metadata = {
-  title: "Keyword Visibility — WeBind",
+  title: "Keyword Visibility — WeBind Design",
   robots: { index: false, follow: false, nocache: true },
 };
 

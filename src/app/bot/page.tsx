@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "WebindBot — WeBind",
+  title: "WebindBot — WeBind Design",
   description: "What WebindBot is, what it fetches, and how to block it.",
   // Pre-launch: keep the whole site out of search indexes (see root layout).
   robots: { index: false, follow: false, nocache: true },
@@ -23,7 +23,7 @@ export default function BotPage() {
         href="/"
         className="font-mono text-xs uppercase tracking-[0.16em] text-muted hover:text-accent"
       >
-        ← WeBind
+        ← WeBind Design
       </Link>
 
       <div className="mt-6">

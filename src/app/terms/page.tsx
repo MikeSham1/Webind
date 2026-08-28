@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Terms of Service — WeBind",
-  description: "Terms governing access to and use of WeBind.",
+  title: "Terms of Service — WeBind Design",
+  description: "The rules for using WeBind.",
   // Pre-launch: keep the whole site out of search indexes (see root layout).
   robots: { index: false, follow: false, nocache: true },
 };
@@ -27,7 +27,7 @@ export default function TermsPage() {
         href="/"
         className="font-mono text-xs uppercase tracking-[0.16em] text-muted hover:text-accent"
       >
-        ← WeBind
+        ← WeBind Design
       </Link>
 
       <div className="mt-6">

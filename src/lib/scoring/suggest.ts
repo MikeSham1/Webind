@@ -62,7 +62,12 @@ export async function generateSuggestions(
         "grounded ONLY in the page facts provided. Never invent statistics, " +
         "prices, or claims about the business; when a concrete value is needed " +
         "but not provided, use a clearly-marked placeholder like [your figure]. " +
-        "Reply with ONLY a JSON array — no prose, no markdown fences.",
+        "Call emit_suggestions with exactly one entry per issue.",
+      // Provider-enforced structured output: force the tool so Claude must
+      // return JSON matching the schema, instead of us hunting for brackets in
+      // free text (which broke on prose, fences, or a stray bracket).
+      tools: [suggestionsTool(targets)],
+      tool_choice: { type: "tool", name: "emit_suggestions" },
       messages: [{ role: "user", content: buildPrompt(report, page, targets) }],
     });
 
@@ -75,12 +80,21 @@ export async function generateSuggestions(
       durationMs: Date.now() - startedAt,
     });
 
-    const text = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("");
+    const toolUse = response.content.find(
+      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
+    );
+    // Prefer the structured tool input; fall back to text parsing only if the
+    // model somehow answered in prose instead of calling the tool.
+    const parsed = toolUse
+      ? structuredToSuggestions(toolUse.input, targets)
+      : parseSuggestions(
+          response.content
+            .filter((b): b is Anthropic.TextBlock => b.type === "text")
+            .map((b) => b.text)
+            .join(""),
+          targets,
+        );
 
-    const parsed = parseSuggestions(text, targets);
     // Any target Claude dropped or returned malformed keeps its deterministic
     // suggestion, so the user always gets advice for every ranked fix.
     return targets.map(
@@ -129,14 +143,110 @@ function buildPrompt(
   return (
     `PAGE FACTS (the only ground truth — do not contradict or exceed these):\n${facts}\n\n` +
     `ISSUES TO ADDRESS (already ranked by priority):\n${issues}\n\n` +
-    `Return a JSON array with one object per issue, in the same order, each:\n` +
-    `{"key": "<the issue key>", "title": "<short imperative headline specific to THIS page>", ` +
-    `"steps": ["<2-4 concrete steps>"], "rationale": "<one sentence on why it helps AI/search visibility>", ` +
-    `"example": "<optional copy-ready snippet: a meta tag, JSON-LD, or a rewritten heading; omit if not applicable>"}`
+    `Call emit_suggestions with one entry per issue, in the same order, using ` +
+    `each issue's exact key. Make every title and example specific to THIS page ` +
+    `(reuse its real title, headings, and topic); never invent facts or figures.`
   );
 }
 
-/** Parse Claude's JSON array into validated suggestions, keyed by signal key. */
+/**
+ * The forced-tool schema. Constrains `key` to the exact issue keys in this run,
+ * so the model can't invent a suggestion for a fix we didn't ask about.
+ */
+function suggestionsTool(targets: SignalScore[]): Anthropic.Tool {
+  return {
+    name: "emit_suggestions",
+    description: "Return one grounded, page-specific suggestion per issue.",
+    input_schema: {
+      type: "object",
+      properties: {
+        suggestions: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              key: { type: "string", enum: targets.map((s) => s.key) },
+              title: { type: "string", description: "Short imperative headline specific to THIS page." },
+              steps: {
+                type: "array",
+                items: { type: "string" },
+                minItems: 1,
+                maxItems: 4,
+                description: "2-4 concrete steps.",
+              },
+              rationale: { type: "string", description: "One sentence on why it helps AI/search visibility." },
+              example: {
+                type: "string",
+                description: "Optional copy-ready snippet (meta tag, JSON-LD, rewritten heading).",
+              },
+            },
+            required: ["key", "title", "steps", "rationale"],
+          },
+        },
+      },
+      required: ["suggestions"],
+    },
+  };
+}
+
+/** Validate one raw suggestion record against the allowed keys, or null. */
+function coerceSuggestion(
+  item: unknown,
+  allowed: Map<string, SignalScore>,
+  seen: Map<string, ActionableSuggestion>,
+): ActionableSuggestion | null {
+  if (!item || typeof item !== "object") return null;
+  const rec = item as Record<string, unknown>;
+  const key = typeof rec.key === "string" ? rec.key : "";
+  if (!allowed.has(key) || seen.has(key)) return null;
+
+  const steps = Array.isArray(rec.steps)
+    ? rec.steps.filter((x): x is string => typeof x === "string" && x.trim() !== "").slice(0, 4)
+    : [];
+  const title = typeof rec.title === "string" ? rec.title.trim() : "";
+  // A suggestion with no title or no steps is useless — skip it so the
+  // deterministic fallback fills in for that key instead.
+  if (!title || steps.length === 0) return null;
+
+  const rationale = typeof rec.rationale === "string" ? rec.rationale.trim() : "";
+  const example =
+    typeof rec.example === "string" && rec.example.trim() !== ""
+      ? rec.example.trim()
+      : undefined;
+
+  return {
+    key,
+    title,
+    steps,
+    rationale: rationale || allowed.get(key)!.reason,
+    example,
+    aiGenerated: true,
+  };
+}
+
+/** Turn the forced tool's structured input into validated suggestions. */
+export function structuredToSuggestions(
+  input: unknown,
+  targets: SignalScore[],
+): Map<string, ActionableSuggestion> {
+  const out = new Map<string, ActionableSuggestion>();
+  const allowed = new Map(targets.map((s) => [s.key, s]));
+  const list =
+    input && typeof input === "object" && Array.isArray((input as { suggestions?: unknown }).suggestions)
+      ? (input as { suggestions: unknown[] }).suggestions
+      : [];
+  for (const item of list) {
+    const s = coerceSuggestion(item, allowed, out);
+    if (s) out.set(s.key, s);
+  }
+  return out;
+}
+
+/**
+ * Legacy text-array parser, kept as a defensive fallback for the rare case the
+ * model answers in prose instead of calling the tool. Parses validated
+ * suggestions keyed by signal key.
+ */
 export function parseSuggestions(
   text: string,
   targets: SignalScore[],
@@ -157,33 +267,8 @@ export function parseSuggestions(
   if (!Array.isArray(raw)) return out;
 
   for (const item of raw) {
-    if (!item || typeof item !== "object") continue;
-    const rec = item as Record<string, unknown>;
-    const key = typeof rec.key === "string" ? rec.key : "";
-    if (!allowed.has(key) || out.has(key)) continue;
-
-    const steps = Array.isArray(rec.steps)
-      ? rec.steps.filter((x): x is string => typeof x === "string" && x.trim() !== "").slice(0, 4)
-      : [];
-    const title = typeof rec.title === "string" ? rec.title.trim() : "";
-    const rationale = typeof rec.rationale === "string" ? rec.rationale.trim() : "";
-    // A suggestion with no title or no steps is useless — skip it so the
-    // deterministic fallback fills in for that key instead.
-    if (!title || steps.length === 0) continue;
-
-    const example =
-      typeof rec.example === "string" && rec.example.trim() !== ""
-        ? rec.example.trim()
-        : undefined;
-
-    out.set(key, {
-      key,
-      title,
-      steps,
-      rationale: rationale || allowed.get(key)!.reason,
-      example,
-      aiGenerated: true,
-    });
+    const s = coerceSuggestion(item, allowed, out);
+    if (s) out.set(s.key, s);
   }
 
   return out;

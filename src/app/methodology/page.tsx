@@ -4,7 +4,7 @@ import { AI_WEIGHTS, TRADITIONAL_WEIGHTS, SCORING_MODEL_VERSION } from "@/lib/sc
 import { MODEL_META } from "@/lib/model/predict";
 
 export const metadata: Metadata = {
-  title: "Methodology — WeBind",
+  title: "Methodology — WeBind Design",
   description: "How WeBind's AI Readiness and Traditional Authority scores are built, and what they don't yet measure.",
   // Pre-launch: keep the whole site out of search indexes (see root layout).
   robots: { index: false, follow: false, nocache: true },
@@ -20,8 +20,8 @@ const AI_LABELS: Record<keyof typeof AI_WEIGHTS, { label: string; note: string }
     note: "Lists, tables, question-style headings, and scannable prose that let a model lift a passage cleanly. We score the structure, not FAQ markup: Google removed FAQ rich results in 2026 and needs no special schema for AI Search, so FAQPage schema earns nothing here.",
   },
   factDensity: {
-    label: "Fact Density & Evidence",
-    note: "Concrete numbers, statistics, and cited data. Princeton's GEO study found this the single strongest lever they tested, at +41%.",
+    label: "Evidence Integrity",
+    note: "Whether the page's factual claims are actually supported — each verifiable figure cited to a source in place, not just numbers stacked up. We grade supported-claim coverage, not raw statistic count, because newer evaluations found 'add more stats' unreliable while genuinely backing claims tracks what engines cite. (Verifying that a cited source truly supports its claim is a further step we don't yet perform.)",
   },
   schema: {
     label: "Schema Markup",
@@ -75,7 +75,7 @@ export default function MethodologyPage() {
         href="/"
         className="font-mono text-xs uppercase tracking-[0.16em] text-muted hover:text-accent"
       >
-        ← WeBind
+        ← WeBind Design
       </Link>
 
       <div className="mt-6">
@@ -162,6 +162,25 @@ export default function MethodologyPage() {
           don&apos;t collect; we show that rather than renormalizing the number
           to look complete. Confidence travels with the score, never hidden
           behind it.
+        </p>
+      </section>
+
+      <section className="mt-10 space-y-3">
+        <h2 className="font-display text-lg font-semibold text-ink">
+          Page experience (real-user field data)
+        </h2>
+        <p className="text-[15px] leading-relaxed text-muted">
+          When available, the report also shows{" "}
+          <strong className="text-ink">Core Web Vitals</strong> — LCP, INP, and
+          CLS — from Google&apos;s Chrome UX Report via the PageSpeed Insights
+          API. These are the only signals measured from{" "}
+          <strong className="text-ink">actual visitors</strong> rather than
+          inferred from the HTML, so they&apos;re shown on their own with the
+          real 75th-percentile values, rated against Google&apos;s published
+          thresholds — deliberately not folded into the heuristic score. Field
+          data only exists for pages or sites with enough Chrome traffic, so a
+          new or quiet site has none, and the panel is simply omitted rather
+          than estimated.
         </p>
       </section>
 

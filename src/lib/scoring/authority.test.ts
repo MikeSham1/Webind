@@ -46,6 +46,14 @@ function optimizedPage(overrides: Partial<CrawledPage> = {}): CrawledPage {
     wordCount: 1600,
     renderedText:
       "This complete guide to widgets for small businesses shows how, by 2024, 65% of 1,200 firms cut costs 30% saving $5,000 over 12 months, up from 45% in 2023 and 38% in 2022 across 3,400 sites; response times fell 22% to 8.5 hours with 90% retention.",
+    // Claims cited to sources in place — a best-in-class page under Evidence
+    // Integrity, not just numbers stacked in prose.
+    html:
+      `<html><body>` +
+      `<p>By 2024, 65% of 1,200 firms cut costs 30%, per <a href="https://www.reuters.com/b">Reuters</a>.</p>` +
+      `<p>Response times fell 22% to 8.5 hours, per <a href="https://www.nih.gov/c">NIH</a>.</p>` +
+      `<blockquote>Retention reached 90%, per the <a href="https://en.wikipedia.org/a">industry report</a>.</blockquote>` +
+      `</body></html>`,
     internalLinkCount: 25,
     listCount: 3,
     listItemCount: 12,

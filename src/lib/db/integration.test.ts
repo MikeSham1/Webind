@@ -59,6 +59,7 @@ import {
   getRunWithCandidates,
   listReviewedExamples,
   persistFixRun,
+  recordFixDeployment,
   saveReview,
 } from "@/lib/fixgen/store";
 import { buildSftDataset } from "@/lib/fixgen/sft-export";
@@ -814,6 +815,27 @@ describe("fix generator persistence", () => {
       humanFinal: '<meta name="description" content="Durable Acme widgets for small businesses.">',
     });
     expect(reviewId).not.toBeNull();
+
+    // Deployment: an accepted fix can be marked shipped; the dataset then shows
+    // it as deployed. A candidate WITHOUT an accepted review cannot.
+    const deployId = await recordFixDeployment({
+      candidateId: ok[0].id,
+      target: "manual",
+      ref: "https://example.com/pr/1",
+    });
+    expect(deployId).not.toBeNull();
+
+    const rejectedOnly = await recordFixDeployment({
+      candidateId: bad[0].id, // never reviewed/accepted
+      target: "manual",
+    });
+    expect(rejectedOnly).toBeNull();
+
+    const examples = await listReviewedExamples();
+    const deployed = examples.find((e) => e.reviewId === reviewId);
+    expect(deployed?.deployedAt).toBeInstanceOf(Date);
+    expect(deployed?.deploymentTarget).toBe("manual");
+    expect(deployed?.deploymentRef).toBe("https://example.com/pr/1");
   });
 });
 

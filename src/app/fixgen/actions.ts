@@ -17,10 +17,12 @@ import {
   candidateOwnerUserId,
   getRunWithCandidates,
   persistFixRun,
+  recordFixDeployment,
   saveReview,
+  type DeploymentTarget,
   type ReviewDecision,
 } from "@/lib/fixgen/store";
-import type { FixGenState, ReviewState } from "./state";
+import type { DeployState, FixGenState, ReviewState } from "./state";
 
 const CATEGORY_BUILDERS: Record<string, (s: ReturnType<typeof buildSnapshot>) => ContextOrNoFix> = {
   metadata: buildMetaDescriptionContext,
@@ -142,4 +144,44 @@ export async function submitReviewAction(
   });
   if (!id) return { status: "error", error: "Couldn't save your review." };
   return { status: "saved", decision, candidateId };
+}
+
+const VALID_TARGETS: DeploymentTarget[] = ["github_pr", "wordpress", "manual"];
+
+/**
+ * Record that an accepted fix was shipped to a live site — the deployment half
+ * of the learning dataset. Owner-only, and the store refuses unless the
+ * candidate actually has an accepted review, so a rejected/unreviewed fix can
+ * never be logged as deployed. This records an event; it does not itself push
+ * anything live (that stays behind the existing publication authority).
+ */
+export async function markFixDeployedAction(
+  _prev: DeployState,
+  formData: FormData,
+): Promise<DeployState> {
+  const user = await getCurrentUser();
+  if (!user) return { status: "error", error: "Log in to record a deployment." };
+
+  const candidateId = String(formData.get("candidateId") ?? "");
+  if (!candidateId) return { status: "error", error: "Missing candidate." };
+
+  const target = String(formData.get("target") ?? "manual") as DeploymentTarget;
+  if (!VALID_TARGETS.includes(target)) {
+    return { status: "error", error: "Invalid deployment target." };
+  }
+
+  const owner = await candidateOwnerUserId(candidateId);
+  if (owner === null || owner !== user.id) {
+    return { status: "error", error: "That candidate isn't yours." };
+  }
+
+  const ref = String(formData.get("ref") ?? "").trim() || null;
+  const id = await recordFixDeployment({ candidateId, target, ref });
+  if (!id) {
+    return {
+      status: "error",
+      error: "Only an accepted fix can be marked deployed.",
+    };
+  }
+  return { status: "recorded", candidateId };
 }

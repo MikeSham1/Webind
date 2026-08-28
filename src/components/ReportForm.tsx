@@ -121,6 +121,7 @@ export default function ReportForm() {
             requestId={state.requestId}
             githubConnected={state.githubConnected}
             modelReadiness={state.modelReadiness}
+            pageExperience={state.pageExperience}
           />
         )}
       </div>

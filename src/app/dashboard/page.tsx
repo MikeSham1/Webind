@@ -7,7 +7,7 @@ import { listAllDrafts, listDraftsForUser } from "@/lib/content/store";
 import { listAllReports, listReportsForUser } from "@/lib/leads";
 
 export const metadata: Metadata = {
-  title: "Dashboard — WeBind",
+  title: "Dashboard — WeBind Design",
   robots: { index: false, follow: false, nocache: true },
 };
 
@@ -77,6 +77,12 @@ export default async function DashboardPage() {
             className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
           >
             Keyword Visibility
+          </Link>
+          <Link
+            href="/benchmark"
+            className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
+          >
+            Benchmark
           </Link>
           <Link
             href="/studio"
