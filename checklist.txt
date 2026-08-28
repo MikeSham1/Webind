@@ -41,6 +41,13 @@ A. MAKE EXISTING FEATURES LIVE (do these first)
     Until these are set, the pricing page shows "Paid plans open at launch" and
     checkout returns a friendly 503 — no bug, just no keys.
 
+[ ] SERPER — SET THE KEY TO TURN ON COMPETITIVE BENCHMARKING.
+    The benchmark feature (#4) is now built and live at /benchmark (linked from
+    the dashboard). It just needs the key:
+      SERPER_API_KEY=your_serper_key      (in .env.local AND Railway)
+    Without it, the page explains it's not configured. Cost is per SERP lookup
+    on your serper.dev plan; one benchmark run = one lookup + up to 12 crawls.
+
 [ ] (OPTIONAL) TIGHTEN AI VISIBILITY CONFIDENCE.
     Set VISIBILITY_SAMPLES=3 (max 5) to probe each engine multiple times and get
     a narrower credible interval. Costs proportionally more API calls. Default 1.
@@ -49,11 +56,11 @@ A. MAKE EXISTING FEATURES LIVE (do these first)
 B. UNBLOCK THE ROADMAP (credentials / decisions the deferred items need)
 ================================================================================
 
-[ ] COMPETITIVE BENCHMARKING (#4) — pick + fund a search data source.
-    Options: a SERP API (e.g. SerpAPI -> SERPAPI_API_KEY) for organic results,
-    and/or Gemini Google-Search grounding for AI-citation discovery.
-    Decide: minimum cohort size (doc suggests ~20 comparable pages), and whether
-    to gate cohorts by locale/language/page-type.
+[x] COMPETITIVE BENCHMARKING (#4) — BUILT. You chose serper.dev; the module,
+    percentile math (bootstrap CI + shrinkage), and /benchmark page are shipped.
+    Remaining for you: set SERPER_API_KEY (see section A). Later polish options:
+    add the AI-citation cohort (reuse Gemini grounding) and locale/page-type
+    gating — say the word.
 
 [ ] SEARCH CONSOLE + CORE WEB VITALS (#6) — provide Google access.
     - Search Console: authorize a Google account (OAuth) and tell me which
@@ -89,7 +96,9 @@ CODE STATUS — the 11-item priority list
       (removed universal "1 stat / 100 words", ">=3 sources", "question
        headings" prescriptions from the advice; the fact-density SCORER still
        uses the old heuristic — full claim-extraction/entailment is roadmap)
-4.  Competitive benchmarking crawler ................... NOT STARTED (needs B)
+4.  Competitive benchmarking crawler ................... BUILT (set SERPER_API_KEY)
+      (serper SERP client + cohort + bootstrap-CI percentile + /benchmark page;
+       AI-citation cohort and locale/page-type gating are optional follow-ons)
 5.  Query + page-type context in scoring ............... NOT STARTED (needs B)
 6.  Ingest Search Console + Core Web Vitals ............ NOT STARTED (needs B)
 7.  AI visibility multi-run & multi-provider ........... MULTI-RUN DONE
