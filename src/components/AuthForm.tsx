@@ -82,6 +82,41 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
           </label>
         )}
 
+        {!isLogin && (
+          <div className="flex items-start gap-3 rounded-lg border border-line bg-paper p-3">
+            <input
+              id="termsAccepted"
+              name="termsAccepted"
+              type="checkbox"
+              value="accepted"
+              required
+              aria-describedby="terms-consent"
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-line-strong accent-current"
+            />
+            <p id="terms-consent" className="text-xs leading-relaxed text-muted">
+              By checking this box, I have read and agree to the{" "}
+              <Link
+                href="/terms"
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-accent underline underline-offset-2"
+              >
+                Terms of Service
+              </Link>{" "}
+              and acknowledge the{" "}
+              <Link
+                href="/privacy"
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-accent underline underline-offset-2"
+              >
+                Privacy Policy
+              </Link>
+              .
+            </p>
+          </div>
+        )}
+
         {state.status === "error" && (
           <p role="alert" className="text-sm text-bad">
             {state.error}
