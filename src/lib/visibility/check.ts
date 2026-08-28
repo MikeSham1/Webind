@@ -1,4 +1,4 @@
-import { normalizeUrl } from "@/lib/crawler/ssrf";
+import { parseDomainInput } from "@/lib/domainInput";
 import { logWarn } from "@/lib/log";
 import type {
   AnswerEngine,
@@ -38,17 +38,6 @@ function resolveSamples(opt?: number): number {
   return Math.max(1, Math.min(MAX_SAMPLES, Math.floor(raw) || 1));
 }
 
-/** Extract a clean hostname for display and probing from loose input. */
-function toDomain(raw: string): string | null {
-  const url = normalizeUrl(raw);
-  if (!url) return null;
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return null;
-  }
-}
-
 /** Deduplicate and cap keywords while preserving the caller's priority order. */
 function cleanKeywords(keywords: string[]): string[] {
   const seen = new Set<string>();
@@ -85,13 +74,11 @@ export async function checkKeywordVisibility(
   input: VisibilityQuery,
   opts: CheckOptions = {},
 ): Promise<CheckResult> {
-  const domain = toDomain(input.domain);
-  if (!domain) {
-    return {
-      ok: false,
-      error: "That doesn't look like a valid website address.",
-    };
+  const domainInput = parseDomainInput(input.domain);
+  if (!domainInput.ok) {
+    return { ok: false, error: domainInput.error };
   }
+  const domain = domainInput.domain.replace(/^www\./, "");
 
   const keywords = cleanKeywords(input.keywords);
   if (keywords.length === 0) {

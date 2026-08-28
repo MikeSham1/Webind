@@ -41,7 +41,7 @@ function sequenceStub(
 }
 
 const query = {
-  domain: "https://acme.com/",
+  domain: "acme.com",
   brandName: "Acme",
   keywords: ["best widgets", "durable widgets"],
 };
@@ -53,7 +53,7 @@ describe("checkKeywordVisibility", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.report.domain).toBe("acme.com"); // normalized from the URL
+    expect(result.report.domain).toBe("acme.com");
     expect(result.report.keywords).toHaveLength(2);
     expect(result.report.overallScore).toBe(90);
     expect(result.report.coverage).toBe(1);
@@ -101,6 +101,27 @@ describe("checkKeywordVisibility", () => {
       { providers: [claude] },
     );
     expect(result.ok).toBe(false);
+    expect(claude.probe).not.toHaveBeenCalled();
+  });
+
+  it("rejects a full URL because the field accepts domains only", async () => {
+    const claude = stub("claude", { present: true });
+    const result = await checkKeywordVisibility(
+      { domain: "https://acme.com/pricing", keywords: ["x"] },
+      { providers: [claude] },
+    );
+    expect(result.ok).toBe(false);
+    expect(claude.probe).not.toHaveBeenCalled();
+  });
+
+  it("rejects an adult-content domain without probing", async () => {
+    const claude = stub("claude", { present: true });
+    const result = await checkKeywordVisibility(
+      { domain: "porn-example.com", keywords: ["x"] },
+      { providers: [claude] },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/adult-content/i);
     expect(claude.probe).not.toHaveBeenCalled();
   });
 

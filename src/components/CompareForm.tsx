@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { runCompareAction } from "@/app/compare/actions";
 import { initialCompareState } from "@/app/compare/compare-state";
 import type { CompareSide } from "@/app/compare/compare-state";
+import { parseDomainInput } from "@/lib/domainInput";
 import ScoreDial from "./ScoreDial";
 
 function hostOf(url: string): string {
@@ -78,8 +79,11 @@ export default function CompareForm() {
   );
   const [urlA, setUrlA] = useState("");
   const [urlB, setUrlB] = useState("");
+  const [clientError, setClientError] = useState<string | null>(null);
 
-  const showError = !isPending && state.status === "error";
+  const errorMessage =
+    clientError ?? (!isPending && state.status === "error" ? state.error : null);
+  const showError = Boolean(errorMessage);
   const showResults = !isPending && state.status === "success";
 
   return (
@@ -89,12 +93,24 @@ export default function CompareForm() {
           ? "Comparing both sites…"
           : state.status === "success"
             ? "Comparison ready."
-            : state.status === "error"
-              ? state.error
-              : ""}
+            : errorMessage ?? ""}
       </p>
 
-      <form action={formAction} className="mx-auto w-full max-w-3xl">
+      <form
+        action={formAction}
+        onSubmit={(e) => {
+          const a = parseDomainInput(urlA);
+          const b = parseDomainInput(urlB);
+          if (!a.ok) {
+            e.preventDefault();
+            setClientError(`Your site: ${a.error}`);
+          } else if (!b.ok) {
+            e.preventDefault();
+            setClientError(`Competitor: ${b.error}`);
+          }
+        }}
+        className="mx-auto w-full max-w-3xl"
+      >
         <div className="grid gap-4 sm:grid-cols-2">
           {[
             { name: "urlA", value: urlA, set: setUrlA, label: "Your site" },
@@ -102,7 +118,7 @@ export default function CompareForm() {
           ].map((f) => (
             <div key={f.name}>
               <label htmlFor={f.name} className="sr-only">
-                {f.label} website address
+                {f.label} website domain
               </label>
               <p className="mb-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
                 {f.label}
@@ -119,7 +135,10 @@ export default function CompareForm() {
                   autoComplete="url"
                   placeholder="yourdomain.com"
                   value={f.value}
-                  onChange={(e) => f.set(e.target.value)}
+                  onChange={(e) => {
+                    f.set(e.target.value);
+                    if (clientError) setClientError(null);
+                  }}
                   disabled={isPending}
                   className="w-full bg-transparent font-sans text-base text-ink placeholder:text-muted/70 focus:outline-none disabled:opacity-60"
                 />
@@ -144,7 +163,7 @@ export default function CompareForm() {
             className="mx-auto mt-4 max-w-md border border-bad/40 bg-surface px-4 py-3 text-center text-sm text-ink"
           >
             <span className="font-semibold text-bad">Couldn&apos;t run that. </span>
-            {state.error}
+            {errorMessage}
           </p>
         )}
       </form>

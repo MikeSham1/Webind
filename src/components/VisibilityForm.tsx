@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { runVisibilityCheck } from "@/app/visibility/actions";
 import { initialVisibilityState } from "@/app/visibility/state";
+import { parseDomainInput } from "@/lib/domainInput";
 import type {
   AnswerEngine,
   EngineVisibility,
@@ -38,14 +39,24 @@ export default function VisibilityForm() {
     initialVisibilityState,
   );
   const [domain, setDomain] = useState("");
+  const [clientError, setClientError] = useState<string | null>(null);
 
-  const showError = !isPending && state.status === "error";
+  const errorMessage =
+    clientError ?? (!isPending && state.status === "error" ? state.error : null);
+  const showError = Boolean(errorMessage);
   const showResults = !isPending && state.status === "success";
 
   return (
     <div className="space-y-10">
       <form
         action={formAction}
+        onSubmit={(e) => {
+          const validation = parseDomainInput(domain);
+          if (!validation.ok) {
+            e.preventDefault();
+            setClientError(validation.error);
+          }
+        }}
         className="space-y-5 rounded-2xl border border-line bg-surface p-6 sm:p-8"
       >
         <Field label="Your website" hint="The brand you want to check for.">
@@ -55,7 +66,10 @@ export default function VisibilityForm() {
             inputMode="url"
             placeholder="acme.com"
             value={domain}
-            onChange={(e) => setDomain(e.target.value)}
+            onChange={(e) => {
+              setDomain(e.target.value);
+              if (clientError) setClientError(null);
+            }}
             className={inputClass}
           />
         </Field>
@@ -87,7 +101,7 @@ export default function VisibilityForm() {
 
         {showError && (
           <p role="alert" className="text-sm text-bad">
-            {state.error}
+            {errorMessage}
           </p>
         )}
       </form>

@@ -4,6 +4,7 @@ import { useActionState, useState, type ReactNode } from "react";
 import { runBenchmarkAction } from "@/app/benchmark/actions";
 import { initialBenchmarkState } from "@/app/benchmark/state";
 import type { BenchmarkReport, CompetitorScore, Percentile } from "@/lib/benchmark/types";
+import { parseDomainInput } from "@/lib/domainInput";
 
 const inputClass =
   "mt-1.5 w-full rounded-lg border border-line-strong bg-paper px-3 py-2.5 font-sans text-[15px] text-ink placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
@@ -27,17 +28,27 @@ export default function BenchmarkForm() {
     initialBenchmarkState,
   );
   const [url, setUrl] = useState("");
+  const [clientError, setClientError] = useState<string | null>(null);
 
-  const showError = !isPending && state.status === "error";
+  const errorMessage =
+    clientError ?? (!isPending && state.status === "error" ? state.error : null);
+  const showError = Boolean(errorMessage);
   const showResults = !isPending && state.status === "success";
 
   return (
     <div className="space-y-10">
       <form
         action={formAction}
+        onSubmit={(e) => {
+          const validation = parseDomainInput(url);
+          if (!validation.ok) {
+            e.preventDefault();
+            setClientError(validation.error);
+          }
+        }}
         className="space-y-5 rounded-2xl border border-line bg-surface p-6 sm:p-8"
       >
-        <Field label="Your page" hint="The page you want to benchmark.">
+        <Field label="Your site" hint="Enter the domain without https:// or a path.">
           <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-line-strong bg-paper px-3">
             <span className="font-mono text-sm text-muted" aria-hidden="true">
               https://
@@ -46,9 +57,12 @@ export default function BenchmarkForm() {
               name="url"
               required
               inputMode="url"
-              placeholder="acme.com/pricing"
+              placeholder="acme.com"
               value={url}
-              onChange={(e) => setUrl(e.target.value)}
+              onChange={(e) => {
+                setUrl(e.target.value);
+                if (clientError) setClientError(null);
+              }}
               className="w-full bg-transparent py-2.5 font-sans text-[15px] text-ink placeholder:text-muted/60 focus:outline-none"
             />
           </div>
@@ -76,7 +90,7 @@ export default function BenchmarkForm() {
 
         {showError && (
           <p role="alert" className="text-sm text-bad">
-            {state.error}
+            {errorMessage}
           </p>
         )}
       </form>

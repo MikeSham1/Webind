@@ -2,7 +2,7 @@
 
 import { getCurrentUser } from "@/lib/auth";
 import { runBenchmark } from "@/lib/benchmark/benchmark";
-import { normalizeUrl } from "@/lib/crawler/ssrf";
+import { parseDomainInput } from "@/lib/domainInput";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import type { BenchmarkState } from "./state";
 
@@ -32,22 +32,16 @@ export async function runBenchmarkAction(
   const rawUrl = String(formData.get("url") ?? "");
   const query = String(formData.get("query") ?? "").trim();
 
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawUrl.trim())) {
-    return {
-      status: "error",
-      error: "Leave off the https:// — just enter the domain, like example.com.",
-    };
-  }
-  const url = normalizeUrl(rawUrl);
-  if (!url) {
-    return { status: "error", error: "That doesn't look like a valid website address." };
+  const domainInput = parseDomainInput(rawUrl);
+  if (!domainInput.ok) {
+    return { status: "error", error: domainInput.error };
   }
   if (!query) {
     return { status: "error", error: "Enter the search query you want to win." };
   }
 
   try {
-    const report = await runBenchmark({ url, query });
+    const report = await runBenchmark({ url: domainInput.url, query });
     return { status: "success", report };
   } catch {
     return {
