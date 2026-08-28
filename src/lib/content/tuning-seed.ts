@@ -104,6 +104,50 @@ export const CONTENT_TUNING_SEED: SeedExample[] = [
       "Price starts at [your price]. [Request a quote] for volume.",
     ].join("\n"),
   },
+  {
+    inputs: {
+      topic: "About Acme Widgets",
+      pageType: "about",
+      audience: "prospective customers and partners",
+      tone: "warm",
+      keyFacts: [],
+      brandName: "Acme Widgets",
+    },
+    output: [
+      "# About Acme Widgets",
+      "",
+      "Acme Widgets was founded in [year] to solve one problem: widgets that fail before they should. We design and build our own, so we own the quality.",
+      "",
+      "## What we do",
+      "We make heavy-duty widgets for [industries we serve], sold direct and through [partners]. Every unit is [how it's tested] before it ships.",
+      "",
+      "## Who's behind it",
+      "The team is led by [founder name], [their background]. You can reach a real person on [support channel] — we answer.",
+      "",
+      "Want the specifics? See our [product range] or [contact us].",
+    ].join("\n"),
+  },
+  {
+    inputs: {
+      topic: "Widget maintenance — frequently asked questions",
+      pageType: "faq",
+      audience: "existing customers",
+      tone: "helpful",
+      keyFacts: [],
+    },
+    output: [
+      "# Widget Maintenance FAQ",
+      "",
+      "## How often should I service a widget?",
+      "Service it every [interval] under normal use, or sooner if you run [heavy conditions]. Check [what to inspect] at each service.",
+      "",
+      "## Can I replace parts myself?",
+      "Yes — [which parts] are user-replaceable with [tools needed]. For [other parts], contact support so you don't void the [warranty length] warranty.",
+      "",
+      "## What does the warranty cover?",
+      "The warranty covers [what's covered] for [duration]. It doesn't cover [exclusions]. Keep your [proof of purchase] to make a claim.",
+    ].join("\n"),
+  },
 ];
 
 /** The seed as tuning rows, ready to concatenate with the collected dataset. */

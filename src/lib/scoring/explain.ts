@@ -1,66 +1,43 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { logInfo, logWarn } from "../log";
 import type { ReportResult } from "./types";
+import type { AiProvider } from "@/lib/ai/types";
+import { generate, selectProvider } from "@/lib/ai/generator";
+
+const EXPLAIN_SYSTEM =
+  "You explain website authority reports to non-technical business owners. " +
+  "Write 2-3 short, plain-English, encouraging sentences. Use ONLY the scores, " +
+  "reasons, and fixes provided — never invent numbers, facts, or claims beyond " +
+  "the report, and do not consult outside information. No headings, no lists, " +
+  "no markdown; just the sentences.";
 
 /**
  * Turn a report's scores into a short, friendly narrative for a non-technical
  * site owner.
  *
- * When `ANTHROPIC_API_KEY` is set, Claude (`claude-opus-4-8`) narrates the
- * report's own numbers and reasons. The raw scores stay authoritative — Claude
- * is instructed only to narrate, never to invent figures or facts. When the
- * key is absent, or the call fails for any reason, a deterministic fallback
- * narrative is composed from the report itself (no network). Never throws.
+ * The LLM (Gemini by default, the model we tune) narrates the report's own
+ * numbers and reasons — the raw scores stay authoritative, and it's instructed
+ * to narrate only, never to invent or look anything up (no web grounding here:
+ * the narrative must reflect the report, nothing else). When no key is set or
+ * the call fails, a deterministic fallback narrative is composed from the
+ * report itself. Never throws.
  */
-export async function explainReport(report: ReportResult): Promise<string> {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return fallbackNarrative(report);
-  }
+export async function explainReport(
+  report: ReportResult,
+  deps: { provider?: AiProvider } = {},
+): Promise<string> {
+  const provider = deps.provider ?? selectProvider("gemini");
+  if (!provider.isConfigured()) return fallbackNarrative(report);
 
-  const startedAt = Date.now();
-  const model = "claude-opus-4-8";
-  try {
-    const client = new Anthropic();
-    const response = await client.messages.create({
-      model,
-      max_tokens: 600,
-      system:
-        "You explain website authority reports to non-technical business " +
-        "owners. Write 2-3 short, plain-English, encouraging sentences. Use " +
-        "ONLY the scores, reasons, and fixes provided — never invent numbers, " +
-        "facts, or claims beyond the report. No headings, no lists, no " +
-        "markdown; just the sentences.",
-      messages: [{ role: "user", content: buildPrompt(report) }],
-    });
-
-    // Token counts, not a dollar figure -- pricing changes over time and this
-    // stays accurate; multiply by whatever the current per-token rate is.
-    logInfo("ai_call.ok", {
-      provider: "anthropic",
+  const result = await generate(
+    {
+      system: EXPLAIN_SYSTEM,
+      prompt: buildPrompt(report),
+      maxOutputTokens: 600,
       purpose: "explain_report",
-      model,
-      inputTokens: response.usage?.input_tokens,
-      outputTokens: response.usage?.output_tokens,
-      durationMs: Date.now() - startedAt,
-    });
-
-    const text = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("")
-      .trim();
-
-    return text || fallbackNarrative(report);
-  } catch (err) {
-    logWarn("ai_call.error", {
-      provider: "anthropic",
-      purpose: "explain_report",
-      model,
-      durationMs: Date.now() - startedAt,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return fallbackNarrative(report);
-  }
+    },
+    { provider },
+  );
+  const text = result.text.trim();
+  return !result.fallback && text ? text : fallbackNarrative(report);
 }
 
 /** Render a 0-1 coverage fraction as a whole percentage. */

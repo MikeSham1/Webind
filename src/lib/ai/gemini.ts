@@ -34,8 +34,12 @@ export function geminiModelId(): string {
   return process.env.GEMINI_GENERATOR_MODEL || DEFAULT_MODEL;
 }
 
-export function geminiProvider(): AiProvider {
-  const model = geminiModelId();
+/**
+ * @param modelId Optional model override — e.g. a fine-tuned content-writer
+ *   endpoint. Falls back to GEMINI_GENERATOR_MODEL, then the default.
+ */
+export function geminiProvider(modelId?: string): AiProvider {
+  const model = modelId || geminiModelId();
   return {
     name: "gemini",
     model,
@@ -50,7 +54,10 @@ export function geminiProvider(): AiProvider {
           systemInstruction: req.system,
           maxOutputTokens: req.maxOutputTokens ?? 2048,
           thinkingConfig: { thinkingLevel: thinkingLevel() },
-          ...(req.json ? { responseMimeType: "application/json" } : {}),
+          // Live web grounding when asked. Not combined with JSON mode — the
+          // grounded tasks (writing content) use free-text output.
+          ...(req.grounded ? { tools: [{ googleSearch: {} }] } : {}),
+          ...(req.json && !req.grounded ? { responseMimeType: "application/json" } : {}),
         },
       });
 

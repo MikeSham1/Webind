@@ -17,6 +17,13 @@ export interface GenerateRequest {
   maxOutputTokens?: number;
   /** Ask for strict JSON output. Still parsed + validated deterministically downstream. */
   json?: boolean;
+  /**
+   * Let the model consult live web search ("data from online"). Gemini uses
+   * Google Search grounding; providers without a grounding tool ignore it.
+   * Use for tasks that benefit from current external information (writing new
+   * content), NOT for tasks that must stay grounded only in supplied data.
+   */
+  grounded?: boolean;
   /** Short label for observability (ai_call.ok/error), e.g. "fix_generate". */
   purpose: string;
 }
