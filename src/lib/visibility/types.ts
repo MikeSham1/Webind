@@ -9,6 +9,8 @@
  * gaps to close.
  */
 
+import type { RateEstimate } from "./stats";
+
 /**
  * An answer engine we can probe. `claude` is fully implemented (Anthropic web
  * search); the rest are pluggable and stay inert until their API key is set —
@@ -55,6 +57,14 @@ export interface EngineVisibility {
   competitors: string[];
   /** One-sentence human-readable evidence, or a failure description. */
   evidence: string | null;
+  /**
+   * When the engine is probed more than once (see VISIBILITY_SAMPLES),
+   * how many probes returned a definite verdict and how many found the brand
+   * present. Absent/1 means a single probe. Feeds the credible interval so a
+   * lone probe reads as the weak evidence it is.
+   */
+  samples?: number;
+  hits?: number;
 }
 
 /** Every engine's verdict for a single keyword, plus its rolled-up score. */
@@ -85,4 +95,11 @@ export interface VisibilityReport {
   recommendations: string[];
   /** Engines that ran at least one probe. */
   enginesUsed: AnswerEngine[];
+  /**
+   * Pooled Beta–Binomial citation-rate estimate across every definite probe in
+   * the run, with a 95% credible interval — the honest "how often does this
+   * brand actually surface, and how sure are we?" number. Null when no engine
+   * returned a definite verdict.
+   */
+  visibilityRate?: RateEstimate | null;
 }

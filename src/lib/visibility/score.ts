@@ -5,6 +5,7 @@ import type {
   VisibilityQuery,
   VisibilityReport,
 } from "./types";
+import { citationRateEstimate } from "./stats";
 
 /**
  * Prominence credited to a "present but unranked" mention — the engine named
@@ -157,15 +158,24 @@ export function buildVisibilityReport(
 
   let totalCells = 0;
   let definiteCells = 0;
+  // Pooled Beta–Binomial counts: every definite probe across the whole run.
+  let pooledSamples = 0;
+  let pooledHits = 0;
   const enginesSeen = new Set<AnswerEngine>();
   for (const k of keywords) {
     for (const e of k.engines) {
       totalCells += 1;
-      if (e.present !== null) definiteCells += 1;
+      if (e.present !== null) {
+        definiteCells += 1;
+        // Single-probe cells (no `samples` field) count as one definite trial.
+        pooledSamples += e.samples ?? 1;
+        pooledHits += e.hits ?? (e.present ? 1 : 0);
+      }
       if (e.configured) enginesSeen.add(e.engine);
     }
   }
   const coverage = totalCells > 0 ? definiteCells / totalCells : 0;
+  const visibilityRate = citationRateEstimate(pooledHits, pooledSamples);
 
   const topCompetitors = rankCompetitors(keywords);
 
@@ -178,5 +188,6 @@ export function buildVisibilityReport(
     topCompetitors,
     recommendations: buildRecommendations(keywords, topCompetitors, overallScore),
     enginesUsed: [...enginesSeen],
+    visibilityRate,
   };
 }

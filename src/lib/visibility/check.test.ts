@@ -1,11 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
-import { checkKeywordVisibility, MAX_KEYWORDS } from "./check";
+import { checkKeywordVisibility, MAX_KEYWORDS, MAX_SAMPLES } from "./check";
 import { detectVisibility, type VisibilityProvider } from "./providers";
+
+type Verdict = Awaited<ReturnType<VisibilityProvider["probe"]>>;
 
 /** A configured stub provider whose probe returns a fixed verdict. */
 function stub(
   engine: VisibilityProvider["engine"],
-  verdict: Partial<Awaited<ReturnType<VisibilityProvider["probe"]>>>,
+  verdict: Partial<Verdict>,
   configured = true,
 ): VisibilityProvider {
   return {
@@ -18,6 +20,23 @@ function stub(
       evidence: null,
       ...verdict,
     })),
+  };
+}
+
+/** A stub that walks a scripted sequence of verdicts across successive probes. */
+function sequenceStub(
+  engine: VisibilityProvider["engine"],
+  verdicts: Partial<Verdict>[],
+): VisibilityProvider {
+  let i = 0;
+  return {
+    engine,
+    isConfigured: () => true,
+    probe: vi.fn(async () => {
+      const v = verdicts[Math.min(i, verdicts.length - 1)];
+      i += 1;
+      return { present: null, prominence: null, competitors: [], evidence: null, ...v };
+    }),
   };
 }
 
@@ -99,6 +118,61 @@ describe("checkKeywordVisibility", () => {
       keywords: ["   ", ""],
     });
     expect(result.ok).toBe(false);
+  });
+
+  it("pools repeated probes into a citation rate with a credible interval", async () => {
+    // Stochastic engine: present, present, absent over three probes.
+    const claude = sequenceStub("claude", [
+      { present: true, prominence: 80 },
+      { present: true, prominence: 60 },
+      { present: false },
+    ]);
+    const result = await checkKeywordVisibility(
+      { domain: "acme.com", brandName: "Acme", keywords: ["best widgets"] },
+      { providers: [claude], samples: 3 },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(claude.probe).toHaveBeenCalledTimes(3);
+    const eng = result.report.keywords[0].engines[0];
+    expect(eng.samples).toBe(3);
+    expect(eng.hits).toBe(2);
+    expect(eng.present).toBe(true); // 2/3 majority
+    expect(eng.prominence).toBe(70); // mean of 80 and 60
+    expect(eng.evidence).toMatch(/2\/3 probes/);
+
+    const rate = result.report.visibilityRate!;
+    expect(rate.hits).toBe(2);
+    expect(rate.samples).toBe(3);
+    expect(rate.rate).toBeCloseTo(3 / 5, 5); // Beta(3,2) mean = 0.6
+    expect(rate.lo).toBeLessThan(rate.rate);
+    expect(rate.hi).toBeGreaterThan(rate.rate);
+  });
+
+  it("treats a single probe as one Beta trial with an honestly wide interval", async () => {
+    const claude = stub("claude", { present: true, prominence: 90 });
+    const result = await checkKeywordVisibility(
+      { domain: "acme.com", keywords: ["best widgets"] },
+      { providers: [claude] }, // default samples = 1
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const rate = result.report.visibilityRate!;
+    expect(rate.samples).toBe(1);
+    expect(rate.hits).toBe(1);
+    // One probe is weak evidence — the interval must be wide.
+    expect(rate.hi - rate.lo).toBeGreaterThan(0.6);
+  });
+
+  it("caps samples at MAX_SAMPLES", async () => {
+    const claude = stub("claude", { present: true, prominence: 50 });
+    const result = await checkKeywordVisibility(
+      { domain: "acme.com", keywords: ["x"] },
+      { providers: [claude], samples: 99 },
+    );
+    expect(result.ok).toBe(true);
+    expect(claude.probe).toHaveBeenCalledTimes(MAX_SAMPLES);
   });
 
   it("dedupes keywords case-insensitively and caps the count", async () => {

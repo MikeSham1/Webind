@@ -27,6 +27,11 @@ function gradeVar(score: number): string {
   return "var(--good)";
 }
 
+/** Format a 0-1 rate as a whole-number percent. */
+function pct(rate: number): string {
+  return `${Math.round(rate * 100)}%`;
+}
+
 export default function VisibilityForm() {
   const [state, formAction, isPending] = useActionState(
     runVisibilityCheck,
@@ -112,6 +117,19 @@ function Results({ report }: { report: VisibilityReport }) {
           <p className="max-w-md text-sm text-muted">
             No answer engine is configured, so nothing could be measured. Set an
             engine API key to get real scores.
+          </p>
+        )}
+        {report.visibilityRate && (
+          <p
+            className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted"
+            title="Beta–Binomial estimate from every definite probe, with a 95% credible interval. A single probe is weak evidence, so the interval is wide until repeated probes narrow it."
+          >
+            Est. citation rate {pct(report.visibilityRate.rate)}
+            <span className="text-muted/70">
+              {" "}
+              · 95% CI {pct(report.visibilityRate.lo)}–{pct(report.visibilityRate.hi)} ·{" "}
+              {report.visibilityRate.hits}/{report.visibilityRate.samples} probes
+            </span>
           </p>
         )}
       </div>
