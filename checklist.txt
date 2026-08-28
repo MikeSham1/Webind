@@ -1,0 +1,109 @@
+WEBIND — YOUR ACTION CHECKLIST
+Last updated: 2026-08-28
+
+This is the list of things only YOU can do (accounts, API keys, billing,
+product decisions). Everything here unblocks work that's already coded and
+degrading safely, or unblocks the next roadmap items. Code status is at the
+bottom.
+
+================================================================================
+A. MAKE EXISTING FEATURES LIVE (do these first)
+================================================================================
+
+[ ] ANTHROPIC — ADD CREDITS.
+    Verified this session: the API key in .env.local is valid, but the account
+    is OUT OF CREDITS (API returns "Your credit balance is too low"). This is
+    why Keyword Visibility (Claude probe), the report narrative, and the AI fix
+    suggestions fall back to their offline paths.
+    -> console.anthropic.com -> Plans & Billing -> add credits.
+    No redeploy needed; the key is already loaded.
+
+[ ] GEMINI — ENABLE BILLING / RAISE QUOTA.
+    Verified this session: grounded calls hit 429 RESOURCE_EXHAUSTED on the free
+    tier. This gates the Gemini visibility probe and the Fix Generator.
+    -> Google AI Studio / Google Cloud -> enable billing or request higher quota.
+
+[ ] ROTATE THE GEMINI KEY.
+    The Gemini key was pasted into chat earlier, so treat it as compromised.
+    Generate a new one, put it in .env.local and Railway, delete the old one.
+
+[ ] STRIPE — TURN ON REAL PAYMENTS (checkout is built and degrades without this).
+    1. In the Stripe dashboard, create the two recurring Products/Prices:
+         - Starter  $19/mo
+         - Growth   $79/mo
+    2. Register a webhook endpoint pointing at:  /api/billing/webhook
+       (subscribe to customer.subscription.created/updated/deleted).
+    3. Set these env vars (in .env.local AND Railway):
+         STRIPE_SECRET_KEY=sk_live_or_test_...
+         STRIPE_WEBHOOK_SECRET=whsec_...        (from the webhook you registered)
+         STRIPE_PRICE_STARTER=price_...
+         STRIPE_PRICE_GROWTH=price_...
+    Until these are set, the pricing page shows "Paid plans open at launch" and
+    checkout returns a friendly 503 — no bug, just no keys.
+
+[ ] (OPTIONAL) TIGHTEN AI VISIBILITY CONFIDENCE.
+    Set VISIBILITY_SAMPLES=3 (max 5) to probe each engine multiple times and get
+    a narrower credible interval. Costs proportionally more API calls. Default 1.
+
+================================================================================
+B. UNBLOCK THE ROADMAP (credentials / decisions the deferred items need)
+================================================================================
+
+[ ] COMPETITIVE BENCHMARKING (#4) — pick + fund a search data source.
+    Options: a SERP API (e.g. SerpAPI -> SERPAPI_API_KEY) for organic results,
+    and/or Gemini Google-Search grounding for AI-citation discovery.
+    Decide: minimum cohort size (doc suggests ~20 comparable pages), and whether
+    to gate cohorts by locale/language/page-type.
+
+[ ] SEARCH CONSOLE + CORE WEB VITALS (#6) — provide Google access.
+    - Search Console: authorize a Google account (OAuth) and tell me which
+      properties. Needed for real impressions/clicks + AI Overviews/AI Mode data.
+    - Core Web Vitals: get a PageSpeed Insights / CrUX API key (PSI_API_KEY) for
+      real 75th-percentile field data.
+
+[ ] QUERY CONTEXT (#5) — per site, list the target queries you actually want to
+    win (or approve automatic query expansion). Content scoring becomes
+    query-aware only once it knows the intent.
+
+[ ] OUTCOMES DATA (#9/#10) — this one is just time + usage.
+    An intervention-uplift model can't exist until real accepted fixes are
+    deployed and 14/28/56-day windows elapse. Start accepting + shipping fixes.
+
+================================================================================
+C. PRODUCT DECISIONS (quick calls from you)
+================================================================================
+
+[ ] Report URL field: keep REJECTING a typed-in https:// (current behavior), or
+    switch to silently STRIPPING it? (Rejecting is stricter; stripping is
+    friendlier to people who paste full URLs.)
+[ ] Confirm pricing ($0 / $19 / $79) and the 14-day trial length.
+[ ] The experimental neural score is now hidden from customers. Keep it for an
+    internal-only dashboard, or retire it entirely?
+
+================================================================================
+CODE STATUS — the 11-item priority list
+================================================================================
+1.  Hide neural score from customers .................... DONE
+2.  Fix Authority & Trust presentation (40% = coverage) . DONE
+3.  Replace Fact Density with Evidence Integrity ........ PARTIAL
+      (removed universal "1 stat / 100 words", ">=3 sources", "question
+       headings" prescriptions from the advice; the fact-density SCORER still
+       uses the old heuristic — full claim-extraction/entailment is roadmap)
+4.  Competitive benchmarking crawler ................... NOT STARTED (needs B)
+5.  Query + page-type context in scoring ............... NOT STARTED (needs B)
+6.  Ingest Search Console + Core Web Vitals ............ NOT STARTED (needs B)
+7.  AI visibility multi-run & multi-provider ........... MULTI-RUN DONE
+      (Beta-Binomial credible intervals shipped; Claude + Gemini providers
+       live, OpenAI/Perplexity/Google still stubs awaiting keys)
+8.  Fix Agent grounding + structured outputs ........... PARTIAL
+      (evidence-grounded Fix Generator + hard validators already exist;
+       provider-enforced JSON-schema output not yet swapped into suggest.ts)
+9.  Collect accepted/edited/rejected/deployed fixes .... PARTIAL
+      (accepted/edited/rejected captured via the review UI; deploy + outcome
+       tracking not yet)
+10. Train intervention-uplift model ................... NOT STARTED (needs 6+9)
+11. New learned readiness model ....................... NOT STARTED (last)
+
+Guiding rule I'm holding to: never fabricate competitive data, evidence
+entailment, or outcomes. Gated items stay unbuilt until the real data source
+(above) exists, rather than being stubbed with fake measurements.
