@@ -1,6 +1,6 @@
 import { generate } from "@/lib/ai/generator";
 import { anthropicProvider } from "@/lib/ai/anthropic";
-import { geminiProvider } from "@/lib/ai/gemini";
+import { gemini37Provider } from "@/lib/ai/gemini";
 import type { AiProvider } from "@/lib/ai/types";
 import { CONTENT_WRITER_SYSTEM, serializeContentInputs, toTuningRow, type TuningRow } from "./prompt";
 import { scoreContentQuality, type ContentQualityScore } from "./quality";
@@ -266,9 +266,9 @@ export async function generateSyntheticExample(
   } = {},
 ): Promise<SelectedSyntheticExample | null> {
   const candidateCount = Math.max(2, Math.min(8, opts.candidateCount ?? 4));
-  const teacher = opts.teacherProvider ?? geminiProvider();
+  const teacher = opts.teacherProvider ?? gemini37Provider();
   const anthropicJudge = anthropicProvider();
-  const judge = opts.judgeProvider ?? (anthropicJudge.isConfigured() ? anthropicJudge : geminiProvider());
+  const judge = opts.judgeProvider ?? (anthropicJudge.isConfigured() ? anthropicJudge : gemini37Provider());
   if (!teacher.isConfigured() || !judge.isConfigured()) return null;
 
   const evaluated: SyntheticCandidate[] = [];
