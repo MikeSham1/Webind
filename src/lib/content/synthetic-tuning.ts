@@ -102,7 +102,8 @@ function hash32(text: string): number {
 }
 
 function pick<T>(items: readonly T[], seed: number, salt: number): T {
-  return items[(seed + Math.imul(salt, 2654435761)) >>> 0 % items.length] as T;
+  const mixed = (seed + Math.imul(salt, 2654435761)) >>> 0;
+  return items[mixed % items.length] as T;
 }
 
 function titleCase(text: string): string {
@@ -197,9 +198,8 @@ function parseJudge(text: string): CandidateJudge | null {
 }
 
 function composite(quality: ContentQualityScore, judge: CandidateJudge): number {
-  const algorithm = quality.score;
   const score =
-    0.30 * algorithm +
+    0.30 * quality.score +
     0.25 * judge.usefulness +
     0.20 * (judge.grounded ? 100 : 0) +
     0.15 * judge.intentFit +
@@ -267,7 +267,8 @@ export async function generateSyntheticExample(
 ): Promise<SelectedSyntheticExample | null> {
   const candidateCount = Math.max(2, Math.min(8, opts.candidateCount ?? 4));
   const teacher = opts.teacherProvider ?? geminiProvider();
-  const judge = opts.judgeProvider ?? (anthropicProvider().isConfigured() ? anthropicProvider() : geminiProvider());
+  const anthropicJudge = anthropicProvider();
+  const judge = opts.judgeProvider ?? (anthropicJudge.isConfigured() ? anthropicJudge : geminiProvider());
   if (!teacher.isConfigured() || !judge.isConfigured()) return null;
 
   const evaluated: SyntheticCandidate[] = [];
