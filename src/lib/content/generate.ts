@@ -43,9 +43,10 @@ function titleFromMarkdown(markdown: string): string | null {
  * Runtime order when no test/provider override is injected:
  *   tuned Vertex writer -> base Gemini 3.7 -> deterministic template.
  *
- * This makes the new tuned path backward-compatible with an existing env file:
- * no new variable is required, and a broken/missing Vertex credential cannot
- * remove today's 3.7 behavior. Safety gates always run on the selected output.
+ * Every final-drafting model receives the same explicit factual universe: the
+ * supplied brief. Search-grounded Gemini remains available for visibility
+ * measurement, but is not attached to content generation where external facts
+ * would conflict with the writer contract and SFT examples.
  */
 export async function generateDraft(
   inputs: ContentInputs,
@@ -66,9 +67,7 @@ export async function generateDraft(
         system: CONTENT_WRITER_SYSTEM,
         prompt: serializeContentInputs(inputs),
         json: false,
-        // Base 3.7 may use Google Search grounding. The Vertex tuned provider
-        // deliberately ignores this flag and stays bound to the supplied brief.
-        grounded: true,
+        grounded: false,
         maxOutputTokens: 4096,
         purpose: "content_write",
       },
