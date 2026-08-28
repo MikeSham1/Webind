@@ -1,6 +1,7 @@
 import type { ActionableSuggestion, ReportResult } from "@/lib/scoring/types";
 import type { OptimizationAssets as Assets } from "@/lib/optimize/assets";
 import { computeStages } from "@/lib/scoring/stages";
+import { PAGE_TYPE_LABEL } from "@/lib/scoring/page-type";
 import ScoreDial from "./ScoreDial";
 import StageBreakdown from "./StageBreakdown";
 import PageExperience from "./PageExperience";
@@ -69,6 +70,11 @@ export default function ReportResults({
         <h2 className="mt-2 font-display text-3xl font-semibold text-ink">
           {host}
         </h2>
+        {report.pageType && (
+          <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
+            Scored as: {PAGE_TYPE_LABEL[report.pageType]}
+          </p>
+        )}
         {narrative && (
           <p className="mx-auto mt-5 max-w-xl text-[15px] leading-relaxed text-muted">
             {narrative}

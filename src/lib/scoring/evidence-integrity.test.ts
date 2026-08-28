@@ -67,10 +67,36 @@ describe("scoreEvidence", () => {
     expect(r.reason).toMatch(/3 of 3/);
   });
 
-  it("doesn't tank a claim-free page, but doesn't inflate it either", () => {
-    const prose = page(`<p>We believe in craft and care for our customers.</p>`);
+  it("doesn't tank a claim-free ARTICLE, but doesn't inflate it either", () => {
+    const prose = makePage({
+      url: "https://acme.com/blog/thoughts", // article by URL
+      html: `<html><body><p>We believe in craft and care for our customers.</p></body></html>`,
+      outboundLinks: [],
+    });
     const s = scoreEvidence(prose).score;
     expect(s).toBeGreaterThanOrEqual(0);
     expect(s).toBeLessThan(30);
+  });
+
+  it("does not penalize a homepage for lacking cited claims", () => {
+    const home = makePage({
+      url: "https://acme.com/",
+      html: `<html><body><p>We build widgets for small businesses.</p></body></html>`,
+      outboundLinks: [],
+    });
+    const r = scoreEvidence(home);
+    expect(r.score).toBeGreaterThanOrEqual(60); // neutral, not tanked
+    expect(r.fix).toBeNull(); // no "cite your sources" nag on a homepage
+    expect(r.reason).toMatch(/not an evidence-first page/i);
+  });
+
+  it("keeps the strict citation standard for articles", () => {
+    const article = makePage({
+      url: "https://acme.com/blog/data", // article
+      html: `<html><body><p>Grew 42%.</p><p>Cut costs 18%.</p></body></html>`,
+      outboundLinks: [],
+    });
+    const r = scoreEvidence(article);
+    expect(r.fix).toMatch(/cite the primary source/i);
   });
 });

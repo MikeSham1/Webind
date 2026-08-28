@@ -65,10 +65,10 @@ function optimizedPage(overrides: Partial<CrawledPage> = {}): CrawledPage {
   });
 }
 
-/** A page failing every measurable signal. */
+/** An article failing every measurable signal (article, so every signal applies). */
 function brokenPage(): CrawledPage {
   return makePage({
-    url: "http://broken.example/",
+    url: "http://broken.example/blog/broken-post",
     statusCode: 500,
     title: null,
     metaDescription: null,

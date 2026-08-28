@@ -1,6 +1,7 @@
 import type { CrawledPage, SignalScore } from "./types";
 import { AI_WEIGHTS, TRADITIONAL_WEIGHTS } from "./weights";
 import { scoreEvidence } from "./evidence-integrity";
+import { classifyPageType } from "./page-type";
 
 // --- shared helpers ---------------------------------------------------------
 
@@ -179,20 +180,28 @@ const NO_DATE_SCORE = 40;
 
 export function scoreFreshness(page: CrawledPage): SignalScore {
   const age = ageInDays(page.lastModified);
+  // A visible "last updated" date is what an article or news page lives or dies
+  // on; a homepage, product, or category page doesn't need one, so a missing
+  // date there isn't the same deficiency.
+  const dateMatters = classifyPageType(page) === "article";
 
   if (age === null || age < 0) {
+    const futureDate = age !== null;
     return {
       key: "freshness",
       label: "Content Freshness",
-      score: NO_DATE_SCORE,
+      score: futureDate ? NO_DATE_SCORE : dateMatters ? NO_DATE_SCORE : 70,
       weight: AI_WEIGHTS.freshness,
-      reason:
-        age !== null
-          ? "The page's stated update date is in the future, so it can't be trusted."
-          : "No machine-readable publish or update date found, so AI engines can't tell how current this page is.",
+      reason: futureDate
+        ? "The page's stated update date is in the future, so it can't be trusted."
+        : dateMatters
+          ? "No machine-readable publish or update date found, so AI engines can't tell how current this page is."
+          : "No machine-readable date — fine for this page type, which isn't time-sensitive the way an article is.",
       fix:
-        "Publish an explicit update date — JSON-LD `dateModified` or an " +
-        "`article:modified_time` meta tag — so AI engines can verify recency.",
+        futureDate || dateMatters
+          ? "Publish an explicit update date — JSON-LD `dateModified` or an " +
+            "`article:modified_time` meta tag — so AI engines can verify recency."
+          : null,
     };
   }
 

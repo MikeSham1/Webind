@@ -1,4 +1,5 @@
 import type { CrawledPage } from "./types";
+import { classifyPageType, type PageType } from "./page-type";
 
 /**
  * Evidence Integrity — does the page *support* its factual claims, rather than
@@ -120,37 +121,59 @@ export interface EvidenceScore {
  * Turn the analysis into a 0-100 Evidence Integrity score. Weighted toward
  * supported-claim coverage (the thing that's hard to fake), with smaller credit
  * for citing distinct sources at all and for carrying a primary-source quote.
+ *
+ * Page-type aware: an evidence document (an article) is held to the citation
+ * standard, but a homepage, product, or category page isn't an evidence page,
+ * so a lack of cited claims there isn't a deficiency — we don't tank it or nag
+ * it to "cite your sources".
  */
-export function scoreEvidence(page: CrawledPage): EvidenceScore {
+export function scoreEvidence(
+  page: CrawledPage,
+  pageType: PageType = classifyPageType(page),
+): EvidenceScore {
   const a = analyzeEvidence(page);
   const quoteCredit = page.blockquoteCount > 0 ? 10 : a.hasQuote ? 5 : 0;
   const sourcingCredit = Math.min(25, a.distinctSources * 8);
+  // Only articles are graded strictly on evidence; other page types get a
+  // neutral floor and no "add citations" nag.
+  const evidenceExpected = pageType === "article";
 
   let score: number;
   if (a.claims === 0) {
-    // No verifiable claims to support. Not evidence-rich, but don't tank it —
-    // credit genuine sourcing/quotes only, capped low.
-    score = clamp(Math.min(20, a.distinctSources * 7) + quoteCredit);
+    if (!evidenceExpected) {
+      // Not an evidence-first page type — citations aren't its job.
+      score = 60;
+    } else {
+      // An article with no verifiable claims: thin. Credit sourcing/quotes only.
+      score = clamp(Math.min(20, a.distinctSources * 7) + quoteCredit);
+    }
   } else {
-    score = clamp(Math.round(a.coverage * 65) + sourcingCredit + quoteCredit);
+    const raw = clamp(Math.round(a.coverage * 65) + sourcingCredit + quoteCredit);
+    // Where evidence isn't the page's job, don't punish uncited claims hard.
+    score = evidenceExpected ? raw : Math.max(55, raw);
   }
 
   const unsupported = a.claims - a.supportedClaims;
   const reason =
     a.claims === 0
-      ? "No verifiable claims detected to attribute — this page reads as commentary, not evidence."
+      ? evidenceExpected
+        ? "No verifiable claims detected to attribute — thin for an article."
+        : "Not an evidence-first page type, so in-line citations aren't expected here."
       : a.coverage >= 0.7
         ? `Most factual claims are cited in place (${a.supportedClaims}/${a.claims}).`
         : `${unsupported} of ${a.claims} factual claims aren't linked to a source.`;
 
+  // Only nag about citations where they're genuinely expected.
   const fix =
-    a.claims === 0
-      ? a.distinctSources === 0
-        ? "Back the page's key points with primary sources — original data, first-hand results, or a named authority."
-        : null
-      : a.coverage >= 0.7
-        ? null
-        : "Cite the primary source next to each important claim — link the figure to the data or authority it came from.";
+    !evidenceExpected
+      ? null
+      : a.claims === 0
+        ? a.distinctSources === 0
+          ? "Back the page's key points with primary sources — original data, first-hand results, or a named authority."
+          : null
+        : a.coverage >= 0.7
+          ? null
+          : "Cite the primary source next to each important claim — link the figure to the data or authority it came from.";
 
   return { score, analysis: a, reason, fix };
 }

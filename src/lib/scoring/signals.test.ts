@@ -68,10 +68,18 @@ describe("scoreFreshness", () => {
     expect(scoreFreshness(makePage({ lastModified: daysAgo(900) })).score).toBe(40);
   });
 
-  it("scores an unknown date mid-range, not as stale", () => {
-    const s = scoreFreshness(makePage({ lastModified: null, lastModifiedSource: null }));
-    expect(s.score).toBe(40);
-    expect(s.fix).toMatch(/dateModified|article:modified_time/);
+  it("penalizes a missing date on an article, but not on a homepage", () => {
+    const article = scoreFreshness(
+      makePage({ url: "https://example.com/blog/x", lastModified: null, lastModifiedSource: null }),
+    );
+    expect(article.score).toBe(40);
+    expect(article.fix).toMatch(/dateModified|article:modified_time/);
+
+    const home = scoreFreshness(
+      makePage({ url: "https://example.com/", lastModified: null, lastModifiedSource: null }),
+    );
+    expect(home.score).toBe(70); // not time-sensitive; not penalized
+    expect(home.fix).toBeNull();
   });
 
   it("treats a future date as untrustworthy", () => {

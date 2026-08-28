@@ -146,6 +146,21 @@ export default function MethodologyPage() {
 
       <section className="mt-10 space-y-3">
         <h2 className="font-display text-lg font-semibold text-ink">
+          Page type matters
+        </h2>
+        <p className="text-[15px] leading-relaxed text-muted">
+          Different pages have different jobs, so the same signal shouldn&apos;t
+          judge them identically. We classify each page — homepage, article,
+          product, category, or other — from its schema, URL, and content, and
+          adapt: a homepage isn&apos;t expected to carry an author byline, a
+          machine-readable update date, or cited statistics the way an article
+          is, so it isn&apos;t penalized for their absence. Articles are still
+          held to the full standard. The detected type is shown on every report.
+        </p>
+      </section>
+
+      <section className="mt-10 space-y-3">
+        <h2 className="font-display text-lg font-semibold text-ink">
           The visibility pipeline (stages + confidence)
         </h2>
         <p className="text-[15px] leading-relaxed text-muted">

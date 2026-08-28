@@ -1,3 +1,5 @@
+import type { PageType } from "./page-type";
+
 /** Where a page's modification date was recovered from, in precedence order. */
 export type DateSource = "json-ld" | "meta" | "time-element" | "header";
 
@@ -117,6 +119,12 @@ export interface ReportResult {
   prioritizedFixes: string[];
   /** Which version of the weights/signals in scoring/weights.ts produced this report. */
   modelVersion: string;
+  /**
+   * Detected page type. The scorer adapts expectations to it (a homepage needs
+   * no byline, date, or citations the way an article does). Optional so reports
+   * saved before this field still deserialize.
+   */
+  pageType?: PageType;
 }
 
 /**

@@ -1,6 +1,7 @@
 import type { CrawledPage, ReportResult, SignalScore } from "./types";
 import { scoreAiAuthority, scoreTraditionalAuthority } from "./authority";
 import { SCORING_MODEL_VERSION } from "./weights";
+import { classifyPageType } from "./page-type";
 
 /**
  * Per-fix economics used to rank recommendations by expected value, not just
@@ -65,5 +66,12 @@ export function buildReport(page: CrawledPage): ReportResult {
     .sort((a, b) => fixPriority(b) - fixPriority(a) || a.key.localeCompare(b.key))
     .map((s) => s.fix);
 
-  return { url: page.url, ai, traditional, prioritizedFixes, modelVersion: SCORING_MODEL_VERSION };
+  return {
+    url: page.url,
+    ai,
+    traditional,
+    prioritizedFixes,
+    modelVersion: SCORING_MODEL_VERSION,
+    pageType: classifyPageType(page),
+  };
 }
