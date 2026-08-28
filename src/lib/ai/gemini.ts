@@ -3,24 +3,23 @@ import { logInfo } from "../log";
 import type { AiProvider, GenerateRequest, GenerateResult } from "./types";
 
 /**
- * Gemini generator adapter (default: gemini-3.7-flash).
+ * Gemini Developer API adapter (default: gemini-3.7-flash).
+ *
+ * This adapter is intentionally API-key-only. Vertex tuned endpoints belong in
+ * vertex-gemini.ts and must never be passed through GEMINI_API_KEY.
  *
  * Notes grounded in current Google guidance:
- *  - No temperature / top_p / top_k on the 3.7 default path.
- *  - Base 3.7 defaults to MEDIUM thinking. It handles conversational planning,
- *    clarification, and untuned drafting where stronger reasoning is useful.
- *  - Supervised-tuned Gemini 3+ models default to MINIMAL thinking because the
- *    tuned task behavior is learned from examples rather than hidden reasoning.
- *    GEMINI_THINKING_LEVEL can override either default.
- *  - JSON mode uses responseMimeType. Controlled generation can reduce quality
- *    on tuned models, so content writing keeps free-text Markdown output.
+ *  - No temperature / top_p / top_k on the 3.7 path.
+ *  - Untuned 3.7 defaults to MEDIUM thinking for planning and generation.
+ *  - GEMINI_THINKING_LEVEL can override the Developer API default when an
+ *    existing non-content caller deliberately needs a different level.
+ *  - JSON mode uses responseMimeType.
  */
 
-const DEFAULT_MODEL = "gemini-3.7-flash";
+export const BASE_GEMINI_MODEL = "gemini-3.7-flash";
 
-function thinkingLevel(isExplicitModel: boolean): ThinkingLevel {
-  const fallback = isExplicitModel ? "minimal" : "medium";
-  const raw = (process.env.GEMINI_THINKING_LEVEL ?? fallback).toUpperCase();
+function thinkingLevel(): ThinkingLevel {
+  const raw = (process.env.GEMINI_THINKING_LEVEL ?? "medium").toUpperCase();
   switch (raw) {
     case "MINIMAL":
       return ThinkingLevel.MINIMAL;
@@ -34,16 +33,16 @@ function thinkingLevel(isExplicitModel: boolean): ThinkingLevel {
 }
 
 export function geminiModelId(): string {
-  return process.env.GEMINI_GENERATOR_MODEL || DEFAULT_MODEL;
+  return process.env.GEMINI_GENERATOR_MODEL || BASE_GEMINI_MODEL;
 }
 
 /**
- * @param modelId Optional model override, such as a supervised-tuned content
- *   writer endpoint. Falls back to GEMINI_GENERATOR_MODEL, then the default.
+ * Generic Gemini Developer API provider used by existing fix-generation code.
+ * An optional model override is still supported for those existing callers;
+ * it does not imply a tuned model or change the default thinking level.
  */
 export function geminiProvider(modelId?: string): AiProvider {
   const model = modelId || geminiModelId();
-  const isExplicitModel = Boolean(modelId);
   return {
     name: "gemini",
     model,
@@ -57,7 +56,7 @@ export function geminiProvider(modelId?: string): AiProvider {
         config: {
           systemInstruction: req.system,
           maxOutputTokens: req.maxOutputTokens ?? 2048,
-          thinkingConfig: { thinkingLevel: thinkingLevel(isExplicitModel) },
+          thinkingConfig: { thinkingLevel: thinkingLevel() },
           ...(req.grounded ? { tools: [{ googleSearch: {} }] } : {}),
           ...(req.json && !req.grounded ? { responseMimeType: "application/json" } : {}),
         },
@@ -88,4 +87,13 @@ export function geminiProvider(modelId?: string): AiProvider {
       };
     },
   };
+}
+
+/**
+ * Content-specific base provider. It is deliberately pinned to 3.7 so an
+ * unrelated GEMINI_GENERATOR_MODEL override cannot silently change the planner,
+ * synthetic teacher, or tuned-writer fallback model.
+ */
+export function gemini37Provider(): AiProvider {
+  return geminiProvider(BASE_GEMINI_MODEL);
 }
