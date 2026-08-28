@@ -79,6 +79,12 @@ export default async function DashboardPage() {
             Keyword Visibility
           </Link>
           <Link
+            href="/benchmark"
+            className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
+          >
+            Benchmark
+          </Link>
+          <Link
             href="/studio"
             className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
           >
