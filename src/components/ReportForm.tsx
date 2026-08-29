@@ -60,7 +60,7 @@ export default function ReportForm() {
               type="text"
               inputMode="url"
               autoComplete="url"
-              placeholder="yourdomain.com/page"
+              placeholder="yourdomain.com"
               value={url}
               onChange={(e) => {
                 setUrl(e.target.value);
