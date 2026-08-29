@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ActionableSuggestion } from "@/lib/scoring/types";
 
 export interface FixListProps {
@@ -9,9 +10,14 @@ export interface FixListProps {
    * views, which don't regenerate suggestions).
    */
   suggestions?: ActionableSuggestion[];
+  /**
+   * Paywall the detailed suggestions (free/anon visitor). The ranked fixes stay
+   * visible; a CTA to unlock the step-by-step version is shown below them.
+   */
+  locked?: boolean;
 }
 
-export default function FixList({ fixes, suggestions }: FixListProps) {
+export default function FixList({ fixes, suggestions, locked = false }: FixListProps) {
   if (fixes.length === 0) {
     return (
       <div className="border border-good/40 bg-surface p-6 text-center sm:p-8">
@@ -25,29 +31,61 @@ export default function FixList({ fixes, suggestions }: FixListProps) {
     );
   }
 
-  if (suggestions && suggestions.length > 0) {
+  // The rich, page-grounded version is a paid feature — only render it when
+  // unlocked. Otherwise the ranked fixes plus an upgrade CTA.
+  if (suggestions && suggestions.length > 0 && !locked) {
     return <SuggestionList suggestions={suggestions} />;
   }
 
   return (
-    // A numbered list because impact rank is real information here, not
-    // decoration — this is the order to actually work through the fixes in.
-    <ol className="space-y-2.5">
-      {fixes.map((fix, i) => (
-        <li
-          key={i}
-          className="group flex items-start gap-4 border border-line bg-surface p-4 transition-colors hover:border-accent/50 sm:p-5"
-        >
-          <span
-            className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center border border-accent/40 bg-accent-soft font-mono text-sm font-semibold text-accent"
-            aria-hidden="true"
+    <div className="space-y-4">
+      {/* A numbered list because impact rank is real information here, not
+          decoration — this is the order to actually work through the fixes in. */}
+      <ol className="space-y-2.5">
+        {fixes.map((fix, i) => (
+          <li
+            key={i}
+            className="group flex items-start gap-4 border border-line bg-surface p-4 transition-colors hover:border-accent/50 sm:p-5"
           >
-            {i + 1}
-          </span>
-          <p className="text-sm leading-relaxed text-ink sm:text-[15px]">{fix}</p>
-        </li>
-      ))}
-    </ol>
+            <span
+              className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center border border-accent/40 bg-accent-soft font-mono text-sm font-semibold text-accent"
+              aria-hidden="true"
+            >
+              {i + 1}
+            </span>
+            <p className="text-sm leading-relaxed text-ink sm:text-[15px]">{fix}</p>
+          </li>
+        ))}
+      </ol>
+      {locked && <SuggestionsPaywall />}
+    </div>
+  );
+}
+
+/** Upsell shown in place of the detailed suggestions for free/anon visitors. */
+function SuggestionsPaywall() {
+  return (
+    <div className="scan-frame border border-accent/50 bg-accent-soft/50 p-5 text-center sm:p-6">
+      <span className="scan-corner-tr" aria-hidden="true" />
+      <span className="scan-corner-bl" aria-hidden="true" />
+      <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-accent">
+        <span aria-hidden="true">[ </span>Starter<span aria-hidden="true"> ]</span>
+      </p>
+      <p className="mt-2 font-display text-lg font-semibold text-ink">
+        Unlock step-by-step fixes for your page
+      </p>
+      <p className="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-muted">
+        The Fix Generator turns each fix above into concrete, copy-ready steps
+        grounded in your actual page — with one-click apply. On Starter ($19/mo)
+        and up.
+      </p>
+      <Link
+        href="/pricing"
+        className="mt-4 inline-flex h-10 items-center justify-center rounded-full bg-accent px-5 font-sans text-sm font-semibold text-accent-ink transition-colors hover:bg-accent-hover"
+      >
+        See plans →
+      </Link>
+    </div>
   );
 }
 

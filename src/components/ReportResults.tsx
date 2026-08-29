@@ -21,6 +21,8 @@ export interface ReportResultsProps {
   narrative?: string;
   /** Rich, page-grounded fix suggestions; falls back to plain fixes when absent. */
   suggestions?: ActionableSuggestion[];
+  /** True when the detailed suggestions are paywalled (upgrade to unlock). */
+  suggestionsLocked?: boolean;
   /** Ready-to-apply generated assets (schema, meta, llms.txt, robots). */
   optimizations?: Assets;
   /** DB id of the logged run; enables email capture and the "open a PR" action when present. */
@@ -54,6 +56,7 @@ export default function ReportResults({
   report,
   narrative,
   suggestions,
+  suggestionsLocked = false,
   optimizations,
   requestId,
   githubConnected = false,
@@ -153,12 +156,18 @@ export default function ReportResults({
             Your highest-impact fixes
           </h3>
           <span className="hidden font-mono text-xs uppercase tracking-[0.16em] text-muted sm:block">
-            {suggestions?.some((s) => s.aiGenerated)
-              ? "AI-tailored to your page"
-              : "Ranked by impact"}
+            {suggestionsLocked
+              ? "Ranked by impact"
+              : suggestions?.some((s) => s.aiGenerated)
+                ? "AI-tailored to your page"
+                : "Ranked by impact"}
           </span>
         </div>
-        <FixList fixes={report.prioritizedFixes} suggestions={suggestions} />
+        <FixList
+          fixes={report.prioritizedFixes}
+          suggestions={suggestions}
+          locked={suggestionsLocked}
+        />
       </div>
 
       {/* Ready-to-apply generated assets */}

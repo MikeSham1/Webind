@@ -94,5 +94,14 @@ export function stripePriceId(plan: Plan): string | undefined {
   return process.env[plan.stripePriceEnv] || undefined;
 }
 
+/**
+ * Whether a plan unlocks the detailed, page-grounded fix suggestions in the
+ * report (the Fix Generator). Free (0/month) does not; Starter and up do. Used
+ * to paywall the suggestions on the report.
+ */
+export function planAllowsSuggestions(id: string): boolean {
+  return (planById(id)?.limits.fixGenerationsPerMonth ?? 0) !== 0;
+}
+
 /** The default plan for a user with no active subscription. */
 export const DEFAULT_PLAN: PlanId = "free";

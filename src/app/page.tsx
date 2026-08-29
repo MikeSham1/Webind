@@ -1,10 +1,15 @@
 import Link from "next/link";
 import ReportForm from "@/components/ReportForm";
+import PricingTable from "@/components/PricingTable";
+import { PLANS } from "@/lib/billing/plans";
+import { isBillingConfigured, stripeMode } from "@/lib/billing/stripe";
+import { getCurrentUser } from "@/lib/auth";
 
 // Playwright (used by the crawler inside the server action) requires Node.
 export const runtime = "nodejs";
 
-export default function Home() {
+export default async function Home() {
+  const user = await getCurrentUser();
   return (
     <div className="flex min-h-full flex-col">
       {/* Nav */}
@@ -89,6 +94,41 @@ export default function Home() {
           <div className="reveal mt-10" style={{ animationDelay: "180ms" }}>
             <ReportForm />
           </div>
+        </section>
+
+        {/* Pricing — below the analyzer, so a visitor who just ran a report can
+            convert without leaving the page. */}
+        <section id="pricing" className="mx-auto mt-28 max-w-5xl scroll-mt-24">
+          <div className="text-center">
+            <p className="font-mono text-xs uppercase tracking-[0.24em] text-accent">
+              <span aria-hidden="true">[ </span>
+              Pricing
+              <span aria-hidden="true"> ]</span>
+            </p>
+            <h2 className="mt-4 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+              Diagnose free. Fix for less than everyone else.
+            </h2>
+            <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-muted">
+              Every AI-visibility tool tells you where you rank. WeBind Design also
+              generates the evidence-grounded fixes and applies them — for a fraction
+              of what the trackers charge.
+            </p>
+          </div>
+
+          <div className="mt-10">
+            <PricingTable
+              plans={PLANS}
+              billingConfigured={isBillingConfigured()}
+              signedIn={Boolean(user)}
+              testMode={stripeMode() === "test"}
+            />
+          </div>
+
+          <p className="mt-6 text-center font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
+            <Link href="/pricing" className="hover:text-accent">
+              Full plan details &amp; FAQ →
+            </Link>
+          </p>
         </section>
       </main>
 

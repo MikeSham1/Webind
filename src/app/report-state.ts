@@ -21,6 +21,8 @@ export type ReportState =
        * expanded when a key is set, deterministic page-aware fallback otherwise.
        */
       suggestions: ActionableSuggestion[];
+      /** True when the detailed suggestions are paywalled (free/anon visitor). */
+      suggestionsLocked: boolean;
       /** DB id of the logged run, or null when persistence is disabled. */
       requestId: string | null;
       /** Whether the signed-in visitor has a GitHub repo connected (Settings). */

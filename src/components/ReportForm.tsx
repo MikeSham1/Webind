@@ -114,6 +114,7 @@ export default function ReportForm() {
             report={state.report}
             narrative={state.narrative}
             suggestions={state.suggestions}
+            suggestionsLocked={state.suggestionsLocked}
             optimizations={state.optimizations}
             requestId={state.requestId}
             githubConnected={state.githubConnected}

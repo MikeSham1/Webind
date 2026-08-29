@@ -10,6 +10,8 @@ import { generateSuggestions } from "@/lib/scoring/suggest";
 import { predictReadiness } from "@/lib/model/predict";
 import { fetchFieldVitals } from "@/lib/vitals/psi";
 import { auditReport } from "@/lib/scoring/audit";
+import { getUserPlan } from "@/lib/billing/store";
+import { planAllowsSuggestions } from "@/lib/billing/plans";
 import { buildOptimizations } from "@/lib/optimize/assets";
 import { attachEmail, getReportForUser, saveReportRequest } from "@/lib/leads";
 import { getCurrentUser } from "@/lib/auth";
@@ -93,6 +95,13 @@ export async function runReport(
     const optimizations = buildOptimizations(page);
     const modelReadiness = predictReadiness(page);
 
+    // The detailed, page-grounded fix suggestions are a paid feature (Starter+);
+    // free/anonymous visitors get the scores and ranked fixes, but the
+    // step-by-step suggestions are locked. Skipping generation for them also
+    // saves the model call. Anonymous = free with no DB lookup.
+    const plan = user ? await getUserPlan(user.id) : "free";
+    const canSuggest = planAllowsSuggestions(plan);
+
     // Everything that needs a round-trip runs together, so the report's wall
     // time is the SLOWEST of these, not their sum. The DB write and the GitHub
     // status lookup used to run sequentially after the AI calls — that added
@@ -100,7 +109,7 @@ export async function runReport(
     const [narrative, suggestions, scoreAudit, requestId, githubConnected] =
       await Promise.all([
         explainReport(report),
-        generateSuggestions(report, page),
+        canSuggest ? generateSuggestions(report, page) : Promise.resolve([]),
         user?.isAdmin ? auditReport(report, page) : Promise.resolve(null),
         saveReportRequest(report, user?.id ?? null, optimizations),
         user
@@ -112,6 +121,7 @@ export async function runReport(
       report,
       narrative,
       suggestions,
+      suggestionsLocked: !canSuggest,
       optimizations,
       requestId,
       githubConnected,
