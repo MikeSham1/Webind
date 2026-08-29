@@ -12,6 +12,7 @@ import {
   createBillingPortalSession,
   createCheckoutSession,
   isBillingConfigured,
+  stripeMode,
 } from "./stripe";
 
 describe("plans config", () => {
@@ -61,6 +62,19 @@ describe("stripe helpers degrade safely without keys", () => {
 
   it("reports unconfigured when no secret key is set", () => {
     expect(isBillingConfigured()).toBe(false);
+  });
+
+  it("detects the Stripe mode from the key prefix (sandbox is the safe default)", () => {
+    expect(stripeMode()).toBe("off");
+    process.env.STRIPE_SECRET_KEY = "sk_test_abc";
+    expect(stripeMode()).toBe("test");
+    process.env.STRIPE_SECRET_KEY = "rk_test_abc";
+    expect(stripeMode()).toBe("test");
+    process.env.STRIPE_SECRET_KEY = "sk_live_abc";
+    expect(stripeMode()).toBe("live");
+    // Anything ambiguous is treated as test, never live.
+    process.env.STRIPE_SECRET_KEY = "weird_key";
+    expect(stripeMode()).toBe("test");
   });
 
   it("refuses checkout instead of throwing when unconfigured", async () => {

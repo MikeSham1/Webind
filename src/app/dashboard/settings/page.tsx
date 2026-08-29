@@ -10,7 +10,7 @@ import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
 import { getGitHubConnectionStatus } from "@/lib/integrations/githubConnections";
 import { getSubscription, getUserPlan } from "@/lib/billing/store";
 import { planById } from "@/lib/billing/plans";
-import { isBillingConfigured } from "@/lib/billing/stripe";
+import { isBillingConfigured, stripeMode } from "@/lib/billing/stripe";
 import { summarizeUserAgent } from "@/lib/userAgent";
 import { revokeOtherSessionsAction, revokeSessionAction } from "./actions";
 
@@ -70,6 +70,7 @@ export default async function SettingsPage() {
               status={subscription?.status ?? "inactive"}
               hasCustomer={Boolean(subscription?.stripeCustomerId)}
               billingConfigured={isBillingConfigured()}
+              testMode={stripeMode() === "test"}
             />
           </div>
         </section>

@@ -11,6 +11,8 @@ interface Props {
   hasCustomer: boolean;
   /** True when Stripe keys are configured on the server. */
   billingConfigured: boolean;
+  /** Stripe is in test/sandbox mode — no real charges. */
+  testMode?: boolean;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -22,7 +24,7 @@ const STATUS_LABEL: Record<string, string> = {
   inactive: "—",
 };
 
-export default function BillingSection({ planName, status, hasCustomer, billingConfigured }: Props) {
+export default function BillingSection({ planName, status, hasCustomer, billingConfigured, testMode = false }: Props) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,8 +50,13 @@ export default function BillingSection({ planName, status, hasCustomer, billingC
     <div className="rounded-xl border border-line bg-surface p-5">
       <div className="flex items-baseline justify-between gap-3">
         <span className="font-sans text-sm font-semibold text-ink">Current plan</span>
-        <span className="font-mono text-xs text-muted">
-          {STATUS_LABEL[status] ?? status}
+        <span className="flex items-center gap-2">
+          {testMode && (
+            <span className="rounded-full border border-warn/50 bg-warn/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-warn">
+              Sandbox
+            </span>
+          )}
+          <span className="font-mono text-xs text-muted">{STATUS_LABEL[status] ?? status}</span>
         </span>
       </div>
       <p className="mt-1 font-display text-2xl font-semibold text-ink">{planName}</p>

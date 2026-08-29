@@ -10,6 +10,8 @@ interface Props {
   billingConfigured: boolean;
   /** Someone is signed in — paid CTAs can go straight to checkout. */
   signedIn: boolean;
+  /** Stripe is in test/sandbox mode — no real charges. */
+  testMode?: boolean;
 }
 
 /** A single instrument-panel stat: big display value over a mono label. */
@@ -36,7 +38,7 @@ function specs(plan: Plan): { value: string; label: string }[] {
   ];
 }
 
-export default function PricingTable({ plans, billingConfigured, signedIn }: Props) {
+export default function PricingTable({ plans, billingConfigured, signedIn, testMode = false }: Props) {
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,6 +66,11 @@ export default function PricingTable({ plans, billingConfigured, signedIn }: Pro
 
   return (
     <div>
+      {testMode && (
+        <p className="mx-auto mb-5 max-w-md rounded-full border border-warn/50 bg-warn/10 px-4 py-2 text-center font-mono text-[11px] uppercase tracking-[0.14em] text-warn">
+          Sandbox · test mode — no real charges (card 4242 4242 4242 4242)
+        </p>
+      )}
       <div className="grid items-start gap-4 md:grid-cols-3">
         {plans.map((plan, i) => {
           const paid = Boolean(plan.stripePriceEnv);

@@ -3,7 +3,7 @@ import Link from "next/link";
 import PricingTable from "@/components/PricingTable";
 import { getCurrentUser } from "@/lib/auth";
 import { PLANS } from "@/lib/billing/plans";
-import { isBillingConfigured } from "@/lib/billing/stripe";
+import { isBillingConfigured, stripeMode } from "@/lib/billing/stripe";
 
 export const dynamic = "force-dynamic";
 
@@ -102,7 +102,7 @@ export default async function PricingPage() {
         </section>
 
         <div className="reveal mt-12" style={{ animationDelay: "180ms" }}>
-          <PricingTable plans={PLANS} billingConfigured={billingConfigured} signedIn={Boolean(user)} />
+          <PricingTable plans={PLANS} billingConfigured={billingConfigured} signedIn={Boolean(user)} testMode={stripeMode() === "test"} />
         </div>
 
         <p className="mx-auto mt-6 max-w-xl text-center text-xs leading-relaxed text-muted">

@@ -23,6 +23,18 @@ export function isBillingConfigured(): boolean {
   return Boolean(process.env.STRIPE_SECRET_KEY);
 }
 
+/**
+ * Which Stripe environment the keys point at. Test-mode (sandbox) keys are
+ * `sk_test_` / `rk_test_`; live keys are `sk_live_` / `rk_live_`. Anything set
+ * that isn't clearly live is treated as test — the safe default. Surfaced in
+ * the UI so a sandbox checkout is never mistaken for a real charge.
+ */
+export function stripeMode(): "test" | "live" | "off" {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) return "off";
+  return key.startsWith("sk_live_") || key.startsWith("rk_live_") ? "live" : "test";
+}
+
 export type CheckoutResult =
   | { ok: true; url: string }
   | { ok: false; error: string };
