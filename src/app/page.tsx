@@ -34,6 +34,12 @@ export default function Home() {
             Content Studio
           </Link>
           <Link
+            href="/pricing"
+            className="whitespace-nowrap font-sans text-sm font-medium text-muted transition-colors hover:text-accent"
+          >
+            Pricing
+          </Link>
+          <Link
             href="/dashboard"
             className="whitespace-nowrap font-sans text-sm font-medium text-muted transition-colors hover:text-accent"
           >
@@ -93,6 +99,9 @@ export default function Home() {
             WeBind Design
           </span>
           <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
+            <Link href="/pricing" className="hover:text-accent">
+              Pricing
+            </Link>
             <Link href="/methodology" className="hover:text-accent">
               Methodology
             </Link>

@@ -7,7 +7,12 @@ import * as schema from "@/lib/db/schema";
 import { __setTestDb } from "@/lib/db";
 import { DEFAULT_PLAN, PLANS, planById, stripePriceId } from "./plans";
 import { getSubscription, getUserPlan, upsertSubscription } from "./store";
-import { constructWebhookEvent, createCheckoutSession, isBillingConfigured } from "./stripe";
+import {
+  constructWebhookEvent,
+  createBillingPortalSession,
+  createCheckoutSession,
+  isBillingConfigured,
+} from "./stripe";
 
 describe("plans config", () => {
   const saved = { ...process.env };
@@ -71,6 +76,15 @@ describe("stripe helpers degrade safely without keys", () => {
 
   it("returns null (rejects) for a webhook when unconfigured", () => {
     expect(constructWebhookEvent("{}", "sig")).toBeNull();
+  });
+
+  it("refuses to open the billing portal when unconfigured", async () => {
+    const result = await createBillingPortalSession({
+      customerId: "cus_1",
+      returnUrl: "https://webind.test/dashboard/settings",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/configured/i);
   });
 });
 

@@ -73,6 +73,30 @@ export async function createCheckoutSession(input: {
 }
 
 /**
+ * Create a Stripe Billing Portal session so a customer can update, upgrade, or
+ * cancel their subscription and payment method on Stripe's hosted page. Returns
+ * the URL, or an error when billing isn't configured or the customer is unknown.
+ */
+export async function createBillingPortalSession(input: {
+  customerId: string;
+  returnUrl: string;
+}): Promise<CheckoutResult> {
+  const stripe = getStripe();
+  if (!stripe) return { ok: false, error: "Billing isn't configured yet." };
+  try {
+    const session = await stripe.billingPortal.sessions.create({
+      customer: input.customerId,
+      return_url: input.returnUrl,
+    });
+    return session.url
+      ? { ok: true, url: session.url }
+      : { ok: false, error: "Stripe did not return a portal URL." };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Couldn't open the billing portal." };
+  }
+}
+
+/**
  * Verify a webhook payload's signature and return the event, or null if the
  * signature/secret is missing or invalid (the route must reject on null).
  */

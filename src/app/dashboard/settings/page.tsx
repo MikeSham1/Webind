@@ -4,9 +4,13 @@ import { redirect } from "next/navigation";
 import WordPressConnectionForm from "@/components/WordPressConnectionForm";
 import GitHubConnectionForm from "@/components/GitHubConnectionForm";
 import DeleteAccountForm from "@/components/DeleteAccountForm";
+import BillingSection from "@/components/BillingSection";
 import { getCurrentUser, listSessions } from "@/lib/auth";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
 import { getGitHubConnectionStatus } from "@/lib/integrations/githubConnections";
+import { getSubscription, getUserPlan } from "@/lib/billing/store";
+import { planById } from "@/lib/billing/plans";
+import { isBillingConfigured } from "@/lib/billing/stripe";
 import { summarizeUserAgent } from "@/lib/userAgent";
 import { revokeOtherSessionsAction, revokeSessionAction } from "./actions";
 
@@ -21,11 +25,14 @@ export default async function SettingsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [wordpress, github, sessions] = await Promise.all([
+  const [wordpress, github, sessions, subscription, planId] = await Promise.all([
     getWordPressConnectionStatus(user.id),
     getGitHubConnectionStatus(user.id),
     listSessions(user.id),
+    getSubscription(user.id),
+    getUserPlan(user.id),
   ]);
+  const planName = planById(planId)?.name ?? "Free";
 
   return (
     <main className="mx-auto w-full max-w-2xl px-6 py-12">
@@ -50,6 +57,23 @@ export default async function SettingsPage() {
       </div>
 
       <div className="mt-8 space-y-8">
+        <section>
+          <h2 className="font-display text-lg font-semibold text-ink">
+            Plan &amp; billing
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            Your current plan, and a link to update, upgrade, or cancel.
+          </p>
+          <div className="mt-4">
+            <BillingSection
+              planName={planName}
+              status={subscription?.status ?? "inactive"}
+              hasCustomer={Boolean(subscription?.stripeCustomerId)}
+              billingConfigured={isBillingConfigured()}
+            />
+          </div>
+        </section>
+
         <section>
           <h2 className="font-display text-lg font-semibold text-ink">
             WordPress

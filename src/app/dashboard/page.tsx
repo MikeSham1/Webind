@@ -91,6 +91,12 @@ export default async function DashboardPage() {
             Content Studio
           </Link>
           <Link
+            href="/pricing"
+            className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
+          >
+            Pricing
+          </Link>
+          <Link
             href="/dashboard/settings"
             className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
           >
