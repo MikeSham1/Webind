@@ -1,5 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { logInfo, logWarn } from "../log";
 import type {
   ActionableSuggestion,
   CrawledPage,
@@ -8,15 +6,17 @@ import type {
 } from "./types";
 import { fixPriority } from "./report";
 import { classifyPageType } from "./page-type";
+import { generate, selectProvider } from "@/lib/ai/generator";
 
 /**
  * Turn a report's top deficiencies into specific, page-grounded, step-by-step
  * suggestions — the richer successor to the terse `prioritizedFixes` strings.
  *
  * Two paths, same contract as explain.ts:
- *   - With ANTHROPIC_API_KEY, Claude expands each top fix into concrete steps
- *     and a copy-ready example, grounded STRICTLY in the crawl facts we pass it
- *     (it is told never to invent statistics or claims about the business).
+ *   - When a model is configured, Gemini (the model we tune) expands each top
+ *     fix into concrete steps and a copy-ready example, in JSON, grounded
+ *     STRICTLY in the crawl facts we pass it (never inventing statistics or
+ *     claims about the business).
  *   - Without a key, or on any failure, a deterministic page-aware fallback is
  *     used — itself an improvement over the generic fix strings, because it
  *     cites the page's real title, word count, heading count, etc.
@@ -25,7 +25,12 @@ import { classifyPageType } from "./page-type";
  * scores.
  */
 
-const MODEL = "claude-opus-4-8";
+const SUGGESTIONS_SYSTEM =
+  "You are an AI-search (GEO/AEO) optimization expert advising a site owner. " +
+  "For each issue, give a specific, actionable recommendation grounded ONLY in " +
+  "the page facts provided. Never invent statistics, prices, or claims about the " +
+  "business; when a concrete value is needed but not provided, use a clearly-" +
+  "marked placeholder like [your figure]. Respond with JSON only.";
 
 /** How many top-priority fixes to expand into detailed suggestions. */
 const MAX_SUGGESTIONS = 5;
@@ -49,69 +54,46 @@ export async function generateSuggestions(
 
   const fallback = targets.map((s) => deterministicSuggestion(s, page));
 
-  if (!process.env.ANTHROPIC_API_KEY) return fallback;
+  // Gemini (the model we tune) via the provider-neutral layer. json mode +
+  // "low" thinking keep it fast; `generate` never throws (fallback:true on an
+  // unconfigured or failed call), so the deterministic fallback always covers.
+  const provider = selectProvider("gemini");
+  if (!provider.isConfigured()) return fallback;
 
-  const startedAt = Date.now();
+  const result = await generate(
+    {
+      system: SUGGESTIONS_SYSTEM,
+      prompt: buildPrompt(report, page, targets),
+      json: true,
+      thinkingLevel: "low",
+      maxOutputTokens: 1500,
+      purpose: "generate_suggestions",
+    },
+    { provider },
+  );
+  if (result.fallback || !result.text.trim()) return fallback;
+
+  const parsed = parseModelSuggestions(result.text, targets);
+  // Any target the model dropped or returned malformed keeps its deterministic
+  // suggestion, so the user always gets advice for every ranked fix.
+  return targets.map((s) => parsed.get(s.key) ?? deterministicSuggestion(s, page));
+}
+
+/**
+ * Parse the model's JSON. Prefers a `{ "suggestions": [...] }` object; falls
+ * back to scanning for a bare `[...]` array if the model wrapped it in prose.
+ */
+function parseModelSuggestions(
+  text: string,
+  targets: SignalScore[],
+): Map<string, ActionableSuggestion> {
   try {
-    const client = new Anthropic();
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 1500,
-      system:
-        "You are an AI-search (GEO/AEO) optimization expert advising a site " +
-        "owner. For each issue, give a specific, actionable recommendation " +
-        "grounded ONLY in the page facts provided. Never invent statistics, " +
-        "prices, or claims about the business; when a concrete value is needed " +
-        "but not provided, use a clearly-marked placeholder like [your figure]. " +
-        "Call emit_suggestions with exactly one entry per issue.",
-      // Provider-enforced structured output: force the tool so Claude must
-      // return JSON matching the schema, instead of us hunting for brackets in
-      // free text (which broke on prose, fences, or a stray bracket).
-      tools: [suggestionsTool(targets)],
-      tool_choice: { type: "tool", name: "emit_suggestions" },
-      messages: [{ role: "user", content: buildPrompt(report, page, targets) }],
-    });
-
-    logInfo("ai_call.ok", {
-      provider: "anthropic",
-      purpose: "generate_suggestions",
-      model: MODEL,
-      inputTokens: response.usage?.input_tokens,
-      outputTokens: response.usage?.output_tokens,
-      durationMs: Date.now() - startedAt,
-    });
-
-    const toolUse = response.content.find(
-      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
-    );
-    // Prefer the structured tool input; fall back to text parsing only if the
-    // model somehow answered in prose instead of calling the tool.
-    const parsed = toolUse
-      ? structuredToSuggestions(toolUse.input, targets)
-      : parseSuggestions(
-          response.content
-            .filter((b): b is Anthropic.TextBlock => b.type === "text")
-            .map((b) => b.text)
-            .join(""),
-          targets,
-        );
-
-    // Any target Claude dropped or returned malformed keeps its deterministic
-    // suggestion, so the user always gets advice for every ranked fix.
-    return targets.map(
-      (s) =>
-        parsed.get(s.key) ?? deterministicSuggestion(s, page),
-    );
-  } catch (err) {
-    logWarn("ai_call.error", {
-      provider: "anthropic",
-      purpose: "generate_suggestions",
-      model: MODEL,
-      durationMs: Date.now() - startedAt,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return fallback;
+    const structured = structuredToSuggestions(JSON.parse(text), targets);
+    if (structured.size > 0) return structured;
+  } catch {
+    // fall through to the array scanner
   }
+  return parseSuggestions(text, targets);
 }
 
 // --- prompt + parsing -------------------------------------------------------
@@ -141,53 +123,17 @@ function buildPrompt(
     )
     .join("\n");
 
+  const allowedKeys = targets.map((s) => `"${s.key}"`).join(", ");
   return (
     `PAGE FACTS (the only ground truth — do not contradict or exceed these):\n${facts}\n\n` +
     `ISSUES TO ADDRESS (already ranked by priority):\n${issues}\n\n` +
-    `Call emit_suggestions with one entry per issue, in the same order, using ` +
-    `each issue's exact key. Make every title and example specific to THIS page ` +
-    `(reuse its real title, headings, and topic); never invent facts or figures.`
+    `Return JSON: {"suggestions": [ {"key", "title", "steps", "rationale", "example"} ]} ` +
+    `with one entry per issue, in the same order. "key" must be one of: ${allowedKeys}. ` +
+    `"title" is a short imperative headline; "steps" is 2-4 concrete strings; ` +
+    `"rationale" is one sentence; "example" is an optional copy-ready snippet ` +
+    `(meta tag, JSON-LD, rewritten heading). Make every title and example specific ` +
+    `to THIS page (reuse its real title, headings, and topic); never invent facts or figures.`
   );
-}
-
-/**
- * The forced-tool schema. Constrains `key` to the exact issue keys in this run,
- * so the model can't invent a suggestion for a fix we didn't ask about.
- */
-function suggestionsTool(targets: SignalScore[]): Anthropic.Tool {
-  return {
-    name: "emit_suggestions",
-    description: "Return one grounded, page-specific suggestion per issue.",
-    input_schema: {
-      type: "object",
-      properties: {
-        suggestions: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              key: { type: "string", enum: targets.map((s) => s.key) },
-              title: { type: "string", description: "Short imperative headline specific to THIS page." },
-              steps: {
-                type: "array",
-                items: { type: "string" },
-                minItems: 1,
-                maxItems: 4,
-                description: "2-4 concrete steps.",
-              },
-              rationale: { type: "string", description: "One sentence on why it helps AI/search visibility." },
-              example: {
-                type: "string",
-                description: "Optional copy-ready snippet (meta tag, JSON-LD, rewritten heading).",
-              },
-            },
-            required: ["key", "title", "steps", "rationale"],
-          },
-        },
-      },
-      required: ["suggestions"],
-    },
-  };
 }
 
 /** Validate one raw suggestion record against the allowed keys, or null. */

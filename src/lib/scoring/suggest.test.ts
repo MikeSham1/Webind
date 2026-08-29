@@ -186,8 +186,8 @@ describe("structuredToSuggestions (forced-tool input)", () => {
 
 describe("generateSuggestions (offline / no API key)", () => {
   it("returns deterministic suggestions for the ranked fixes when no key is set", async () => {
-    const original = process.env.ANTHROPIC_API_KEY;
-    delete process.env.ANTHROPIC_API_KEY;
+    const original = process.env.GEMINI_API_KEY;
+    delete process.env.GEMINI_API_KEY;
     try {
       const report = buildReport(deficientPage);
       const suggestions = await generateSuggestions(report, deficientPage);
@@ -202,13 +202,13 @@ describe("generateSuggestions (offline / no API key)", () => {
         expect(s.steps.length).toBeGreaterThan(0);
       }
     } finally {
-      if (original !== undefined) process.env.ANTHROPIC_API_KEY = original;
+      if (original !== undefined) process.env.GEMINI_API_KEY = original;
     }
   });
 
   it("returns nothing when the page has no fixable deficiencies", async () => {
-    const original = process.env.ANTHROPIC_API_KEY;
-    delete process.env.ANTHROPIC_API_KEY;
+    const original = process.env.GEMINI_API_KEY;
+    delete process.env.GEMINI_API_KEY;
     try {
       // A healthy page (makePage defaults) should surface few/no fixes; force
       // the empty case with an all-passing report by using the optimized shape.
@@ -244,7 +244,7 @@ describe("generateSuggestions (offline / no API key)", () => {
       // Whatever few fixes remain, the call must never throw and returns an array.
       expect(Array.isArray(suggestions)).toBe(true);
     } finally {
-      if (original !== undefined) process.env.ANTHROPIC_API_KEY = original;
+      if (original !== undefined) process.env.GEMINI_API_KEY = original;
     }
   });
 });

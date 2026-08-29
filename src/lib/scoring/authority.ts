@@ -24,13 +24,20 @@ import {
  */
 export function composeScore(signals: SignalScore[]): AuthorityScore {
   let weighted = 0;
-  let coverage = 0;
+  let measuredWeight = 0;
+  let totalWeight = 0;
   for (const s of signals) {
+    totalWeight += s.weight;
     if (s.score === null) continue;
     weighted += s.score * s.weight;
-    coverage += s.weight;
+    measuredWeight += s.weight;
   }
-  const total = coverage > 0 ? Math.round(weighted / coverage) : 0;
+  const total = measuredWeight > 0 ? Math.round(weighted / measuredWeight) : 0;
+  // Coverage is the share of THIS page's model that ran. Dividing by the total
+  // present weight (not a hard-coded 1.0) keeps it honest when a signal is
+  // deliberately down-weighted for a page type — e.g. evidence on a homepage —
+  // so coverage still reaches 1.0 once everything is measured.
+  const coverage = totalWeight > 0 ? measuredWeight / totalWeight : 0;
   return { total, signals, coverage };
 }
 

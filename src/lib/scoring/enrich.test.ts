@@ -4,7 +4,9 @@ import { makePage } from "./test-fixtures";
 import { applyCitations } from "./enrich";
 import type { CitationResult } from "./ai-citations";
 
-const baseReport = buildReport(makePage());
+// An article page (not the homepage) so the evidence signal keeps its full
+// weight — this test is about brand-mention coverage, not page-type weighting.
+const baseReport = buildReport(makePage({ url: "https://example.com/blog/post" }));
 
 function citationResult(
   brandMentionScore: number | null,

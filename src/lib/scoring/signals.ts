@@ -438,13 +438,25 @@ export function scoreAnswerability(page: CrawledPage): SignalScore {
  * `factDensity` key (so weights and the Evidence & Citation stage are unchanged)
  * while relabeling to reflect the claim-centric measure. See evidence-integrity.ts.
  */
+/**
+ * A homepage isn't an evidence document — its claims live on the article and
+ * product pages behind it — so Evidence Integrity barely counts toward a
+ * homepage's AI score. The score is renormalized over measured weight, so a
+ * small weight here means the signal has little pull on the total.
+ */
+const HOMEPAGE_EVIDENCE_WEIGHT_FACTOR = 0.15;
+
 export function scoreFactDensity(page: CrawledPage): SignalScore {
   const { score, reason, fix } = scoreEvidence(page);
+  const weight =
+    classifyPageType(page) === "homepage"
+      ? AI_WEIGHTS.factDensity * HOMEPAGE_EVIDENCE_WEIGHT_FACTOR
+      : AI_WEIGHTS.factDensity;
   return {
     key: "factDensity",
     label: "Evidence Integrity",
     score,
-    weight: AI_WEIGHTS.factDensity,
+    weight,
     reason,
     fix,
   };

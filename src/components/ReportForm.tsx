@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { runReport } from "@/app/actions";
 import { initialReportState } from "@/app/report-state";
 import { parsePageInput } from "@/lib/domainInput";
@@ -136,13 +136,28 @@ function Spinner() {
   );
 }
 
+/** Typical end-to-end analysis time; the label frames the wait for the user. */
+const ESTIMATE_LOW = 10;
+const ESTIMATE_HIGH = 25;
+
 function ReportSkeleton({ url }: { url: string }) {
+  // A live elapsed counter reassures the user the crawl is still running.
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const overEstimate = elapsed > ESTIMATE_HIGH;
+
   return (
     <div className="mx-auto max-w-2xl text-center" aria-hidden="true">
       <div className="inline-flex items-center gap-3 rounded-full border border-line bg-surface px-5 py-2.5">
         <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
         <span className="font-mono text-xs uppercase tracking-[0.16em] text-muted">
-          Crawling {url ? url : "your site"} — this takes a few seconds
+          Crawling {url ? url : "your site"} · {elapsed}s
+          {overEstimate
+            ? " · almost there"
+            : ` · usually ${ESTIMATE_LOW}–${ESTIMATE_HIGH}s`}
         </span>
       </div>
 
