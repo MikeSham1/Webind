@@ -85,10 +85,12 @@ B. UNBLOCK THE ROADMAP (credentials / decisions the deferred items need)
     An intervention-uplift model can't exist until real accepted fixes are
     deployed and 14/28/56-day windows elapse. Start accepting + shipping fixes.
 
-[ ] *** 2026-09-15 REMINDER: FINE-TUNE THE CONTENT WRITER ***
-    Run: npx tsx scripts/tuning/build-content-dataset.ts  (respects the
-    2026-10-01 data cutoff), then run a Vertex AI supervised-tuning job on the
-    JSONL and point the content writer model env at the tuned endpoint.
+[ ] *** 2026-10-15 REMINDER: FINE-TUNE THE CONTENT WRITER ***
+    Run: npx tsx scripts/tuning/build-synthetic-content-corpus.ts
+    (synthetic best-practices seed + OUR real approved drafts past the
+    2026-10-01 data cutoff -> train.jsonl / validation.jsonl / locked-benchmark),
+    then run a Vertex AI supervised-tuning job on train.jsonl and set
+    CONTENT_WRITER_VERTEX_ENDPOINT to the tuned endpoint.
     (Base Gemini already writes the articles now; this makes it better + on-brand.)
     Note: the in-session cron reminder won't survive Claude restarting — this line
     is the durable reminder.

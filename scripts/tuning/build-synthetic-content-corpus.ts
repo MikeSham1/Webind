@@ -20,6 +20,8 @@ import {
   tuningRows,
   type SelectedSyntheticExample,
 } from "@/lib/content/synthetic-tuning";
+import { listAllDrafts } from "@/lib/content/store";
+import { buildContentSftDataset, TUNING_DATA_CUTOFF } from "@/lib/content/sft-export";
 
 function arg(name: string, fallback: string): string {
   const prefix = `--${name}=`;
@@ -59,7 +61,15 @@ async function main() {
   }
 
   const splits = splitSyntheticExamples(selected);
-  writeJsonl(join(out, "train.jsonl"), tuningRows(splits.train));
+
+  // Supplement the synthetic seed with our OWN human-approved drafts (edited
+  // final preferred), excluding anything dated before the 2026-10-01 cutoff.
+  // Real reviewed data goes into TRAIN, never the locked benchmark. Empty
+  // without a database, so a data-free run still produces a synthetic-only corpus.
+  const realData = buildContentSftDataset(await listAllDrafts());
+  const trainRows = [...tuningRows(splits.train), ...realData.rows];
+
+  writeJsonl(join(out, "train.jsonl"), trainRows);
   writeJsonl(join(out, "validation.jsonl"), tuningRows(splits.validation));
   writeJsonl(join(out, "locked-benchmark.jsonl"), tuningRows(splits.locked));
   writeJsonl(join(out, "provenance.jsonl"), selected.map((example) => ({
@@ -80,8 +90,12 @@ async function main() {
       rejected: rejectedBriefIds.length,
       candidateCount: candidates,
       seed,
+      realApprovedDrafts: realData.rows.length,
+      dataCutoff: TUNING_DATA_CUTOFF.toISOString().slice(0, 10),
       splits: {
-        train: splits.train.length,
+        train: splits.train.length + realData.rows.length,
+        syntheticTrain: splits.train.length,
+        realTrain: realData.rows.length,
         validation: splits.validation.length,
         locked: splits.locked.length,
       },
@@ -90,7 +104,7 @@ async function main() {
   );
 
   console.log(`Corpus written to ${out}`);
-  console.log(`  train: ${splits.train.length}`);
+  console.log(`  train: ${trainRows.length} (${splits.train.length} synthetic + ${realData.rows.length} real approved)`);
   console.log(`  validation: ${splits.validation.length}`);
   console.log(`  locked benchmark: ${splits.locked.length}`);
   console.log(`  rejected briefs: ${rejectedBriefIds.length}`);
