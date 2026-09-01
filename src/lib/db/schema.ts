@@ -458,3 +458,22 @@ export const subscriptions = pgTable("subscriptions", {
   currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
 });
 export type SubscriptionRow = typeof subscriptions.$inferSelect;
+
+/**
+ * Metered feature usage, for enforcing plan quotas (Keyword Visibility probes,
+ * Fix Generator runs). One row per usage event; `quantity` lets a single event
+ * count for several units (a visibility run probes several keywords). Usage in a
+ * calendar month is SUM(quantity) for a user + kind. Never deleted — it's the
+ * audit trail behind a quota decision.
+ */
+export const usageEvents = pgTable("usage_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /** visibility_probe | fix_generation */
+  kind: text("kind").notNull(),
+  quantity: integer("quantity").notNull().default(1),
+});
+export type UsageEventRow = typeof usageEvents.$inferSelect;

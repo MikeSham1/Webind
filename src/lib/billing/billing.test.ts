@@ -7,6 +7,7 @@ import * as schema from "@/lib/db/schema";
 import { __setTestDb } from "@/lib/db";
 import { DEFAULT_PLAN, PLANS, planById, stripePriceId } from "./plans";
 import { getSubscription, getUserPlan, upsertSubscription } from "./store";
+import { getQuota, recordUsage, usageThisMonth } from "./usage";
 import {
   constructWebhookEvent,
   createBillingPortalSession,
@@ -160,5 +161,44 @@ describe("subscription store (real Postgres via PGlite)", () => {
   it("falls back to free if the stored plan id is unknown", async () => {
     await upsertSubscription({ userId, plan: "enterprise-legacy", status: "active" });
     expect(await getUserPlan(userId)).toBe("free");
+  });
+
+  it("quota: free plan's paid features are off-plan and blocked", async () => {
+    await upsertSubscription({ userId, plan: "free", status: "inactive" });
+    const q = await getQuota(userId, "visibility_probe");
+    expect(q.onPlan).toBe(false);
+    expect(q.allowed).toBe(false);
+  });
+
+  it("quota: starter is metered — usage counts down the remaining allowance", async () => {
+    await upsertSubscription({ userId, plan: "starter", status: "active" });
+    let q = await getQuota(userId, "visibility_probe");
+    expect(q.limit).toBe(50);
+    expect(q.remaining).toBe(50);
+
+    await recordUsage(userId, "visibility_probe", 10);
+    expect(await usageThisMonth(userId, "visibility_probe")).toBe(10);
+
+    q = await getQuota(userId, "visibility_probe");
+    expect(q.used).toBe(10);
+    expect(q.remaining).toBe(40);
+    expect(q.allowed).toBe(true);
+  });
+
+  it("quota: blocks once the monthly cap is reached", async () => {
+    await upsertSubscription({ userId, plan: "starter", status: "active" });
+    await recordUsage(userId, "fix_generation", 30); // Starter cap
+    const q = await getQuota(userId, "fix_generation");
+    expect(q.used).toBe(30);
+    expect(q.remaining).toBe(0);
+    expect(q.allowed).toBe(false);
+  });
+
+  it("quota: growth has unlimited fixes (limit -1)", async () => {
+    await upsertSubscription({ userId, plan: "growth", status: "active" });
+    const q = await getQuota(userId, "fix_generation");
+    expect(q.limit).toBe(-1);
+    expect(q.remaining).toBe(Infinity);
+    expect(q.allowed).toBe(true);
   });
 });

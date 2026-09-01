@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { checkKeywordVisibility } from "@/lib/visibility/check";
 import { saveVisibilityOutcome } from "@/lib/visibility/store";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
+import { getQuota, recordUsage } from "@/lib/billing/usage";
 import type { VisibilityState } from "./state";
 
 function parseKeywords(raw: string): string[] {
@@ -37,9 +38,25 @@ export async function runVisibilityCheck(
     return { status: "error", error: formatRetryAfter(limit.retryAfterMs) };
   }
 
+  // Plan quota: Keyword Visibility is a paid, metered feature.
+  const quota = await getQuota(user.id, "visibility_probe");
+  if (!quota.onPlan) {
+    return {
+      status: "error",
+      error: "Keyword Visibility is a paid feature — upgrade to Starter to run probes.",
+    };
+  }
+  if (!quota.allowed) {
+    return {
+      status: "error",
+      error: `You've used all ${quota.limit} Keyword Visibility probes this month. Upgrade for more.`,
+    };
+  }
+
   const domain = String(formData.get("domain") ?? "").trim();
   const brandName = String(formData.get("brandName") ?? "").trim() || undefined;
-  const keywords = parseKeywords(String(formData.get("keywords") ?? ""));
+  // Only run as many keywords as the remaining quota allows.
+  const keywords = parseKeywords(String(formData.get("keywords") ?? "")).slice(0, quota.remaining);
 
   const result = await checkKeywordVisibility({ domain, brandName, keywords });
   if (!result.ok) {
@@ -49,6 +66,8 @@ export async function runVisibilityCheck(
   // Persist the measured AI-surfacing outcome as ground-truth training data for
   // the readiness model. Best-effort — never blocks or breaks the user's check.
   await saveVisibilityOutcome(result.report, user.id);
+  // Meter the probes actually run (post dedup/cap), against the monthly quota.
+  await recordUsage(user.id, "visibility_probe", result.report.keywords.length);
 
   return { status: "success", report: result.report };
 }

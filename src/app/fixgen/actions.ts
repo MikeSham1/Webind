@@ -6,6 +6,7 @@ import { crawl } from "@/lib/crawler/crawl";
 import { CrawlerBusyError } from "@/lib/crawler/browser";
 import { BlockedUrlError, normalizeUrl } from "@/lib/crawler/ssrf";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
+import { getQuota, recordUsage } from "@/lib/billing/usage";
 import { buildSnapshot } from "@/lib/fixgen/snapshot";
 import {
   buildMetaDescriptionContext,
@@ -53,6 +54,15 @@ export async function generateFixAction(
   const limit = checkRateLimit(`fixgen:${user.id}`, 60 * 60 * 1000, 20);
   if (!limit.allowed) return { status: "error", error: formatRetryAfter(limit.retryAfterMs) };
 
+  // Plan quota: the Fix Generator is a paid, metered feature.
+  const quota = await getQuota(user.id, "fix_generation");
+  if (!quota.onPlan) {
+    return { status: "error", error: "The Fix Generator is a paid feature — upgrade to Starter to generate fixes." };
+  }
+  if (!quota.allowed) {
+    return { status: "error", error: `You've used all ${quota.limit} fixes this month. Upgrade for more.` };
+  }
+
   const report = await getReportForUser(requestId, user.id);
   if (!report) return { status: "error", error: "Couldn't find that report." };
 
@@ -84,6 +94,10 @@ export async function generateFixAction(
       category,
     };
   }
+
+  // A usable fix was produced — meter it against the monthly quota. (no_fix,
+  // fallback, and empty-accepted paths above don't consume quota.)
+  await recordUsage(user.id, "fix_generation", 1);
 
   const ids = await persistFixRun(snapshot, gate.context, outcome, user.id);
   if (!ids) {
