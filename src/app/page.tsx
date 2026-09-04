@@ -94,6 +94,16 @@ export default async function Home() {
           <div className="reveal mt-10" style={{ animationDelay: "180ms" }}>
             <ReportForm />
           </div>
+
+          <p
+            className="reveal mt-6 text-sm text-muted"
+            style={{ animationDelay: "220ms" }}
+          >
+            Got more than one page?{" "}
+            <Link href="/site-report" className="font-medium text-accent hover:underline">
+              Scan your whole sitemap →
+            </Link>
+          </p>
         </section>
 
         {/* Pricing — below the analyzer, so a visitor who just ran a report can
