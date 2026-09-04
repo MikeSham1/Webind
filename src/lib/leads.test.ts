@@ -9,8 +9,8 @@ afterEach(() => {
 
 const report: ReportResult = {
   url: "https://example.com",
-  ai: { total: 40, signals: [], coverage: 0.75 },
-  traditional: { total: 55, signals: [], coverage: 0.6 },
+  ai: { total: 40, signals: [], coverage: 0.75, caps: [] },
+  traditional: { total: 55, signals: [], coverage: 0.6, caps: [] },
   prioritizedFixes: [],
   modelVersion: "test",
 };

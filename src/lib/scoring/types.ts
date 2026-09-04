@@ -99,6 +99,23 @@ export interface SignalScore {
   fix: string | null;
 }
 
+/**
+ * A failed fundamental that CAPPED the score. Authority is gated, not purely
+ * additive: some deficiencies (an erroring page, blocked AI crawlers, no HTTPS)
+ * are disqualifying no matter how strong the content is, so instead of being
+ * diluted across the weighted average they impose a hard ceiling on the total.
+ * See scoring/gates.ts. Empty when every fundamental passed.
+ */
+export interface AppliedCap {
+  id: string;
+  /** What fundamental failed, in plain language. */
+  label: string;
+  /** The ceiling this failure imposes on the score (0-100). */
+  ceiling: number;
+  /** How to lift the cap. */
+  fix: string;
+}
+
 export interface AuthorityScore {
   total: number;
   signals: SignalScore[];
@@ -108,6 +125,11 @@ export interface AuthorityScore {
    * the full 0-100 range and stays comparable across sites.
    */
   coverage: number;
+  /**
+   * Fundamentals that failed and capped `total`. The displayed `total` already
+   * reflects the lowest ceiling among these; empty when nothing capped.
+   */
+  caps: AppliedCap[];
 }
 
 export interface ReportResult {

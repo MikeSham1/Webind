@@ -1,6 +1,7 @@
 import type { ReportResult, SignalScore } from "./types";
 import type { CitationResult } from "./ai-citations";
 import { composeScore } from "./authority";
+import { capTotal } from "./gates";
 
 /**
  * Fold a live citation result into a report as a separate, optional layer.
@@ -42,5 +43,9 @@ export function applyCitations(
     };
   });
 
-  return { ...report, ai: composeScore(signals) };
+  // The gating caps are page-derived and unaffected by the citation result, so
+  // carry the original ones forward and re-apply them to the recomposed total.
+  const base = composeScore(signals);
+  const caps = report.ai.caps;
+  return { ...report, ai: { ...base, caps, total: capTotal(base.total, caps) } };
 }

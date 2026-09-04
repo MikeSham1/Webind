@@ -9,8 +9,8 @@ function sig(key: string, score: number | null, weight: number): SignalScore {
 function report(ai: SignalScore[], traditional: SignalScore[]): ReportResult {
   return {
     url: "https://example.com/",
-    ai: { total: 0, signals: ai, coverage: 1 },
-    traditional: { total: 0, signals: traditional, coverage: 1 },
+    ai: { total: 0, signals: ai, coverage: 1, caps: [] },
+    traditional: { total: 0, signals: traditional, coverage: 1, caps: [] },
     prioritizedFixes: [],
     modelVersion: "test",
   };

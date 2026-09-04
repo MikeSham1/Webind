@@ -165,3 +165,34 @@ describe("score range and coverage", () => {
     expect(scoreTraditionalAuthority(page).coverage).toBeCloseTo(0.78);
   });
 });
+
+describe("gating caps on fundamentals", () => {
+  it("leaves a page that clears every fundamental uncapped", () => {
+    expect(scoreAiAuthority(optimizedPage()).caps).toEqual([]);
+    expect(scoreTraditionalAuthority(optimizedPage()).caps).toEqual([]);
+  });
+
+  it("caps an otherwise-excellent page whose AI crawlers are blocked", () => {
+    // Content signals are all strong, but robots.txt blocks AI crawlers — a
+    // disqualifying failure. The weighted score would be high; the cap wins.
+    const page = optimizedPage({ robotsAllowsAiBots: false });
+    const ai = scoreAiAuthority(page);
+    expect(ai.total).toBe(40); // the "crawlable" ceiling
+    expect(ai.caps.map((c) => c.id)).toContain("crawlable");
+  });
+
+  it("caps a strong page served over plain HTTP on the traditional score", () => {
+    const page = optimizedPage({ url: "http://example.com/guide-to-widgets" });
+    const t = scoreTraditionalAuthority(page);
+    expect(t.total).toBe(65); // the "secure" ceiling
+    expect(t.caps.map((c) => c.id)).toContain("secure");
+  });
+
+  it("a cap never raises a score below the ceiling", () => {
+    // The broken page's weighted total is already far below every ceiling, so
+    // the caps are present but don't change the (already tiny) number.
+    const ai = scoreAiAuthority(brokenPage());
+    expect(ai.caps.length).toBeGreaterThan(0);
+    expect(ai.total).toBeLessThan(10);
+  });
+});

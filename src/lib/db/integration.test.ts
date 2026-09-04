@@ -116,8 +116,8 @@ function tokenFromResetEmail(text: string): string {
 
 const report = (url: string): ReportResult => ({
   url,
-  ai: { total: 50, signals: [], coverage: 1 },
-  traditional: { total: 60, signals: [], coverage: 1 },
+  ai: { total: 50, signals: [], coverage: 1, caps: [] },
+  traditional: { total: 60, signals: [], coverage: 1, caps: [] },
   prioritizedFixes: [],
   modelVersion: "test",
 });

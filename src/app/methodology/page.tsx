@@ -146,6 +146,25 @@ export default function MethodologyPage() {
 
       <section className="mt-10 space-y-3">
         <h2 className="font-display text-lg font-semibold text-ink">
+          Fundamentals can cap the score
+        </h2>
+        <p className="text-[15px] leading-relaxed text-muted">
+          Authority isn&apos;t purely additive. The domains at the top of every
+          authority scale all clear the same table stakes — they&apos;re{" "}
+          <strong className="text-ink">reachable, crawlable, secure,
+          substantive, and clearly identified</strong>. Failing one of those is
+          disqualifying, not just one weak input among many: a page AI crawlers
+          can&apos;t read can&apos;t be cited no matter how good its content is.
+          So each fundamental, when it fails, imposes a hard{" "}
+          <strong className="text-ink">ceiling</strong> on the score, and the
+          total is the lower of the weighted average and that ceiling. A cap only
+          ever lowers a score; a page that clears every fundamental is never
+          touched, and the report always names the fundamental that capped it.
+        </p>
+      </section>
+
+      <section className="mt-10 space-y-3">
+        <h2 className="font-display text-lg font-semibold text-ink">
           The visibility pipeline (stages + confidence)
         </h2>
         <p className="text-[15px] leading-relaxed text-muted">
