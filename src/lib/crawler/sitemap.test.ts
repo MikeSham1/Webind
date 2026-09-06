@@ -113,4 +113,33 @@ describe("discoverSitemapUrls", () => {
     const out = await discoverSitemapUrls("not a url", { fetchImpl });
     expect(out.urls).toEqual([]);
   });
+
+  it("never contacts an internal address a redirect points at", async () => {
+    // An attacker-controlled site can make its own robots.txt (a URL that
+    // passes the SSRF check) 302 to an internal address. If we fetch with
+    // `redirect: "follow"`, the underlying fetch chases that Location header
+    // itself, with no chance for us to validate the hop first.
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      calls.push(url);
+      if (url === "https://acme.com/robots.txt") {
+        if (init?.redirect === "manual") {
+          return new Response(null, {
+            status: 302,
+            headers: { location: "http://169.254.169.254/latest/meta-data/" },
+          });
+        }
+        // Models what a real `redirect: "follow"` fetch does: it transparently
+        // issues the follow-up request itself before we ever see a response.
+        calls.push("http://169.254.169.254/latest/meta-data/");
+        return new Response("secret", { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    }) as unknown as typeof fetch;
+
+    await discoverSitemapUrls("acme.com", { fetchImpl });
+
+    expect(calls).not.toContain("http://169.254.169.254/latest/meta-data/");
+  });
 });

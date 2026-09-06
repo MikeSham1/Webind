@@ -43,6 +43,9 @@ export interface DiscoverOptions {
 /** Largest sitemap document we'll read, to bound memory. */
 const MAX_SITEMAP_BYTES = 10 * 1024 * 1024; // 10MB
 
+/** Redirect chains longer than this are refused rather than followed forever. */
+const MAX_REDIRECT_HOPS = 10;
+
 /**
  * Extract `<loc>` values and classify the document. Tolerant of namespace
  * prefixes (`<image:loc>` is ignored — only bare `<loc>`), CDATA, and
@@ -160,36 +163,62 @@ export async function discoverSitemapUrls(
 
 // --- helpers ---------------------------------------------------------------
 
-/** SSRF-guarded, size- and time-bounded GET returning body text, or null. */
+/**
+ * SSRF-guarded, size- and time-bounded GET returning body text, or null.
+ *
+ * Follows redirects itself, one hop at a time, validating each target before
+ * requesting it — `redirect: "follow"` would let a same-origin document (e.g.
+ * a robots.txt at a URL that already passed the SSRF check) 302 straight to an
+ * internal address, with no chance to check it first. See ssrf.ts and the
+ * equivalent resolution in crawl.ts for why every hop needs its own check.
+ */
 async function fetchText(
   url: string,
   doFetch: typeof fetch,
   timeoutMs: number,
 ): Promise<string | null> {
-  // Structural + resolved SSRF check before we ever open the connection.
-  try {
-    await assertPublicUrl(url);
-  } catch (err) {
-    if (err instanceof BlockedUrlError) return null;
-    return null;
+  let current = url;
+
+  for (let hop = 0; hop < MAX_REDIRECT_HOPS; hop++) {
+    try {
+      await assertPublicUrl(current);
+    } catch (err) {
+      if (err instanceof BlockedUrlError) return null;
+      return null;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let resp: Response;
+    try {
+      resp = await doFetch(current, {
+        signal: controller.signal,
+        redirect: "manual",
+        headers: { accept: "application/xml,text/xml,text/plain,*/*" },
+      });
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const isRedirect = resp.status >= 300 && resp.status < 400 && resp.status !== 304;
+    if (!isRedirect) {
+      if (!resp.ok) return null;
+      const body = await resp.text();
+      return body.length > MAX_SITEMAP_BYTES ? body.slice(0, MAX_SITEMAP_BYTES) : body;
+    }
+
+    const location = resp.headers.get("location");
+    if (!location) return null;
+    try {
+      current = new URL(location, current).toString();
+    } catch {
+      return null;
+    }
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const resp = await doFetch(url, {
-      signal: controller.signal,
-      redirect: "follow",
-      headers: { accept: "application/xml,text/xml,text/plain,*/*" },
-    });
-    if (!resp.ok) return null;
-    const body = await resp.text();
-    return body.length > MAX_SITEMAP_BYTES ? body.slice(0, MAX_SITEMAP_BYTES) : body;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+  return null;
 }
 
 function sameHost(url: string, host: string): boolean {
