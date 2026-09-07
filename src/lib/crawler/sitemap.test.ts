@@ -45,6 +45,9 @@ describe("sitemapsFromRobots", () => {
   });
 });
 
+/** Bypasses the real (DNS-resolving) SSRF check so tests stay offline. */
+const allowAll = async () => true;
+
 /** Build an injectable fetch that serves a fixed map of URL → xml/text. */
 function fakeFetch(routes: Record<string, string>): typeof fetch {
   return vi.fn(async (input: string | URL | Request) => {
@@ -67,7 +70,7 @@ describe("discoverSitemapUrls", () => {
         <url><loc>https://evil.example/phish</loc></url>
       </urlset>`,
     });
-    const out = await discoverSitemapUrls("acme.com", { fetchImpl });
+    const out = await discoverSitemapUrls("acme.com", { fetchImpl, isUrlAllowed: allowAll });
     expect(out.sitemaps).toEqual(["https://acme.com/sitemap.xml"]);
     // The third-party URL is dropped — a sitemap can't make us crawl other hosts.
     expect(out.urls).toEqual(["https://acme.com/", "https://acme.com/pricing"]);
@@ -84,7 +87,10 @@ describe("discoverSitemapUrls", () => {
         <url><loc>https://acme.com/a</loc></url>
       </urlset>`,
     });
-    const out = await discoverSitemapUrls("https://acme.com", { fetchImpl });
+    const out = await discoverSitemapUrls("https://acme.com", {
+      fetchImpl,
+      isUrlAllowed: allowAll,
+    });
     expect(out.urls).toEqual(["https://acme.com/a"]);
   });
 
@@ -97,14 +103,18 @@ describe("discoverSitemapUrls", () => {
       "https://acme.com/robots.txt": "",
       "https://acme.com/sitemap.xml": `<urlset>${locs}</urlset>`,
     });
-    const out = await discoverSitemapUrls("acme.com", { fetchImpl, maxUrls: 10 });
+    const out = await discoverSitemapUrls("acme.com", {
+      fetchImpl,
+      maxUrls: 10,
+      isUrlAllowed: allowAll,
+    });
     expect(out.urls).toHaveLength(10);
     expect(out.truncated).toBe(true);
   });
 
   it("returns empty (never throws) when nothing is reachable", async () => {
     const fetchImpl = fakeFetch({}); // everything 404s
-    const out = await discoverSitemapUrls("acme.com", { fetchImpl });
+    const out = await discoverSitemapUrls("acme.com", { fetchImpl, isUrlAllowed: allowAll });
     expect(out).toEqual({ sitemaps: [], urls: [], truncated: false });
   });
 
@@ -138,8 +148,47 @@ describe("discoverSitemapUrls", () => {
       return new Response("not found", { status: 404 });
     }) as unknown as typeof fetch;
 
-    await discoverSitemapUrls("acme.com", { fetchImpl });
+    // Models the real structural check (block the internal literal, allow the
+    // rest) without doing a real DNS lookup on acme.com.
+    const isUrlAllowed = async (u: string) => {
+      try {
+        return new URL(u).hostname !== "169.254.169.254";
+      } catch {
+        return false;
+      }
+    };
+
+    await discoverSitemapUrls("acme.com", { fetchImpl, isUrlAllowed });
 
     expect(calls).not.toContain("http://169.254.169.254/latest/meta-data/");
+  });
+
+  it("uses an injected isUrlAllowed instead of a real DNS lookup", async () => {
+    // Without injection, every fetch does a live DNS resolution of the site's
+    // hostname — slow and flaky in a sandboxed/offline test run. An injectable
+    // predicate (mirroring crawl.ts's isUrlAllowed) lets tests stay offline.
+    const fetchImpl = fakeFetch({
+      "https://acme.com/robots.txt": "Sitemap: https://acme.com/sitemap.xml\n",
+      "https://acme.com/sitemap.xml": `<urlset>
+        <url><loc>https://acme.com/</loc></url>
+      </urlset>`,
+    });
+    const isUrlAllowed = vi.fn(async () => true);
+
+    const out = await discoverSitemapUrls("acme.com", { fetchImpl, isUrlAllowed });
+
+    expect(isUrlAllowed).toHaveBeenCalledWith("https://acme.com/robots.txt");
+    expect(out.urls).toEqual(["https://acme.com/"]);
+  });
+
+  it("skips a URL the injected isUrlAllowed refuses", async () => {
+    const fetchImpl = fakeFetch({
+      "https://acme.com/robots.txt": "Sitemap: https://acme.com/sitemap.xml\n",
+    });
+    const out = await discoverSitemapUrls("acme.com", {
+      fetchImpl,
+      isUrlAllowed: async () => false,
+    });
+    expect(out).toEqual({ sitemaps: [], urls: [], truncated: false });
   });
 });

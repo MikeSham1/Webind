@@ -1,4 +1,4 @@
-import { assertPublicUrl, BlockedUrlError, normalizeUrl } from "./ssrf";
+import { isPublicUrl, normalizeUrl } from "./ssrf";
 
 /**
  * Sitemap discovery.
@@ -38,6 +38,11 @@ export interface DiscoverOptions {
   timeoutMs?: number;
   /** Injectable fetch so tests never touch the network. Default global fetch. */
   fetchImpl?: typeof fetch;
+  /**
+   * Injectable SSRF check (mirrors crawl.ts's `isUrlAllowed`), so tests don't
+   * pay for a real DNS lookup. Defaults to the real public-address check.
+   */
+  isUrlAllowed?: (url: string) => Promise<boolean>;
 }
 
 /** Largest sitemap document we'll read, to bound memory. */
@@ -95,6 +100,7 @@ export async function discoverSitemapUrls(
   const maxSitemaps = opts.maxSitemaps ?? 10;
   const timeoutMs = opts.timeoutMs ?? 8000;
   const doFetch = opts.fetchImpl ?? fetch;
+  const isUrlAllowed = opts.isUrlAllowed ?? ((u: string) => isPublicUrl(u));
 
   const normalized = normalizeUrl(siteUrl);
   if (!normalized) return { sitemaps: [], urls: [], truncated: false };
@@ -111,7 +117,7 @@ export async function discoverSitemapUrls(
 
   // Seed candidate sitemap documents: robots.txt directives first, then the
   // conventional locations.
-  const robots = await fetchText(`${origin}/robots.txt`, doFetch, timeoutMs);
+  const robots = await fetchText(`${origin}/robots.txt`, doFetch, timeoutMs, isUrlAllowed);
   const seeds = [
     ...(robots ? sitemapsFromRobots(robots) : []),
     `${origin}/sitemap.xml`,
@@ -133,7 +139,7 @@ export async function discoverSitemapUrls(
     // Only fetch same-host sitemaps (a sitemap index could point elsewhere).
     if (!sameHost(sitemapUrl, host)) continue;
 
-    const xml = await fetchText(sitemapUrl, doFetch, timeoutMs);
+    const xml = await fetchText(sitemapUrl, doFetch, timeoutMs, isUrlAllowed);
     if (!xml) continue;
     fetchedSitemaps.push(sitemapUrl);
 
@@ -176,16 +182,12 @@ async function fetchText(
   url: string,
   doFetch: typeof fetch,
   timeoutMs: number,
+  isUrlAllowed: (url: string) => Promise<boolean>,
 ): Promise<string | null> {
   let current = url;
 
   for (let hop = 0; hop < MAX_REDIRECT_HOPS; hop++) {
-    try {
-      await assertPublicUrl(current);
-    } catch (err) {
-      if (err instanceof BlockedUrlError) return null;
-      return null;
-    }
+    if (!(await isUrlAllowed(current))) return null;
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
