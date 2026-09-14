@@ -32,6 +32,22 @@ describe("parseSitemap", () => {
     const p = parseSitemap(xml);
     expect(p.locs).toEqual(["https://acme.com/a?x=1&y=2"]);
   });
+
+  it("decodes ampersand last (no double-decode) and handles numeric entities", () => {
+    // `&amp;#38;` is the encoding of the literal text `&#38;` — it must NOT
+    // collapse to `&`. And `&#38;` / `&#x26;` are the numeric forms of `&`.
+    const xml = `<urlset>
+      <url><loc>https://acme.com/a?p=&amp;#38;</loc></url>
+      <url><loc>https://acme.com/b?x=1&#38;y=2</loc></url>
+      <url><loc>https://acme.com/c?x=1&#x26;y=2</loc></url>
+    </urlset>`;
+    const p = parseSitemap(xml);
+    expect(p.locs).toEqual([
+      "https://acme.com/a?p=&#38;",
+      "https://acme.com/b?x=1&y=2",
+      "https://acme.com/c?x=1&y=2",
+    ]);
+  });
 });
 
 describe("sitemapsFromRobots", () => {
@@ -190,5 +206,70 @@ describe("discoverSitemapUrls", () => {
       isUrlAllowed: async () => false,
     });
     expect(out).toEqual({ sitemaps: [], urls: [], truncated: false });
+  });
+
+  it("bounds fetch ATTEMPTS by maxSitemaps even when every child sitemap fails", async () => {
+    // A malicious index lists many same-host child sitemaps that all 404. The
+    // fan-out guard must count attempts, not successes, or it drains the queue.
+    const children = Array.from(
+      { length: 500 },
+      (_, i) => `<sitemap><loc>https://acme.com/s${i}.xml</loc></sitemap>`,
+    ).join("");
+    let fetches = 0;
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input.toString();
+      fetches += 1;
+      if (url === "https://acme.com/sitemap.xml") {
+        return new Response(`<sitemapindex>${children}</sitemapindex>`, { status: 200 });
+      }
+      return new Response("nope", { status: 404 }); // every child fails
+    }) as unknown as typeof fetch;
+
+    const out = await discoverSitemapUrls("acme.com", {
+      fetchImpl,
+      isUrlAllowed: allowAll,
+      maxSitemaps: 10,
+    });
+
+    expect(out.urls).toEqual([]);
+    // robots.txt + the index + at most (maxSitemaps-2) children — nowhere near 500.
+    expect(fetches).toBeLessThanOrEqual(11);
+  });
+
+  it("stops fetching more sitemaps once the page cap is reached", async () => {
+    // A two-file index: the first file alone fills the cap, so the second must
+    // never be fetched.
+    let fetchedSecond = false;
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "https://acme.com/sitemap.xml") {
+        return new Response(
+          `<sitemapindex>
+            <sitemap><loc>https://acme.com/a.xml</loc></sitemap>
+            <sitemap><loc>https://acme.com/b.xml</loc></sitemap>
+          </sitemapindex>`,
+          { status: 200 },
+        );
+      }
+      if (url === "https://acme.com/a.xml") {
+        const locs = Array.from(
+          { length: 5 },
+          (_, i) => `<url><loc>https://acme.com/p${i}</loc></url>`,
+        ).join("");
+        return new Response(`<urlset>${locs}</urlset>`, { status: 200 });
+      }
+      if (url === "https://acme.com/b.xml") fetchedSecond = true;
+      return new Response("", { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const out = await discoverSitemapUrls("acme.com", {
+      fetchImpl,
+      isUrlAllowed: allowAll,
+      maxUrls: 3,
+    });
+
+    expect(out.urls).toHaveLength(3);
+    expect(out.truncated).toBe(true);
+    expect(fetchedSecond).toBe(false);
   });
 });

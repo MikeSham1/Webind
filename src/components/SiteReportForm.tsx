@@ -142,7 +142,7 @@ function SiteResults({ report }: { report: SiteReport }) {
             </thead>
             <tbody>
               {report.pages.map((p) => (
-                <PageRow key={p.url} page={p} origin={report.origin} />
+                <PageRow key={p.url} page={p} />
               ))}
             </tbody>
           </table>
@@ -166,8 +166,20 @@ function Average({ label, value }: { label: string; value: number | null }) {
   );
 }
 
-function PageRow({ page, origin }: { page: PageAssessment; origin: string }) {
-  const path = page.url.startsWith(origin) ? page.url.slice(origin.length) || "/" : page.url;
+/** The path+query of a URL, so the table column stays short even when a page's
+ *  host differs from the origin by a `www.` prefix (discovery treats them as
+ *  same-host, so both forms can appear). */
+function displayPath(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.pathname}${u.search}` || "/";
+  } catch {
+    return url;
+  }
+}
+
+function PageRow({ page }: { page: PageAssessment }) {
+  const path = displayPath(page.url);
   return (
     <tr className="border-b border-line/60 align-top">
       <td className="max-w-[22rem] truncate py-2 pr-4 text-ink" title={page.url}>

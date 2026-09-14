@@ -1,7 +1,6 @@
 "use server";
 
 import { assessSite } from "@/lib/crawler/assess-site";
-import { CrawlerBusyError } from "@/lib/crawler/browser";
 import { parseDomainInput } from "@/lib/domainInput";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import { getClientIp } from "@/lib/requestIp";
@@ -48,9 +47,8 @@ export async function runSiteReport(
     });
     return { status: "success", report };
   } catch (err) {
-    if (err instanceof CrawlerBusyError) {
-      return { status: "error", error: err.message, input: raw };
-    }
+    // assessSite is designed never to throw (per-page failures are recorded in
+    // the report, not raised); this catch is a defensive backstop only.
     logWarn("site_report.error", {
       input: raw,
       error: err instanceof Error ? err.message : String(err),

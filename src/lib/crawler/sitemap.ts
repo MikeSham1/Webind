@@ -70,12 +70,26 @@ export function parseSitemap(xml: string): ParsedSitemap {
 }
 
 function decodeXmlEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
+  return (
+    s
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&#x([0-9a-f]+);/gi, (_, h) => safeCodePoint(parseInt(h, 16)))
+      .replace(/&#(\d+);/g, (_, d) => safeCodePoint(Number(d)))
+      // Ampersand LAST, so a nested entity like `&amp;lt;` decodes to the
+      // literal text `&lt;`, not to `<` (double-decoding).
+      .replace(/&amp;/g, "&")
+  );
+}
+
+function safeCodePoint(cp: number): string {
+  try {
+    return String.fromCodePoint(cp);
+  } catch {
+    return "";
+  }
 }
 
 /** Pull `Sitemap:` directives out of a robots.txt body. */
@@ -130,8 +144,13 @@ export async function discoverSitemapUrls(
   const pageUrls: string[] = [];
   const seenPages = new Set<string>();
   let truncated = false;
+  // Count every fetch we ATTEMPT, not just the ones that succeed. Counting
+  // successes would let a same-host sitemapindex full of failing <loc>s drain
+  // the whole queue — thousands of GETs — while `fetchedSitemaps` never reaches
+  // the cap. This is the real fan-out bound.
+  let attempts = 0;
 
-  while (queue.length > 0 && fetchedSitemaps.length < maxSitemaps) {
+  while (queue.length > 0 && attempts < maxSitemaps) {
     const sitemapUrl = queue.shift()!;
     if (seenSitemaps.has(sitemapUrl)) continue;
     seenSitemaps.add(sitemapUrl);
@@ -139,6 +158,7 @@ export async function discoverSitemapUrls(
     // Only fetch same-host sitemaps (a sitemap index could point elsewhere).
     if (!sameHost(sitemapUrl, host)) continue;
 
+    attempts += 1;
     const xml = await fetchText(sitemapUrl, doFetch, timeoutMs, isUrlAllowed);
     if (!xml) continue;
     fetchedSitemaps.push(sitemapUrl);
@@ -162,6 +182,10 @@ export async function discoverSitemapUrls(
       seenPages.add(clean);
       pageUrls.push(clean);
     }
+
+    // The result set is full — stop fetching further sitemap documents whose
+    // URLs we'd only discard anyway.
+    if (truncated) break;
   }
 
   return { sitemaps: fetchedSitemaps, urls: pageUrls, truncated };
@@ -189,38 +213,69 @@ async function fetchText(
   for (let hop = 0; hop < MAX_REDIRECT_HOPS; hop++) {
     if (!(await isUrlAllowed(current))) return null;
 
+    // The timeout covers the whole exchange — the connection AND the body read
+    // — so a server that dribbles the body (slowloris) still aborts. Clearing
+    // it right after `fetch()` returned would leave the read unbounded.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    let resp: Response;
     try {
-      resp = await doFetch(current, {
+      const resp = await doFetch(current, {
         signal: controller.signal,
         redirect: "manual",
         headers: { accept: "application/xml,text/xml,text/plain,*/*" },
       });
+
+      const isRedirect =
+        resp.status >= 300 && resp.status < 400 && resp.status !== 304;
+      if (isRedirect) {
+        // Drain the redirect's body so undici frees the socket instead of
+        // leaking it until GC, then validate the next hop on the next loop.
+        await resp.body?.cancel().catch(() => {});
+        const location = resp.headers.get("location");
+        if (!location) return null;
+        current = new URL(location, current).toString();
+        continue;
+      }
+
+      if (!resp.ok) {
+        await resp.body?.cancel().catch(() => {});
+        return null;
+      }
+      // Bound the body WHILE streaming, so a multi-GB response can't be fully
+      // buffered into memory before the cap is applied.
+      return await readBounded(resp, MAX_SITEMAP_BYTES);
     } catch {
       return null;
     } finally {
       clearTimeout(timer);
     }
-
-    const isRedirect = resp.status >= 300 && resp.status < 400 && resp.status !== 304;
-    if (!isRedirect) {
-      if (!resp.ok) return null;
-      const body = await resp.text();
-      return body.length > MAX_SITEMAP_BYTES ? body.slice(0, MAX_SITEMAP_BYTES) : body;
-    }
-
-    const location = resp.headers.get("location");
-    if (!location) return null;
-    try {
-      current = new URL(location, current).toString();
-    } catch {
-      return null;
-    }
   }
 
   return null;
+}
+
+/** Read a response body as text, stopping once `maxBytes` have been read. */
+async function readBounded(resp: Response, maxBytes: number): Promise<string> {
+  const reader = resp.body?.getReader();
+  if (!reader) {
+    const text = await resp.text();
+    return text.length > maxBytes ? text.slice(0, maxBytes) : text;
+  }
+  const decoder = new TextDecoder();
+  let out = "";
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    out += decoder.decode(value, { stream: true });
+    if (total >= maxBytes) {
+      await reader.cancel().catch(() => {});
+      break;
+    }
+  }
+  out += decoder.decode();
+  return out;
 }
 
 function sameHost(url: string, host: string): boolean {
