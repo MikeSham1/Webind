@@ -20,12 +20,21 @@ const EXPLAIN_SYSTEM =
  * the call fails, a deterministic fallback narrative is composed from the
  * report itself. Never throws.
  */
-export async function explainReport(
+/** A narrative plus whether it was actually written by the AI (vs the
+ *  deterministic fallback), so the UI can label it honestly. */
+export interface Narrative {
+  text: string;
+  aiGenerated: boolean;
+}
+
+export async function explainReportDetailed(
   report: ReportResult,
   deps: { provider?: AiProvider } = {},
-): Promise<string> {
+): Promise<Narrative> {
   const provider = deps.provider ?? selectProvider("gemini");
-  if (!provider.isConfigured()) return fallbackNarrative(report);
+  if (!provider.isConfigured()) {
+    return { text: fallbackNarrative(report), aiGenerated: false };
+  }
 
   const result = await generate(
     {
@@ -39,7 +48,17 @@ export async function explainReport(
     { provider },
   );
   const text = result.text.trim();
-  return !result.fallback && text ? text : fallbackNarrative(report);
+  return !result.fallback && text
+    ? { text, aiGenerated: true }
+    : { text: fallbackNarrative(report), aiGenerated: false };
+}
+
+/** Back-compat string API (used widely and in tests). */
+export async function explainReport(
+  report: ReportResult,
+  deps: { provider?: AiProvider } = {},
+): Promise<string> {
+  return (await explainReportDetailed(report, deps)).text;
 }
 
 /** Render a 0-1 coverage fraction as a whole percentage. */

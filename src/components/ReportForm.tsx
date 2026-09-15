@@ -113,6 +113,7 @@ export default function ReportForm() {
           <ReportResults
             report={state.report}
             narrative={state.narrative}
+            narrativeIsAi={state.narrativeIsAi}
             suggestions={state.suggestions}
             suggestionsLocked={state.suggestionsLocked}
             optimizations={state.optimizations}

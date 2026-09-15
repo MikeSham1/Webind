@@ -14,6 +14,9 @@ export type ReportState =
       status: "success";
       report: ReportResult;
       narrative: string;
+      /** True when the narrative was written by the AI, not the deterministic
+       *  fallback — lets the UI show (and honestly label) an AI chat bubble. */
+      narrativeIsAi: boolean;
       /** Ready-to-apply fixes generated from the crawl (deterministic). */
       optimizations: OptimizationAssets;
       /**

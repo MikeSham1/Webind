@@ -5,7 +5,7 @@ import { CrawlerBusyError } from "@/lib/crawler/browser";
 import { BlockedUrlError } from "@/lib/crawler/ssrf";
 import { parsePageInput } from "@/lib/domainInput";
 import { buildReport } from "@/lib/scoring/report";
-import { explainReport } from "@/lib/scoring/explain";
+import { explainReportDetailed } from "@/lib/scoring/explain";
 import { generateSuggestions } from "@/lib/scoring/suggest";
 import { predictReadiness } from "@/lib/model/predict";
 import { fetchFieldVitals } from "@/lib/vitals/psi";
@@ -108,7 +108,7 @@ export async function runReport(
     // their latency on top for no reason.
     const [narrative, suggestions, scoreAudit, requestId, githubConnected] =
       await Promise.all([
-        explainReport(report),
+        explainReportDetailed(report),
         canSuggest ? generateSuggestions(report, page) : Promise.resolve([]),
         user?.isAdmin ? auditReport(report, page) : Promise.resolve(null),
         saveReportRequest(report, user?.id ?? null, optimizations),
@@ -119,7 +119,8 @@ export async function runReport(
     return {
       status: "success",
       report,
-      narrative,
+      narrative: narrative.text,
+      narrativeIsAi: narrative.aiGenerated,
       suggestions,
       suggestionsLocked: !canSuggest,
       optimizations,

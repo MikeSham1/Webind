@@ -10,6 +10,7 @@ import SignalBreakdown from "./SignalBreakdown";
 import type { FieldVitals } from "@/lib/vitals/types";
 import type { ScoreAudit } from "@/lib/scoring/audit";
 import FixList from "./FixList";
+import AiBubble from "./AiBubble";
 import OptimizationAssets from "./OptimizationAssets";
 import LeadCapture from "./LeadCapture";
 import type { PrSnapshot } from "./OpenPrBar";
@@ -19,6 +20,8 @@ export interface ReportResultsProps {
   report: ReportResult;
   /** Optional plain-English summary shown above the dials. */
   narrative?: string;
+  /** True when `narrative` was written by the AI (shows an AI chat bubble). */
+  narrativeIsAi?: boolean;
   /** Rich, page-grounded fix suggestions; falls back to plain fixes when absent. */
   suggestions?: ActionableSuggestion[];
   /** True when the detailed suggestions are paywalled (upgrade to unlock). */
@@ -55,6 +58,7 @@ function hostOf(url: string): string {
 export default function ReportResults({
   report,
   narrative,
+  narrativeIsAi = false,
   suggestions,
   suggestionsLocked = false,
   optimizations,
@@ -83,11 +87,14 @@ export default function ReportResults({
             Scored as: {PAGE_TYPE_LABEL[report.pageType]}
           </p>
         )}
-        {narrative && (
-          <p className="mx-auto mt-5 max-w-xl text-[15px] leading-relaxed text-muted">
-            {narrative}
-          </p>
-        )}
+        {narrative &&
+          (narrativeIsAi ? (
+            <AiBubble>{narrative}</AiBubble>
+          ) : (
+            <p className="mx-auto mt-5 max-w-xl text-[15px] leading-relaxed text-muted">
+              {narrative}
+            </p>
+          ))}
         <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
           <Link href="/methodology" className="hover:text-accent">
             Methodology v{report.modelVersion}
