@@ -18,12 +18,6 @@ export default async function Home() {
           <span className="font-display text-xl font-semibold tracking-tight text-ink">
             WeBind Design
           </span>
-          <span
-            className="font-mono text-[11px] tracking-[0.22em] text-accent"
-            aria-hidden="true"
-          >
-            [scan]
-          </span>
         </Link>
         <nav className="flex items-center gap-5">
           <Link
@@ -62,10 +56,8 @@ export default async function Home() {
       {/* Hero + report */}
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 pb-24">
         <section className="mx-auto max-w-3xl pt-16 text-center sm:pt-24">
-          <p className="reveal font-mono text-xs uppercase tracking-[0.24em] text-accent">
-            <span aria-hidden="true">[ </span>
+          <p className="reveal font-sans text-sm font-medium tracking-normal text-accent">
             The new front page is an AI answer
-            <span aria-hidden="true"> ]</span>
           </p>
           <h1
             className="reveal mt-5 font-display text-[2.6rem] font-semibold leading-[1.05] tracking-tight text-ink sm:text-6xl"
