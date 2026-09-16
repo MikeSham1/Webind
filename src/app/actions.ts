@@ -53,7 +53,7 @@ export async function runReport(
   const url = pageInput.url;
 
   // Anonymous endpoint, each run launches a real browser and (optionally) a
-  // Claude call — cap per-visitor throughput before any of that work starts.
+  // Gemini call — cap per-visitor throughput before any of that work starts.
   const ip = await getClientIp();
   const limit = checkRateLimit(`report:${ip}`, 10 * 60 * 1000, 8);
   if (!limit.allowed) {
@@ -79,12 +79,12 @@ export async function runReport(
     ]);
     const report = buildReport(page);
     const pageExperience = vitals.ok ? vitals.vitals : null;
-    // Two Claude-backed products of the report, run together so the second
+    // Two Gemini-backed products of the report, run together so the second
     // doesn't add its own round-trip: the plain-English overview, and the
-    // specific page-grounded fix suggestions. Both use Claude when
-    // ANTHROPIC_API_KEY is set and fall back to deterministic, network-free
-    // output otherwise; neither ever throws. (Live citation checks are
-    // intentionally kept out of the request path.)
+    // specific page-grounded fix suggestions. Both use Gemini when a model key
+    // is configured and fall back to deterministic, network-free output
+    // otherwise; neither ever throws. (Live citation checks are intentionally
+    // kept out of the request path.)
     // Admins also get an LLM "score audit" — a Gemini second opinion that flags
     // any score that looks wrong for this page, so we catch scoring bugs. It's
     // admin-only (it's meta-commentary on our own algorithm, not for customers)

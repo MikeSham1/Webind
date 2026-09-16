@@ -20,7 +20,7 @@ export type ReportState =
       /** Ready-to-apply fixes generated from the crawl (deterministic). */
       optimizations: OptimizationAssets;
       /**
-       * Specific, page-grounded recommendations for the top fixes. Claude-
+       * Specific, page-grounded recommendations for the top fixes. Gemini-
        * expanded when a key is set, deterministic page-aware fallback otherwise.
        */
       suggestions: ActionableSuggestion[];

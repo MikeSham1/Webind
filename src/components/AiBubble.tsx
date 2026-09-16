@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 /**
  * A chat-style speech bubble for text the AI generated, so it reads clearly as
  * "the AI is talking to you" rather than as plain page copy. Used for the
- * Claude-written report narrative and anywhere else AI prose is shown.
+ * Gemini-written report narrative and anywhere else AI prose is shown.
  */
 export default function AiBubble({
   children,

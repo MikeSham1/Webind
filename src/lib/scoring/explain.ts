@@ -66,7 +66,7 @@ function pct(coverage: number): string {
   return `${Math.round(coverage * 100)}%`;
 }
 
-/** Serialize the report into a compact prompt of facts Claude may narrate. */
+/** Serialize the report into a compact prompt of facts the model may narrate. */
 function buildPrompt(report: ReportResult): string {
   const lines: string[] = [];
   lines.push(`Website: ${report.url}`);

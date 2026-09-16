@@ -98,7 +98,7 @@ function parseModelSuggestions(
 
 // --- prompt + parsing -------------------------------------------------------
 
-/** Compact, factual snapshot of the page — the only ground truth Claude gets. */
+/** Compact, factual snapshot of the page — the only ground truth the model gets. */
 function buildPrompt(
   report: ReportResult,
   page: CrawledPage,
