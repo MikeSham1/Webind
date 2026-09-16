@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import PricingTable from "@/components/PricingTable";
+import SiteHeader from "@/components/SiteHeader";
 import { getCurrentUser } from "@/lib/auth";
 import { PLANS } from "@/lib/billing/plans";
 import { isBillingConfigured, stripeMode } from "@/lib/billing/stripe";
@@ -38,38 +39,7 @@ export default async function PricingPage() {
 
   return (
     <div className="flex min-h-full flex-col">
-      {/* Nav — same wordmark + [scan] mark as the rest of the site. */}
-      <header className="mx-auto flex w-full max-w-6xl flex-col items-center gap-4 px-6 py-6 sm:flex-row sm:justify-between">
-        <Link href="/" className="flex items-baseline gap-2 whitespace-nowrap">
-          <span className="font-display text-xl font-semibold tracking-tight text-ink">WeBind Design</span>
-          <span className="font-mono text-[11px] tracking-[0.22em] text-accent" aria-hidden="true">
-            [scan]
-          </span>
-        </Link>
-        <nav className="flex items-center gap-5">
-          <Link
-            href="/methodology"
-            className="whitespace-nowrap font-sans text-sm font-medium text-muted transition-colors hover:text-accent"
-          >
-            Methodology
-          </Link>
-          {user ? (
-            <Link
-              href="/dashboard"
-              className="whitespace-nowrap rounded-full border border-line px-4 py-1.5 font-sans text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent"
-            >
-              Dashboard
-            </Link>
-          ) : (
-            <Link
-              href="/login"
-              className="whitespace-nowrap rounded-full border border-line px-4 py-1.5 font-sans text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent"
-            >
-              Log in
-            </Link>
-          )}
-        </nav>
-      </header>
+      <SiteHeader />
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-6 pb-24">
         <section className="mx-auto max-w-2xl pt-12 text-center sm:pt-16">

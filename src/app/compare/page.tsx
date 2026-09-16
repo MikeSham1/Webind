@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import CompareForm from "@/components/CompareForm";
+import SiteHeader from "@/components/SiteHeader";
 
 // Playwright (used by the crawler inside the server action) requires Node.
 export const runtime = "nodejs";
+// SiteHeader reads cookies/DB per request — never prerender.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Compare — WeBind Design",
@@ -15,30 +18,7 @@ export const metadata: Metadata = {
 export default function ComparePage() {
   return (
     <div className="flex min-h-full flex-col">
-      <header className="mx-auto flex w-full max-w-6xl flex-col items-center gap-4 px-6 py-6 sm:flex-row sm:justify-between">
-        <Link href="/" className="flex items-baseline gap-2 whitespace-nowrap">
-          <span className="font-display text-xl font-semibold tracking-tight text-ink">
-            WeBind
-          </span>
-          <span className="font-mono text-[11px] tracking-[0.22em] text-accent" aria-hidden="true">
-            [scan]
-          </span>
-        </Link>
-        <nav className="flex items-center gap-5">
-          <Link
-            href="/"
-            className="whitespace-nowrap font-sans text-sm font-medium text-muted transition-colors hover:text-accent"
-          >
-            Report
-          </Link>
-          <Link
-            href="/dashboard"
-            className="whitespace-nowrap font-sans text-sm font-medium text-muted transition-colors hover:text-accent"
-          >
-            Dashboard
-          </Link>
-        </nav>
-      </header>
+      <SiteHeader />
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 pb-24">
         <section className="mx-auto max-w-2xl pt-16 text-center sm:pt-20">

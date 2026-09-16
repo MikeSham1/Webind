@@ -1,10 +1,10 @@
 import Link from "next/link";
 import ReportForm from "@/components/ReportForm";
 import PricingTable from "@/components/PricingTable";
+import SiteHeader from "@/components/SiteHeader";
 import { PLANS } from "@/lib/billing/plans";
 import { isBillingConfigured, stripeMode } from "@/lib/billing/stripe";
 import { getCurrentUser } from "@/lib/auth";
-import { logoutAction } from "@/app/account/actions";
 
 // Playwright (used by the crawler inside the server action) requires Node.
 export const runtime = "nodejs";
@@ -17,57 +17,7 @@ export default async function Home() {
   const user = await getCurrentUser();
   return (
     <div className="flex min-h-full flex-col">
-      {/* Nav */}
-      <header className="mx-auto flex w-full max-w-6xl flex-col items-center gap-4 px-6 py-6 sm:flex-row sm:justify-between">
-        <Link href="/" className="flex items-baseline gap-2 whitespace-nowrap">
-          <span className="font-display text-xl font-semibold tracking-tight text-ink">
-            WeBind Design
-          </span>
-        </Link>
-        <nav className="flex items-center gap-5">
-          <Link
-            href="/compare"
-            className="whitespace-nowrap font-sans text-sm font-medium text-muted transition-colors hover:text-accent"
-          >
-            Compare
-          </Link>
-          <Link
-            href="/studio"
-            className="whitespace-nowrap font-sans text-sm font-medium text-muted transition-colors hover:text-accent"
-          >
-            Content Studio
-          </Link>
-          <Link
-            href="/pricing"
-            className="whitespace-nowrap font-sans text-sm font-medium text-muted transition-colors hover:text-accent"
-          >
-            Pricing
-          </Link>
-          <Link
-            href="/dashboard"
-            className="whitespace-nowrap font-sans text-sm font-medium text-muted transition-colors hover:text-accent"
-          >
-            Dashboard
-          </Link>
-          {user ? (
-            <form action={logoutAction}>
-              <button
-                type="submit"
-                className="whitespace-nowrap rounded-full border border-line px-4 py-1.5 font-sans text-sm font-medium text-ink transition-colors hover:border-bad hover:text-bad"
-              >
-                Log out
-              </button>
-            </form>
-          ) : (
-            <Link
-              href="/login"
-              className="whitespace-nowrap rounded-full border border-line px-4 py-1.5 font-sans text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent"
-            >
-              Log in
-            </Link>
-          )}
-        </nav>
-      </header>
+      <SiteHeader />
 
       {/* Hero + report */}
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 pb-24">
