@@ -24,7 +24,7 @@ export default async function SiteHeader() {
           WeBind Design
         </span>
       </Link>
-      <nav className="flex items-center gap-5">
+      <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 sm:flex-nowrap sm:gap-5">
         {NAV_LINKS.map((link) => (
           <Link
             key={link.href}
