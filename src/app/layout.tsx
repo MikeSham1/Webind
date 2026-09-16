@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Space_Grotesk, Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
+import { Space_Grotesk, Hanken_Grotesk, Archivo_Narrow } from "next/font/google";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -16,10 +16,14 @@ const hanken = Hanken_Grotesk({
   display: "swap",
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-jetbrains-mono",
+// The label/caption face: eyebrows, gauge readouts, tiny uppercase tags. A
+// condensed grotesk instead of a code-editor mono — same instrument-panel
+// role (tight, technical, at home next to a scan-frame or a score dial)
+// without reading as literal terminal output.
+const archivoNarrow = Archivo_Narrow({
+  variable: "--font-archivo-narrow",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["500", "600", "700"],
   display: "swap",
 });
 
@@ -53,7 +57,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${spaceGrotesk.variable} ${hanken.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${spaceGrotesk.variable} ${hanken.variable} ${archivoNarrow.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

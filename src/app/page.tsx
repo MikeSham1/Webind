@@ -22,7 +22,7 @@ export default async function Home() {
       {/* Hero + report */}
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 pb-24">
         <section className="mx-auto max-w-3xl pt-16 text-center sm:pt-24">
-          <p className="reveal font-sans text-sm font-medium tracking-normal text-accent">
+          <p className="reveal font-sans text-sm text-muted">
             The new front page is an AI answer
           </p>
           <h1
