@@ -121,6 +121,18 @@ export default async function DashboardPage() {
         </div>
       </header>
 
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-5 py-4">
+        <p className="text-sm text-ink">
+          Want changes made to a report or draft? Talk it through with AI.
+        </p>
+        <Link
+          href="/studio"
+          className="whitespace-nowrap font-mono text-xs uppercase tracking-[0.14em] text-accent hover:underline"
+        >
+          Open Content Studio →
+        </Link>
+      </div>
+
       {!user.emailVerifiedAt && (
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-warn/40 bg-surface px-5 py-4">
           <p className="text-sm text-ink">

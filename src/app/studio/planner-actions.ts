@@ -5,7 +5,7 @@ import { gemini37Provider } from "@/lib/ai/gemini";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import { getCurrentUser } from "@/lib/auth";
 import { getClientIp } from "@/lib/requestIp";
-import type { PlannerState } from "./planner-state";
+import { transcriptText, type PlannerMessage, type PlannerState } from "./planner-state";
 
 const PLANNER_SYSTEM = [
   "You are Webind's content strategist. Help the user think through what they are going to write before a drafting model produces the page.",
@@ -23,21 +23,23 @@ export async function planContentAction(
   formData: FormData,
 ): Promise<PlannerState> {
   const message = String(formData.get("message") ?? "").trim();
-  const prior = prev.transcript;
-  if (!message) return { status: "error", error: "Tell Gemini what you want to write.", transcript: prior };
+  const prior = prev.messages;
+  if (!message) {
+    return { status: "error", error: "Tell Gemini what you want to write.", messages: prior };
+  }
 
   const user = await getCurrentUser();
   const key = user ? `content-plan:user:${user.id}` : `content-plan:ip:${await getClientIp()}`;
   const limit = checkRateLimit(key, 60 * 60 * 1000, 40);
   if (!limit.allowed) {
-    return { status: "error", error: formatRetryAfter(limit.retryAfterMs), transcript: prior };
+    return { status: "error", error: formatRetryAfter(limit.retryAfterMs), messages: prior };
   }
 
-  const transcript = [prior, `User: ${message}`].filter(Boolean).join("\n\n");
+  const messages: PlannerMessage[] = [...prior, { role: "user", text: message }];
   const result = await generate(
     {
       system: PLANNER_SYSTEM,
-      prompt: `Conversation so far:\n${transcript}\n\nRespond to the user's latest message.`,
+      prompt: `Conversation so far:\n${transcriptText(messages)}\n\nRespond to the user's latest message.`,
       maxOutputTokens: 700,
       purpose: "content_plan",
     },
@@ -48,7 +50,7 @@ export async function planContentAction(
     return {
       status: "error",
       error: "Gemini planning is unavailable right now. You can still fill in the writing brief below.",
-      transcript,
+      messages,
     };
   }
 
@@ -56,6 +58,6 @@ export async function planContentAction(
   return {
     status: "reply",
     reply,
-    transcript: `${transcript}\n\nWebind: ${reply}`,
+    messages: [...messages, { role: "assistant", text: reply }],
   };
 }

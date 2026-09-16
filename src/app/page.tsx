@@ -4,9 +4,14 @@ import PricingTable from "@/components/PricingTable";
 import { PLANS } from "@/lib/billing/plans";
 import { isBillingConfigured, stripeMode } from "@/lib/billing/stripe";
 import { getCurrentUser } from "@/lib/auth";
+import { logoutAction } from "@/app/account/actions";
 
 // Playwright (used by the crawler inside the server action) requires Node.
 export const runtime = "nodejs";
+// Reads cookies/DB per request (nav login state, pricing personalization) —
+// never prerender, or a build-time bake (e.g. no DATABASE_URL at build time)
+// would serve one static, logged-out-looking page to every visitor forever.
+export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const user = await getCurrentUser();
@@ -44,12 +49,23 @@ export default async function Home() {
           >
             Dashboard
           </Link>
-          <Link
-            href="/login"
-            className="whitespace-nowrap rounded-full border border-line px-4 py-1.5 font-sans text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent"
-          >
-            Log in
-          </Link>
+          {user ? (
+            <form action={logoutAction}>
+              <button
+                type="submit"
+                className="whitespace-nowrap rounded-full border border-line px-4 py-1.5 font-sans text-sm font-medium text-ink transition-colors hover:border-bad hover:text-bad"
+              >
+                Log out
+              </button>
+            </form>
+          ) : (
+            <Link
+              href="/login"
+              className="whitespace-nowrap rounded-full border border-line px-4 py-1.5 font-sans text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent"
+            >
+              Log in
+            </Link>
+          )}
         </nav>
       </header>
 
@@ -94,6 +110,15 @@ export default async function Home() {
             Got more than one page?{" "}
             <Link href="/site-report" className="font-medium text-accent hover:underline">
               Scan your whole sitemap →
+            </Link>
+          </p>
+          <p
+            className="reveal mt-2 text-sm text-muted"
+            style={{ animationDelay: "260ms" }}
+          >
+            Want changes made for you?{" "}
+            <Link href="/studio" className="font-medium text-accent hover:underline">
+              Talk it through with AI in Content Studio →
             </Link>
           </p>
         </section>

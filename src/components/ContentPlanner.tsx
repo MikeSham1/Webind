@@ -21,9 +21,29 @@ export default function ContentPlanner() {
         </p>
       </div>
 
-      {state.transcript && (
-        <div className="mb-5 max-h-72 overflow-y-auto whitespace-pre-wrap rounded-xl border border-line bg-paper p-4 text-sm leading-relaxed text-ink">
-          {state.transcript}
+      {state.messages.length > 0 && (
+        <div className="mb-5 flex max-h-72 flex-col gap-3 overflow-y-auto rounded-xl border border-line bg-paper p-4">
+          {state.messages.map((m, i) => (
+            <div
+              key={i}
+              className={`flex flex-col gap-1 ${m.role === "user" ? "items-end" : "items-start"}`}
+            >
+              {m.role === "assistant" && (
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-accent">
+                  AI
+                </span>
+              )}
+              <div
+                className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${
+                  m.role === "user"
+                    ? "bg-surface text-ink"
+                    : "bg-accent-soft text-ink"
+                }`}
+              >
+                {m.text}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -41,7 +61,7 @@ export default function ContentPlanner() {
             disabled={isPending}
             className="inline-flex h-10 items-center justify-center rounded-full border border-line-strong bg-paper px-5 font-sans text-sm font-semibold text-ink transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-70"
           >
-            {isPending ? "Thinking…" : state.transcript ? "Continue planning" : "Start planning"}
+            {isPending ? "Thinking…" : state.messages.length > 0 ? "Continue planning" : "Start planning"}
           </button>
           <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
             Medium thinking · planning only
