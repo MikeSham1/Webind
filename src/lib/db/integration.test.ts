@@ -96,6 +96,13 @@ import {
 } from "@/lib/integrations/githubConnections";
 import { getPrForReport, recordPrOpened } from "@/lib/integrations/codeFixes";
 import { listAuditLog, recordAudit } from "@/lib/audit";
+import {
+  listSites,
+  removeSite,
+  resolveActiveSite,
+  setPrimarySite,
+  touchSite,
+} from "@/lib/sites/store";
 
 // Captures every "email" the password-reset flow would have sent, so tests
 // can pull the reset token out of the link without hitting a real provider.
@@ -909,5 +916,96 @@ describe("SFT export eligibility", () => {
     expect(modelTurns.some((t) => t.includes("HUMAN EDITED FINAL"))).toBe(true);
     // The user turn is the reconstructed context (system instruction is separate).
     expect(rows[0].systemInstruction.parts[0].text).toMatch(/WeBind Fix Generator/);
+  });
+});
+
+describe("user sites (which website the AI is talking about)", () => {
+  it("discovers a site from a report run and makes the first one primary", async () => {
+    const u = await createUser("sites-first@example.com", "password123");
+    if (!u.ok) throw new Error("setup failed");
+
+    await touchSite(u.user.id, "https://www.Acme.com/pricing");
+
+    const list = await listSites(u.user.id);
+    expect(list).toHaveLength(1);
+    expect(list[0].host).toBe("acme.com"); // canonicalized
+    // A single-site user should never be asked to choose one.
+    expect(list[0].isPrimary).toBe(true);
+    expect((await resolveActiveSite(u.user.id))?.host).toBe("acme.com");
+  });
+
+  it("treats www/case/path variants as the SAME site, not duplicates", async () => {
+    const u = await createUser("sites-dedupe@example.com", "password123");
+    if (!u.ok) throw new Error("setup failed");
+
+    await touchSite(u.user.id, "acme.com");
+    await touchSite(u.user.id, "https://www.acme.com/");
+    await touchSite(u.user.id, "http://ACME.com/blog/post");
+
+    expect(await listSites(u.user.id)).toHaveLength(1);
+  });
+
+  it("backfills sites from existing report history (no interrogation)", async () => {
+    const u = await createUser("sites-backfill@example.com", "password123");
+    if (!u.ok) throw new Error("setup failed");
+
+    // The user already ran reports before sites existed as a concept.
+    await saveReportRequest(report("https://shop.example/pricing"), u.user.id);
+    await saveReportRequest(report("https://www.shop.example/"), u.user.id);
+    await saveReportRequest(report("https://other.example/"), u.user.id);
+
+    // resolveActiveSite backfills on first use.
+    const active = await resolveActiveSite(u.user.id);
+    expect(active).not.toBeNull();
+
+    const hosts = (await listSites(u.user.id)).map((s) => s.host).sort();
+    // Two distinct sites — the two shop.example URLs collapse into one.
+    expect(hosts).toEqual(["other.example", "shop.example"]);
+  });
+
+  it("switches the primary site and keeps exactly one primary", async () => {
+    const u = await createUser("sites-primary@example.com", "password123");
+    if (!u.ok) throw new Error("setup failed");
+
+    await touchSite(u.user.id, "first.example");
+    await touchSite(u.user.id, "second.example");
+    const before = await listSites(u.user.id);
+    const second = before.find((s) => s.host === "second.example")!;
+
+    expect(await setPrimarySite(u.user.id, second.id)).toBe(true);
+
+    const after = await listSites(u.user.id);
+    expect(after.filter((s) => s.isPrimary)).toHaveLength(1);
+    expect((await resolveActiveSite(u.user.id))?.host).toBe("second.example");
+  });
+
+  it("refuses to re-point another user's site", async () => {
+    const mine = await createUser("sites-mine@example.com", "password123");
+    const theirs = await createUser("sites-theirs@example.com", "password123");
+    if (!mine.ok || !theirs.ok) throw new Error("setup failed");
+
+    await touchSite(theirs.user.id, "theirs.example");
+    const theirSite = (await listSites(theirs.user.id))[0];
+
+    expect(await setPrimarySite(mine.user.id, theirSite.id)).toBe(false);
+    // And it stays primary for its real owner.
+    expect((await listSites(theirs.user.id))[0].isPrimary).toBe(true);
+  });
+
+  it("re-points primary to a surviving site when the primary is removed", async () => {
+    const u = await createUser("sites-remove@example.com", "password123");
+    if (!u.ok) throw new Error("setup failed");
+
+    await touchSite(u.user.id, "a.example");
+    await touchSite(u.user.id, "b.example");
+    const primary = (await listSites(u.user.id)).find((s) => s.isPrimary)!;
+
+    expect(await removeSite(u.user.id, primary.id)).toBe(true);
+
+    const left = await listSites(u.user.id);
+    expect(left).toHaveLength(1);
+    // Context survives: the remaining site becomes the active one.
+    expect(left[0].isPrimary).toBe(true);
+    expect((await resolveActiveSite(u.user.id))?.host).toBe(left[0].host);
   });
 });

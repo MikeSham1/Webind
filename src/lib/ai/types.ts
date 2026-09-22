@@ -39,13 +39,23 @@ export interface GenerateResult {
   model: string;
   text: string;
   inputTokens: number;
+  /**
+   * Billable output tokens — INCLUDING reasoning/"thinking" tokens, which the
+   * provider reports separately but which are still generated output and still
+   * consume `maxOutputTokens`. Counting only the visible text under-reports
+   * cost and hides the budget exhaustion that produces an empty response.
+   */
   outputTokens: number;
+  /** Of `outputTokens`, how many were reasoning tokens (0 when not reported). */
+  thinkingTokens?: number;
   durationMs: number;
   purpose: string;
   /** True when the result did NOT come from the requested provider succeeding
-   *  (unconfigured, or the call threw) — callers must handle this, never treat
-   *  a fallback as a real generation. */
+   *  (unconfigured, the call threw, or it returned no usable text) — callers
+   *  must handle this, never treat a fallback as a real generation. */
   fallback: boolean;
+  /** Provider stop reason when available (e.g. "MAX_TOKENS"), for diagnosis. */
+  finishReason?: string;
   error?: string;
 }
 

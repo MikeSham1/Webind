@@ -5,6 +5,7 @@ import { gemini37Provider } from "@/lib/ai/gemini";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import { getCurrentUser } from "@/lib/auth";
 import { getClientIp } from "@/lib/requestIp";
+import { latestReportForHost, listSites, resolveActiveSite } from "@/lib/sites/store";
 import { transcriptText, type PlannerMessage, type PlannerState } from "./planner-state";
 
 const PLANNER_SYSTEM = [
@@ -17,6 +18,43 @@ const PLANNER_SYSTEM = [
   "Never invent business facts, statistics, customer results, credentials, prices, dates, or citations.",
   "Be conversational and concise.",
 ].join("\n");
+
+/**
+ * A short, factual note telling the model which website the user means — their
+ * active site plus its latest scores, and the other sites they own so "the
+ * other one" is resolvable. Returns null when we genuinely don't know, so the
+ * model is never told a site that isn't theirs.
+ */
+async function buildSiteContext(userId: string): Promise<string | null> {
+  const active = await resolveActiveSite(userId);
+  if (!active) return null;
+
+  const lines = [
+    `The user's website is ${active.host}. When they say "my site", "the site",`,
+    `or "the page" without naming a domain, they mean ${active.host} — do not ask`,
+    `them which website they mean.`,
+  ];
+
+  const report = await latestReportForHost(userId, active.host);
+  if (report?.aiTotal !== null && report?.aiTotal !== undefined) {
+    lines.push(
+      `Its most recent WeBind scores: AI Readiness ${report.aiTotal}/100, ` +
+        `Traditional Authority ${report.traditionalTotal ?? "n/a"}/100.`,
+    );
+  }
+
+  const all = await listSites(userId);
+  if (all.length > 1) {
+    const others = all.filter((s) => s.id !== active.id).map((s) => s.host);
+    lines.push(
+      `They also work on: ${others.join(", ")}. If it's ambiguous which of these ` +
+        `a request is about, ask once rather than guessing.`,
+    );
+  }
+
+  lines.push("Never invent facts about the site beyond what is stated here.");
+  return lines.join(" ");
+}
 
 export async function planContentAction(
   prev: PlannerState,
@@ -35,12 +73,23 @@ export async function planContentAction(
     return { status: "error", error: formatRetryAfter(limit.retryAfterMs), messages: prior };
   }
 
+  // Which website is this conversation about? Nobody should have to paste a URL
+  // into every message, so resolve it from the user's known sites (discovered
+  // from their own reports) and hand it to the model as context.
+  const siteContext = user ? await buildSiteContext(user.id) : null;
+
   const messages: PlannerMessage[] = [...prior, { role: "user", text: message }];
   const result = await generate(
     {
-      system: PLANNER_SYSTEM,
+      system: siteContext ? `${PLANNER_SYSTEM}\n\n${siteContext}` : PLANNER_SYSTEM,
       prompt: `Conversation so far:\n${transcriptText(messages)}\n\nRespond to the user's latest message.`,
-      maxOutputTokens: 700,
+      // Reasoning tokens are drawn from this same budget. At the old 700 with
+      // the provider's MEDIUM thinking, a turn could spend the whole budget
+      // thinking and return NO text — which surfaced as "unavailable" even
+      // though the call succeeded. Ask for low thinking (this is conversational
+      // discovery, not deep reasoning) and leave real headroom for the reply.
+      maxOutputTokens: 2048,
+      thinkingLevel: "low",
       purpose: "content_plan",
     },
     { provider: gemini37Provider() },

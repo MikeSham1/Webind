@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import StudioForm from "@/components/StudioForm";
 import ContentPlanner from "@/components/ContentPlanner";
+import SiteContextBar from "@/components/SiteContextBar";
 import SiteHeader from "@/components/SiteHeader";
 import { getCurrentUser } from "@/lib/auth";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
@@ -34,6 +35,7 @@ export default async function StudioPage() {
             <em>only</em> in the facts you provide. Every draft is safety-checked and held for your approval.
           </p>
         </div>
+        <SiteContextBar userId={user?.id ?? null} />
         <ContentPlanner />
         <StudioForm wordPressConnected={wordPressConnected} />
       </main>

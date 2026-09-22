@@ -120,6 +120,13 @@
       "when": 1788300864978,
       "tag": "0016_known_tusk",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790120166823,
+      "tag": "0017_wise_warpath",
+      "breakpoints": true
     }
   ]
 }

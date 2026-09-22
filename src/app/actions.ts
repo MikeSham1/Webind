@@ -15,6 +15,7 @@ import { planAllowsSuggestions } from "@/lib/billing/plans";
 import { buildOptimizations } from "@/lib/optimize/assets";
 import { attachEmail, getReportForUser, saveReportRequest } from "@/lib/leads";
 import { getCurrentUser } from "@/lib/auth";
+import { touchSite } from "@/lib/sites/store";
 import {
   getGitHubConnectionStatus,
   getGitHubCredentials,
@@ -115,6 +116,10 @@ export async function runReport(
         user
           ? getGitHubConnectionStatus(user.id).then((s) => s !== null)
           : Promise.resolve(false),
+        // Remember which site this user works on, so the AI (and prefilled
+        // forms) know what "my site" means without asking them to retype it.
+        // Fail-soft and never blocks the report.
+        user ? touchSite(user.id, url) : Promise.resolve(),
       ]);
     return {
       status: "success",

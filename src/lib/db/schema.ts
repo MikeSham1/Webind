@@ -6,6 +6,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import type { ReportResult } from "../scoring/types";
@@ -477,3 +478,37 @@ export const usageEvents = pgTable("usage_events", {
   quantity: integer("quantity").notNull().default(1),
 });
 export type UsageEventRow = typeof usageEvents.$inferSelect;
+
+/**
+ * The websites a user works on. This is what lets the product know which site
+ * someone means without making them re-type a URL into every conversation.
+ *
+ * Sites are DISCOVERED, not asked for: every report or site scan a signed-in
+ * user runs touches the host here, and a new account backfills from whatever
+ * report history it already has. `isPrimary` marks the one used as the default
+ * context (the AI planner, prefilled forms); with a single site there is
+ * nothing to choose and no prompt is shown.
+ *
+ * `host` is stored canonically (lowercased, no `www.`) so acme.com,
+ * www.acme.com and https://Acme.com/ are one site, not three.
+ */
+export const sites = pgTable(
+  "sites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Canonical host: lowercase, `www.` stripped. */
+    host: text("host").notNull(),
+    /** Optional friendly name; falls back to the host in the UI. */
+    label: text("label"),
+    /** The default site for this user's AI context. At most one true per user. */
+    isPrimary: boolean("is_primary").notNull().default(false),
+    /** Last time we saw this site in a report/scan — drives "most recent" ordering. */
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("sites_user_host_idx").on(t.userId, t.host)],
+);
+export type SiteRow = typeof sites.$inferSelect;

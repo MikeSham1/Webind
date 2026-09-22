@@ -40,7 +40,11 @@ export async function explainReportDetailed(
     {
       system: EXPLAIN_SYSTEM,
       prompt: buildPrompt(report),
-      maxOutputTokens: 600,
+      // Headroom, not target length: reasoning tokens come out of this same
+      // budget, so a cap sized to the 2-3 sentence answer can be spent entirely
+      // on thinking and return nothing. The prompt controls length; this only
+      // prevents an empty response.
+      maxOutputTokens: 1024,
       // Narrating a handful of numbers needs no deep reasoning — keep it fast.
       thinkingLevel: "low",
       purpose: "explain_report",

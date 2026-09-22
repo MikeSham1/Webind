@@ -1,5 +1,5 @@
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
-import { logInfo } from "../log";
+import { logInfo, logWarn } from "../log";
 import type { AiProvider, GenerateRequest, GenerateResult } from "./types";
 
 /**
@@ -72,7 +72,49 @@ export function geminiProvider(
 
       const durationMs = Date.now() - startedAt;
       const inputTokens = response.usageMetadata?.promptTokenCount ?? 0;
-      const outputTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
+      // Reasoning tokens are reported separately but are still generated output
+      // and still spend `maxOutputTokens`, so they belong in the output count.
+      const thinkingTokens = response.usageMetadata?.thoughtsTokenCount ?? 0;
+      const outputTokens =
+        (response.usageMetadata?.candidatesTokenCount ?? 0) + thinkingTokens;
+      const finishReason = response.candidates?.[0]?.finishReason;
+      const text = response.text ?? "";
+
+      // An empty response is NOT a successful generation, even though the call
+      // returned 200. The usual cause is the reasoning budget consuming all of
+      // `maxOutputTokens` before any visible text is produced (finishReason
+      // MAX_TOKENS) — previously this logged ai_call.ok and handed callers an
+      // empty string, which surfaced as an unexplained "unavailable".
+      if (!text.trim()) {
+        const error =
+          finishReason === "MAX_TOKENS"
+            ? `empty response: maxOutputTokens (${req.maxOutputTokens ?? 2048}) exhausted, ${thinkingTokens} of it on reasoning — raise the budget or lower thinkingLevel`
+            : `empty response (finishReason: ${finishReason ?? "unknown"})`;
+        logWarn("ai_call.error", {
+          provider: "gemini",
+          purpose: req.purpose,
+          model,
+          inputTokens,
+          outputTokens,
+          thinkingTokens,
+          finishReason,
+          durationMs,
+          error,
+        });
+        return {
+          provider: "gemini",
+          model,
+          text: "",
+          inputTokens,
+          outputTokens,
+          thinkingTokens,
+          durationMs,
+          purpose: req.purpose,
+          fallback: true,
+          finishReason,
+          error,
+        };
+      }
 
       logInfo("ai_call.ok", {
         provider: "gemini",
@@ -80,18 +122,22 @@ export function geminiProvider(
         model,
         inputTokens,
         outputTokens,
+        thinkingTokens,
+        finishReason,
         durationMs,
       });
 
       return {
         provider: "gemini",
         model,
-        text: response.text ?? "",
+        text,
         inputTokens,
         outputTokens,
+        thinkingTokens,
         durationMs,
         purpose: req.purpose,
         fallback: false,
+        finishReason,
       };
     },
   };
