@@ -77,11 +77,7 @@ export default async function Home() {
             convert without leaving the page. */}
         <section id="pricing" className="mx-auto mt-28 max-w-5xl scroll-mt-24">
           <div className="text-center">
-            <p className="font-mono text-xs uppercase tracking-[0.24em] text-accent">
-              <span aria-hidden="true">[ </span>
-              Pricing
-              <span aria-hidden="true"> ]</span>
-            </p>
+            <p className="font-sans text-sm font-medium text-accent">Pricing</p>
             <h2 className="mt-4 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
               Diagnose free. Fix for less than everyone else.
             </h2>

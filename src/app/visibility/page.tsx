@@ -34,10 +34,10 @@ export default async function VisibilityPage() {
         </h1>
         <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-muted">
           Enter the questions your customers actually ask an AI assistant. We
-          probe live with Claude today — without ever naming your brand in the
-          prompt, so the answer isn&apos;t primed — and show where you surface,
-          who gets recommended instead, and how to close the gap. ChatGPT,
-          Gemini, and Perplexity light up automatically as those providers are
+          probe live with Claude and Gemini today — without ever naming your
+          brand in the prompt, so the answer isn&apos;t primed — and show where
+          you surface, who gets recommended instead, and how to close the gap.
+          ChatGPT and Perplexity light up automatically as those providers are
           enabled.
         </p>
       </div>

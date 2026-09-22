@@ -220,8 +220,8 @@ export default function MethodologyPage() {
             <Link href="/visibility" className="text-accent hover:underline">
               Keyword Visibility
             </Link>
-            , which runs a live, unbiased probe (today: Claude; other
-            providers activate automatically once configured).
+            , which runs a live, unbiased probe (today: Claude and Gemini;
+            other providers activate automatically once configured).
           </li>
         </ul>
       </section>
