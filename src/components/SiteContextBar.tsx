@@ -17,7 +17,7 @@ export default async function SiteContextBar({ userId }: { userId: string | null
   // No known site yet: offer to name one rather than silently having no context.
   if (!active) {
     return (
-      <div className="mb-6 border border-line bg-surface p-4">
+      <div className="rounded-2xl border border-line bg-surface p-4">
         <p className="text-sm text-ink">
           Which website are we working on?{" "}
           <span className="text-muted">
@@ -48,13 +48,20 @@ export default async function SiteContextBar({ userId }: { userId: string | null
   }
 
   return (
-    <div className="mb-6 flex flex-col gap-2 border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-sm text-ink">
-        Working on{" "}
-        <strong className="font-semibold">{active.label ?? active.host}</strong>
-        <span className="text-muted">
-          {" "}
-          — just say &ldquo;my site&rdquo;; no need to paste the URL.
+    <div className="flex flex-col gap-3 rounded-full border border-line bg-surface px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+      <p className="flex items-center gap-2.5 text-sm text-ink">
+        <span
+          aria-hidden="true"
+          className="h-2 w-2 shrink-0 rounded-full bg-good"
+          style={{ animation: "pulse-soft 2.4s ease-in-out infinite" }}
+        />
+        <span>
+          Working on{" "}
+          <strong className="font-semibold">{active.label ?? active.host}</strong>
+          <span className="hidden text-muted sm:inline">
+            {" "}
+            — just say &ldquo;my site&rdquo;
+          </span>
         </span>
       </p>
 
@@ -67,7 +74,7 @@ export default async function SiteContextBar({ userId }: { userId: string | null
             id="siteId"
             name="siteId"
             defaultValue={active.id}
-            className="rounded-lg border border-line-strong bg-paper px-2 py-1.5 font-sans text-sm text-ink focus-visible:border-accent focus-visible:outline-none"
+            className="rounded-full border border-line bg-paper px-3 py-1.5 font-sans text-sm text-ink focus-visible:border-accent focus-visible:outline-none"
           >
             {all.map((s) => (
               <option key={s.id} value={s.id}>
@@ -77,7 +84,7 @@ export default async function SiteContextBar({ userId }: { userId: string | null
           </select>
           <button
             type="submit"
-            className="rounded-full border border-line px-3 py-1.5 font-sans text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent"
+            className="rounded-full px-3 py-1.5 font-sans text-sm font-medium text-accent transition-colors hover:underline"
           >
             Switch
           </button>

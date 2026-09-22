@@ -66,7 +66,9 @@ export async function signupAction(
   // Best-effort and never throws; awaited (not fire-and-forget) so it isn't
   // left racing the redirect that follows.
   await sendVerificationEmail(result.user.id, result.user.email, await getBaseUrl());
-  redirect("/dashboard");
+  // Content Studio is the portal's front page — it's where a signed-in user
+  // actually does work. The dashboard stays one click away in the nav.
+  redirect("/studio");
 }
 
 export async function loginAction(
@@ -93,7 +95,7 @@ export async function loginAction(
   if (!user) return { status: "error", error: "Invalid email or password." };
 
   await createSession(user.id);
-  redirect("/dashboard");
+  redirect("/studio");
 }
 
 export async function logoutAction(): Promise<void> {
