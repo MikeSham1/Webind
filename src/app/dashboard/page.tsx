@@ -7,6 +7,7 @@ import { listAllDrafts, listDraftsForUser } from "@/lib/content/store";
 import { listAllReports, listReportsForUser } from "@/lib/leads";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
 import { resolveActiveSite } from "@/lib/sites/store";
+import SiteContextBar from "@/components/SiteContextBar";
 import SiteInsights from "@/components/SiteInsights";
 import StudioWorkspace from "@/components/StudioWorkspace";
 
@@ -145,9 +146,16 @@ export default async function DashboardPage() {
         </div>
       )}
 
+      {/* Which site everything below is about. Same bar as the studio, on
+          purpose: the active site scopes the insights AND the AI's idea of
+          "my site", so it sits above both rather than next to only one. */}
+      <div className="mt-8">
+        <SiteContextBar userId={user.id} />
+      </div>
+
       {/* 1 — Key insights about the user's site: the question the dashboard
           exists to answer, so it goes above everything else. */}
-      <div className="mt-8">
+      <div className="mt-6">
         <SiteInsights userId={user.id} />
       </div>
 

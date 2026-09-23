@@ -57,9 +57,12 @@ export default async function SiteInsights({ userId }: { userId: string }) {
     <Panel>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="font-display text-xl font-semibold text-ink">{active.host}</h2>
+          {/* The context bar directly above already names the site, so the
+              heading says what the card IS and the host drops to a subtitle —
+              still self-describing, without stacking the domain twice. */}
+          <h2 className="font-display text-xl font-semibold text-ink">Key insights</h2>
           <p className="mt-0.5 text-xs text-muted">
-            Last checked{" "}
+            {active.host} · Last checked{" "}
             {new Date(latest.createdAt).toLocaleDateString("en-US", {
               month: "short",
               day: "numeric",
