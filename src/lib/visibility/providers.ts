@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import { geminiApiKey } from "../ai/gemini";
 import { logInfo } from "../log";
 import type { AnswerEngine } from "./types";
 
@@ -195,11 +196,11 @@ export function detectVisibility(text: string, ctx: ProbeContext): ProbeVerdict 
 
 const geminiProvider: VisibilityProvider = {
   engine: "gemini",
-  isConfigured: () => Boolean(process.env.GEMINI_API_KEY),
+  isConfigured: () => geminiApiKey().length > 0,
   async probe(keyword, ctx) {
     const model = process.env.GEMINI_VISIBILITY_MODEL || "gemini-3.7-flash";
     const startedAt = Date.now();
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey() });
 
     const response = await ai.models.generateContent({
       model,

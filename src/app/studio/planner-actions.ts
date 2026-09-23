@@ -5,6 +5,8 @@ import { gemini37Provider } from "@/lib/ai/gemini";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import { getCurrentUser } from "@/lib/auth";
 import { getClientIp } from "@/lib/requestIp";
+import { logWarn } from "@/lib/log";
+import { plannerErrorFor } from "./planner-errors";
 import { latestReportForHost, listSites, resolveActiveSite } from "@/lib/sites/store";
 import { transcriptText, type PlannerMessage, type PlannerState } from "./planner-state";
 
@@ -96,11 +98,19 @@ export async function planContentAction(
   );
 
   if (result.fallback || !result.text.trim()) {
-    return {
-      status: "error",
-      error: "Gemini planning is unavailable right now. You can still fill in the writing brief below.",
-      messages,
-    };
+    // The cause used to be thrown away here, so a missing key, a rejected key,
+    // an exhausted quota and a starved token budget all read as one unexplained
+    // "unavailable" — with nothing to act on. Log the provider's own message,
+    // and tell the user which KIND of failure it is so they know whether it's
+    // theirs to fix (config) or just transient (retry).
+    logWarn("content_plan.unavailable", {
+      userId: user?.id,
+      provider: result.provider,
+      model: result.model,
+      finishReason: result.finishReason,
+      error: result.error,
+    });
+    return { status: "error", error: plannerErrorFor(result.error), messages };
   }
 
   const reply = result.text.trim();

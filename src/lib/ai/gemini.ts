@@ -11,6 +11,55 @@ import type { AiProvider, GenerateRequest, GenerateResult } from "./types";
 
 export const BASE_GEMINI_MODEL = "gemini-3.7-flash";
 
+/**
+ * The API key, cleaned of the damage a dashboard paste does to it.
+ *
+ * A key can be present and still be rejected: Railway's raw-editor keeps the
+ * quotes when you paste `GEMINI_API_KEY="AIza…"`, and copying from a terminal
+ * or password manager routinely drags in a trailing newline or space. Either
+ * way the characters end up inside the value, the Authorization header is
+ * malformed, and Google answers "API key not valid" — while every
+ * `isSet("GEMINI_API_KEY")` style check in the codebase reports it as
+ * configured. Normalizing here fixes it once for every caller.
+ */
+export function geminiApiKey(): string {
+  return normalizeKey(process.env.GEMINI_API_KEY);
+}
+
+function normalizeKey(raw: string | undefined): string {
+  const trimmed = (raw ?? "").trim();
+  const quoted =
+    trimmed.length >= 2 &&
+    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'")));
+  return quoted ? trimmed.slice(1, -1).trim() : trimmed;
+}
+
+/**
+ * What's wrong with the key's *shape*, for the admin health endpoint. Reports
+ * only structure — never the key, or any part of it — so it is safe to read
+ * from a browser and paste into a bug report.
+ */
+export function geminiKeyDiagnostics(): {
+  present: boolean;
+  length: number;
+  looksLikeGoogleKey: boolean;
+  hadSurroundingQuotes: boolean;
+  hadEdgeWhitespace: boolean;
+} {
+  const raw = process.env.GEMINI_API_KEY ?? "";
+  const key = normalizeKey(raw);
+  return {
+    present: key.length > 0,
+    length: key.length,
+    // Gemini Developer API keys are issued with an "AIza" prefix. A key that
+    // lacks it is usually a Vertex/OAuth credential pasted into the wrong slot.
+    looksLikeGoogleKey: key.startsWith("AIza"),
+    hadSurroundingQuotes: key !== raw.trim(),
+    hadEdgeWhitespace: raw !== raw.trim(),
+  };
+}
+
 function envThinkingLevel(): ThinkingLevel {
   return toThinkingLevel(process.env.GEMINI_THINKING_LEVEL, ThinkingLevel.MEDIUM);
 }
@@ -49,10 +98,10 @@ export function geminiProvider(
   return {
     name: "gemini",
     model,
-    isConfigured: () => Boolean(process.env.GEMINI_API_KEY),
+    isConfigured: () => geminiApiKey().length > 0,
     async generate(req: GenerateRequest): Promise<GenerateResult> {
       const startedAt = Date.now();
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey: geminiApiKey() });
       // A per-request level (e.g. "low" for quick narration) overrides the
       // provider default, so latency-sensitive tasks don't pay for MEDIUM thinking.
       const thinkingLevel = req.thinkingLevel

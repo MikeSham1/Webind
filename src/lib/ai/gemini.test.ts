@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The SDK is mocked so these tests never make a network call.
 const { generateContent } = vi.hoisted(() => ({ generateContent: vi.fn() }));
@@ -9,7 +9,7 @@ vi.mock("@google/genai", () => ({
   ThinkingLevel: { MINIMAL: "MINIMAL", LOW: "LOW", MEDIUM: "MEDIUM", HIGH: "HIGH" },
 }));
 
-import { geminiProvider } from "./gemini";
+import { geminiApiKey, geminiKeyDiagnostics, geminiProvider } from "./gemini";
 
 const req = { system: "s", prompt: "p", maxOutputTokens: 700, purpose: "content_plan" };
 
@@ -86,6 +86,70 @@ describe("gemini adapter: token accounting", () => {
     const result = await geminiProvider().generate(req);
     expect(result.outputTokens).toBe(7);
     expect(result.thinkingTokens).toBe(0);
+  });
+});
+
+describe("gemini adapter: API key normalization", () => {
+  const original = process.env.GEMINI_API_KEY;
+  afterEach(() => {
+    if (original === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = original;
+  });
+
+  it("strips the quotes a dashboard paste leaves around the value", () => {
+    // Railway's raw editor keeps the quotes from GEMINI_API_KEY="AIza…", and
+    // they end up inside the value — a set-but-rejected key.
+    process.env.GEMINI_API_KEY = '"AIzaSyTESTKEYTESTKEYTESTKEYTESTKEYTEST"';
+    expect(geminiApiKey()).toBe("AIzaSyTESTKEYTESTKEYTESTKEYTESTKEYTEST");
+
+    process.env.GEMINI_API_KEY = "'AIzaSyTESTKEYTESTKEYTESTKEYTESTKEYTEST'";
+    expect(geminiApiKey()).toBe("AIzaSyTESTKEYTESTKEYTESTKEYTESTKEYTEST");
+  });
+
+  it("strips the newline a copy-paste drags in", () => {
+    process.env.GEMINI_API_KEY = "  AIzaSyTESTKEYTESTKEYTESTKEYTESTKEYTEST\n";
+    expect(geminiApiKey()).toBe("AIzaSyTESTKEYTESTKEYTESTKEYTESTKEYTEST");
+  });
+
+  it("leaves a clean key untouched and treats a blank one as absent", () => {
+    process.env.GEMINI_API_KEY = "AIzaSyCLEAN";
+    expect(geminiApiKey()).toBe("AIzaSyCLEAN");
+
+    process.env.GEMINI_API_KEY = "   ";
+    expect(geminiApiKey()).toBe("");
+    expect(geminiProvider().isConfigured()).toBe(false);
+  });
+
+  it("uses the cleaned key for the actual call, not the raw value", async () => {
+    process.env.GEMINI_API_KEY = '"AIzaSyDIRTY"\n';
+    generateContent.mockResolvedValue({
+      text: "ok",
+      candidates: [{ finishReason: "STOP" }],
+      usageMetadata: {},
+    });
+
+    // A whitespace-only or quoted key must not read as configured-and-broken.
+    expect(geminiProvider().isConfigured()).toBe(true);
+    const result = await geminiProvider().generate(req);
+    expect(result.fallback).toBe(false);
+  });
+
+  it("reports key shape for diagnosis without exposing the key", () => {
+    process.env.GEMINI_API_KEY = '"AIzaSyTESTKEY"\n';
+    const d = geminiKeyDiagnostics();
+
+    expect(d.present).toBe(true);
+    expect(d.looksLikeGoogleKey).toBe(true);
+    expect(d.hadSurroundingQuotes).toBe(true);
+    expect(d.hadEdgeWhitespace).toBe(true);
+    expect(d.length).toBe("AIzaSyTESTKEY".length);
+    // Nothing in the payload may contain the secret itself.
+    expect(JSON.stringify(d)).not.toContain("AIzaSyTESTKEY");
+  });
+
+  it("flags a credential that isn't a Gemini Developer API key", () => {
+    process.env.GEMINI_API_KEY = "ya29.a0AfB_oauth-token";
+    expect(geminiKeyDiagnostics().looksLikeGoogleKey).toBe(false);
   });
 });
 
