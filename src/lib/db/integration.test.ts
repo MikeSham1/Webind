@@ -45,6 +45,7 @@ import {
   getReportForUser,
   listAllReports,
   listReportsForUser,
+  listReportsForUserHost,
   saveReportRequest,
 } from "@/lib/leads";
 import {
@@ -67,6 +68,7 @@ import type { GenerateFixesOutcome } from "@/lib/fixgen/generate";
 import type { FixCandidate } from "@/lib/fixgen/types";
 import {
   getDraftForUser,
+  listDraftsForUser,
   saveDraft,
   setAnyDraftStatus,
   setDraftStatus,
@@ -97,6 +99,7 @@ import {
 import { getPrForReport, recordPrOpened } from "@/lib/integrations/codeFixes";
 import { listAuditLog, recordAudit } from "@/lib/audit";
 import {
+  latestReportForHost,
   listSites,
   removeSite,
   resolveActiveSite,
@@ -1007,5 +1010,75 @@ describe("user sites (which website the AI is talking about)", () => {
     // Context survives: the remaining site becomes the active one.
     expect(left[0].isPrimary).toBe(true);
     expect((await resolveActiveSite(u.user.id))?.host).toBe(left[0].host);
+  });
+});
+
+describe("a new account starts empty", () => {
+  /**
+   * The tenant-isolation test stated the way a user would state it: someone who
+   * signs up today must not see the site, scores, history or drafts of someone
+   * who signed up yesterday. The per-object ownership checks above prove a
+   * stranger can't reach a KNOWN id; this proves nothing is handed to them in
+   * the first place — including by the sites backfill, which derives a user's
+   * websites from report history and is the one place a fresh profile could
+   * silently inherit somebody else's domain.
+   */
+  it("sees none of an established user's sites, reports or drafts", async () => {
+    const established = await createUser("established@example.com", "password123");
+    if (!established.ok) throw new Error("setup failed");
+
+    // An established account with a site, a scored report, and a draft.
+    await saveReportRequest(
+      report("https://shouselaw.com/practice"),
+      established.user.id,
+    );
+    await touchSite(established.user.id, "shouselaw.com");
+    const inputs = {
+      topic: "Criminal defense",
+      pageType: "landing" as const,
+      audience: "defendants",
+      tone: "professional",
+      keyFacts: ["Free consultation"],
+    };
+    const theirDraft = await saveDraft(inputs, await generateDraft(inputs), established.user.id);
+    if (!theirDraft) throw new Error("setup failed");
+
+    // Their data is really there — otherwise the assertions below prove nothing.
+    expect((await listSites(established.user.id)).map((s) => s.host)).toContain("shouselaw.com");
+    expect(await listReportsForUser(established.user.id)).not.toHaveLength(0);
+
+    // Now a brand-new signup.
+    const fresh = await createUser("fresh@example.com", "password123");
+    if (!fresh.ok) throw new Error("setup failed");
+
+    expect(await listSites(fresh.user.id)).toEqual([]);
+    expect(await listReportsForUser(fresh.user.id)).toEqual([]);
+    expect(await listDraftsForUser(fresh.user.id)).toEqual([]);
+
+    // resolveActiveSite backfills from report history on first use. With no
+    // reports of their own that must yield nothing — never the other user's
+    // host, which is what the AI would then treat as "my site".
+    expect(await resolveActiveSite(fresh.user.id)).toBeNull();
+    expect(await listSites(fresh.user.id)).toEqual([]);
+
+    // The dashboard's key-insights query, asked directly about the other
+    // user's host, must still come back empty.
+    expect(await listReportsForUserHost(fresh.user.id, "shouselaw.com")).toEqual([]);
+    expect(await latestReportForHost(fresh.user.id, "shouselaw.com")).toBeNull();
+
+    // And they cannot reach the established user's draft by id.
+    expect(await getDraftForUser(theirDraft, fresh.user.id)).toBeNull();
+  });
+
+  it("does not make a new user an admin", async () => {
+    // isAdmin gates the dashboard's "every report, every draft" view, so a
+    // signup silently landing there would expose every tenant at once.
+    const fresh = await createUser("notanadmin@example.com", "password123");
+    if (!fresh.ok) throw new Error("setup failed");
+    expect(fresh.user.isAdmin).toBe(false);
+
+    await createSession(fresh.user.id);
+    expect((await getCurrentUser())?.isAdmin).toBe(false);
+    await logout();
   });
 });
