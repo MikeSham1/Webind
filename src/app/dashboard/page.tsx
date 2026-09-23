@@ -5,6 +5,10 @@ import { logoutAction, resendVerificationEmailAction } from "@/app/account/actio
 import { getCurrentUser } from "@/lib/auth";
 import { listAllDrafts, listDraftsForUser } from "@/lib/content/store";
 import { listAllReports, listReportsForUser } from "@/lib/leads";
+import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
+import { resolveActiveSite } from "@/lib/sites/store";
+import SiteInsights from "@/components/SiteInsights";
+import StudioWorkspace from "@/components/StudioWorkspace";
 
 export const metadata: Metadata = {
   title: "Dashboard — WeBind Design",
@@ -41,10 +45,14 @@ export default async function DashboardPage() {
   if (!user) redirect("/login");
   const isAdmin = user.isAdmin;
 
-  const [reports, drafts] = await Promise.all([
+  const [reports, drafts, wpConnection, activeSite] = await Promise.all([
     isAdmin ? listAllReports() : listReportsForUser(user.id),
     isAdmin ? listAllDrafts() : listDraftsForUser(user.id),
+    getWordPressConnectionStatus(user.id),
+    resolveActiveSite(user.id),
   ]);
+  const wordPressConnected = wpConnection !== null;
+  const activeHost = activeSite?.host ?? null;
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-12">
@@ -121,18 +129,6 @@ export default async function DashboardPage() {
         </div>
       </header>
 
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-5 py-4">
-        <p className="text-sm text-ink">
-          Want changes made to a report or draft? Talk it through with AI.
-        </p>
-        <Link
-          href="/studio"
-          className="whitespace-nowrap font-mono text-xs uppercase tracking-[0.14em] text-accent hover:underline"
-        >
-          Open Content Studio →
-        </Link>
-      </div>
-
       {!user.emailVerifiedAt && (
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-warn/40 bg-surface px-5 py-4">
           <p className="text-sm text-ink">
@@ -149,8 +145,38 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {/* Reports */}
+      {/* 1 — Key insights about the user's site: the question the dashboard
+          exists to answer, so it goes above everything else. */}
+      <div className="mt-8">
+        <SiteInsights userId={user.id} />
+      </div>
+
+      {/* 2 — Content Studio, directly beneath the insights that motivate it:
+          you read what the site needs, then write it without changing pages. */}
       <section className="mt-10">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="font-display text-xl font-semibold text-ink">Content Studio</h2>
+          <Link
+            href="/studio"
+            className="font-sans text-sm font-medium text-accent hover:underline"
+          >
+            Open full studio →
+          </Link>
+        </div>
+        <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted">
+          Plan a page with AI, turn the conversation into a grounded brief, and
+          publish the approved draft to your site.
+        </p>
+        <div className="mt-5">
+          <StudioWorkspace
+            wordPressConnected={wordPressConnected}
+            siteHost={activeHost}
+          />
+        </div>
+      </section>
+
+      {/* Reports */}
+      <section className="mt-14">
         <h2 className="font-display text-xl font-semibold text-ink">
           {isAdmin ? "All authority reports" : "Your authority reports"}
         </h2>

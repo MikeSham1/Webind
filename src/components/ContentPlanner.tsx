@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { planContentAction } from "@/app/studio/planner-actions";
-import { initialPlannerState } from "@/app/studio/planner-state";
+import { initialPlannerState, type PlannerMessage } from "@/app/studio/planner-state";
 import { useActionState } from "react";
 
 /**
@@ -21,7 +21,16 @@ const STARTERS = [
   "Turn my report's top fixes into a new page",
 ];
 
-export default function ContentPlanner() {
+export default function ContentPlanner({
+  onUseBrief,
+  briefPending = false,
+  briefError = null,
+}: {
+  /** Hand the conversation to the draft form. Omitted when the planner stands alone. */
+  onUseBrief?: (messages: PlannerMessage[]) => void;
+  briefPending?: boolean;
+  briefError?: string | null;
+} = {}) {
   const [state, action, isPending] = useActionState(planContentAction, initialPlannerState);
   const [message, setMessage] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
@@ -77,6 +86,34 @@ export default function ContentPlanner() {
           <EmptyState onPick={(text) => setMessage(text)} pending={isPending} />
         )}
       </div>
+
+      {/* Handoff: the whole point of planning is that the draft inherits it. */}
+      {onUseBrief && state.messages.some((m) => m.role === "assistant") && (
+        <div className="border-t border-line bg-accent-soft/40 px-6 py-4 sm:px-8">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-ink">
+              Happy with the direction?{" "}
+              <span className="text-muted">
+                We&apos;ll fill the brief below from this conversation — you can
+                edit everything before drafting.
+              </span>
+            </p>
+            <button
+              type="button"
+              disabled={briefPending}
+              onClick={() => onUseBrief(state.messages)}
+              className="inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-accent px-5 font-sans text-sm font-semibold text-accent-ink transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {briefPending ? "Building brief…" : "Use this as my brief"}
+            </button>
+          </div>
+          {briefError && (
+            <p role="alert" className="mt-2 text-sm text-bad">
+              {briefError}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Composer */}
       <form
