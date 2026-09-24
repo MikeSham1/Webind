@@ -31,12 +31,12 @@ describe("Vertex tuned Gemini routing", () => {
     expect(parseVertexEndpoint("gemini-3.5-flash")).toBeNull();
   });
 
-  it("keeps the content base path pinned to Gemini 3.7 despite generic generator overrides", () => {
+  it("keeps the content base path pinned to the base Gemini model despite generic generator overrides", () => {
     delete process.env.CONTENT_WRITER_VERTEX_ENDPOINT;
     process.env.GEMINI_GENERATOR_MODEL = "some-other-gemini-model";
     process.env.GEMINI_THINKING_LEVEL = "LOW";
     const provider = contentWriterProvider();
-    expect(provider.model).toBe("gemini-3.7-flash");
+    expect(provider.model).toBe("gemini-3.6-flash");
   });
 
   it("routes the writer to Vertex only when an explicit tuned endpoint is configured", () => {
@@ -47,12 +47,12 @@ describe("Vertex tuned Gemini routing", () => {
     expect(provider.isConfigured()).toBe(true);
   });
 
-  it("keeps base 3.7 behind Vertex as the runtime fallback", () => {
+  it("keeps the base Gemini model behind Vertex as the runtime fallback", () => {
     const endpoint = "projects/demo/locations/us-central1/endpoints/123456789";
     process.env.CONTENT_WRITER_VERTEX_ENDPOINT = endpoint;
     expect(contentWriterProviders().map((p) => p.model)).toEqual([
       endpoint,
-      "gemini-3.7-flash",
+      "gemini-3.6-flash",
     ]);
   });
 });

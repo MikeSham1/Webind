@@ -25,9 +25,9 @@ describe("selectProvider", () => {
     expect(selectProvider("fake").name).toBe("fake");
   });
 
-  it("uses GEMINI_GENERATOR_MODEL when set, else the 3.7 Flash default", () => {
+  it("uses GEMINI_GENERATOR_MODEL when set, else the 3.6 Flash default", () => {
     vi.stubEnv("GEMINI_GENERATOR_MODEL", "");
-    expect(geminiModelId()).toBe("gemini-3.7-flash");
+    expect(geminiModelId()).toBe("gemini-3.6-flash");
     vi.stubEnv("GEMINI_GENERATOR_MODEL", "gemini-3.5-flash");
     expect(geminiModelId()).toBe("gemini-3.5-flash");
   });

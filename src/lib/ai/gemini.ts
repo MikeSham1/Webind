@@ -1,15 +1,18 @@
-import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import { ApiError, GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { logInfo, logWarn } from "../log";
 import type { AiProvider, GenerateRequest, GenerateResult } from "./types";
 
 /**
- * Gemini Developer API adapter (default: gemini-3.7-flash).
+ * Gemini Developer API adapter (default: gemini-3.6-flash).
  *
  * This adapter is intentionally API-key-only. Vertex tuned endpoints belong in
  * vertex-gemini.ts and must never be passed through GEMINI_API_KEY.
  */
 
-export const BASE_GEMINI_MODEL = "gemini-3.7-flash";
+// gemini-3.7-flash currently returns a consistent 503 "high demand" from the
+// Developer API regardless of key/project, while Google's own 404 messages on
+// deprecated models point callers at 3.6 — pinned here until 3.7 stabilizes.
+export const BASE_GEMINI_MODEL = "gemini-3.6-flash";
 
 /**
  * The API key, cleaned of the damage a dashboard paste does to it.
@@ -60,6 +63,29 @@ export function geminiKeyDiagnostics(): {
   };
 }
 
+/**
+ * Google's own message on a 503 UNAVAILABLE reads "usually temporary...
+ * please try again later" — so that's exactly what a genuinely transient
+ * capacity blip (also seen as 429 RESOURCE_EXHAUSTED) gets here, before a
+ * single bad moment surfaces to the user as "unavailable". Anything else
+ * (bad key, bad request, model not found) rethrows immediately — retrying
+ * those would just add latency to a call that was never going to succeed.
+ */
+async function withTransientRetry<T>(
+  attempt: () => Promise<T>,
+  delaysMs: number[] = [300, 900],
+): Promise<T> {
+  for (let i = 0; ; i++) {
+    try {
+      return await attempt();
+    } catch (err) {
+      const retryable = err instanceof ApiError && (err.status === 503 || err.status === 429);
+      if (!retryable || i >= delaysMs.length) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delaysMs[i]));
+    }
+  }
+}
+
 function envThinkingLevel(): ThinkingLevel {
   return toThinkingLevel(process.env.GEMINI_THINKING_LEVEL, ThinkingLevel.MEDIUM);
 }
@@ -107,17 +133,19 @@ export function geminiProvider(
       const thinkingLevel = req.thinkingLevel
         ? toThinkingLevel(req.thinkingLevel, providerThinkingLevel)
         : providerThinkingLevel;
-      const response = await ai.models.generateContent({
-        model,
-        contents: req.prompt,
-        config: {
-          systemInstruction: req.system,
-          maxOutputTokens: req.maxOutputTokens ?? 2048,
-          thinkingConfig: { thinkingLevel },
-          ...(req.grounded ? { tools: [{ googleSearch: {} }] } : {}),
-          ...(req.json && !req.grounded ? { responseMimeType: "application/json" } : {}),
-        },
-      });
+      const response = await withTransientRetry(() =>
+        ai.models.generateContent({
+          model,
+          contents: req.prompt,
+          config: {
+            systemInstruction: req.system,
+            maxOutputTokens: req.maxOutputTokens ?? 2048,
+            thinkingConfig: { thinkingLevel },
+            ...(req.grounded ? { tools: [{ googleSearch: {} }] } : {}),
+            ...(req.json && !req.grounded ? { responseMimeType: "application/json" } : {}),
+          },
+        }),
+      );
 
       const durationMs = Date.now() - startedAt;
       const inputTokens = response.usageMetadata?.promptTokenCount ?? 0;
@@ -193,9 +221,11 @@ export function geminiProvider(
 }
 
 /**
- * Content-specific base provider. It is deliberately pinned to Gemini 3.7 with
- * MEDIUM thinking so stale generic generator overrides in an existing env file
- * cannot silently change the planner, synthetic teacher, or writer fallback.
+ * Content-specific base provider. It is deliberately pinned to BASE_GEMINI_MODEL
+ * with MEDIUM thinking so stale generic generator overrides in an existing env
+ * file cannot silently change the planner, synthetic teacher, or writer
+ * fallback. Named for the model this was originally pinned to (3.7); the
+ * pin itself — not that specific version — is what matters here.
  */
 export function gemini37Provider(): AiProvider {
   return geminiProvider(BASE_GEMINI_MODEL, { thinkingLevel: ThinkingLevel.MEDIUM });
