@@ -205,7 +205,9 @@ export default function ReportResults({
           <>
             <button
               type="button"
-              className="mt-6 inline-flex h-12 items-center justify-center rounded-full bg-accent px-7 font-sans text-[15px] font-semibold text-accent-ink transition-colors hover:bg-accent-hover"
+              disabled
+              aria-disabled="true"
+              className="mt-6 inline-flex h-12 cursor-not-allowed items-center justify-center rounded-full bg-accent px-7 font-sans text-[15px] font-semibold text-accent-ink opacity-60"
             >
               Optimize with WeBind
             </button>

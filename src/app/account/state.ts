@@ -1,7 +1,12 @@
 // Plain module (NOT "use server") so it can export non-function values.
 // A "use server" file may only export async functions.
 
-export type AuthState = { status: "idle" } | { status: "error"; error: string };
+export type AuthState =
+  | { status: "idle" }
+  // email/termsAccepted echo the submitted values back so the form-action
+  // reset (React clears uncontrolled fields once the action returns) doesn't
+  // also wipe what the visitor already typed/checked.
+  | { status: "error"; error: string; email?: string; termsAccepted?: boolean };
 
 export const initialAuthState: AuthState = { status: "idle" };
 

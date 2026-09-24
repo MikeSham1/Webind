@@ -66,7 +66,7 @@ export default async function SplashPage({
         </form>
 
         <p className="mt-6 text-center font-mono text-xs text-muted">
-          WeBindDesign.com
+          webind.design
         </p>
       </div>
     </main>

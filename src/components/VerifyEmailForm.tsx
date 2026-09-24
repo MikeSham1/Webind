@@ -24,7 +24,13 @@ export default function VerifyEmailForm({ token }: { token: string }) {
 
   return (
     <div className="w-full max-w-sm text-center">
-      <p className="font-mono text-xs uppercase tracking-[0.2em] text-accent">
+      <Link
+        href="/"
+        className="font-mono text-xs uppercase tracking-[0.16em] text-muted hover:text-accent"
+      >
+        ← WeBind Design
+      </Link>
+      <p className="mt-6 font-mono text-xs uppercase tracking-[0.2em] text-accent">
         Email verification
       </p>
       <h1 className="mt-2 font-display text-3xl font-semibold text-ink">

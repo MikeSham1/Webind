@@ -43,24 +43,36 @@ export async function signupAction(
   const termsAccepted = formData.get("termsAccepted") === "accepted";
 
   if (!EMAIL_RE.test(email)) {
-    return { status: "error", error: "Enter a valid email address." };
+    return { status: "error", error: "Enter a valid email address.", email, termsAccepted };
   }
   if (password.length < 8) {
-    return { status: "error", error: "Password must be at least 8 characters." };
+    return {
+      status: "error",
+      error: "Password must be at least 8 characters.",
+      email,
+      termsAccepted,
+    };
   }
   // Checked server-side too: a client-only match check is trivially bypassed.
   if (password !== confirmPassword) {
-    return { status: "error", error: "The two passwords don't match." };
+    return {
+      status: "error",
+      error: "The two passwords don't match.",
+      email,
+      termsAccepted,
+    };
   }
   if (!termsAccepted) {
     return {
       status: "error",
       error: "You must agree to the Terms of Service and acknowledge the Privacy Policy to create an account.",
+      email,
+      termsAccepted,
     };
   }
 
   const result = await createUser(email, password);
-  if (!result.ok) return { status: "error", error: result.error };
+  if (!result.ok) return { status: "error", error: result.error, email, termsAccepted };
 
   await createSession(result.user.id);
   // Best-effort and never throws; awaited (not fire-and-forget) so it isn't
@@ -87,12 +99,12 @@ export async function loginAction(
   const perIp = checkRateLimit(`login-ip:${ip}`, 15 * 60 * 1000, 30);
   if (!perAccount.allowed || !perIp.allowed) {
     const retryAfterMs = Math.max(perAccount.retryAfterMs, perIp.retryAfterMs);
-    return { status: "error", error: formatRetryAfter(retryAfterMs) };
+    return { status: "error", error: formatRetryAfter(retryAfterMs), email };
   }
 
   const password = String(formData.get("password") ?? "");
   const user = await verifyCredentials(email, password);
-  if (!user) return { status: "error", error: "Invalid email or password." };
+  if (!user) return { status: "error", error: "Invalid email or password.", email };
 
   await createSession(user.id);
   redirect("/studio");

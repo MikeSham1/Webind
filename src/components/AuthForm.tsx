@@ -13,10 +13,19 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
   const [state, formAction, isPending] = useActionState(action, initialAuthState);
 
   const isLogin = mode === "login";
+  const submittedEmail = state.status === "error" ? state.email : undefined;
+  const submittedTermsAccepted =
+    state.status === "error" ? state.termsAccepted : undefined;
 
   return (
     <div className="w-full max-w-sm">
-      <p className="font-mono text-xs uppercase tracking-[0.2em] text-accent">
+      <Link
+        href="/"
+        className="font-mono text-xs uppercase tracking-[0.16em] text-muted hover:text-accent"
+      >
+        ← WeBind Design
+      </Link>
+      <p className="mt-6 font-mono text-xs uppercase tracking-[0.2em] text-accent">
         {isLogin ? "Welcome back" : "Get started"}
       </p>
       <h1 className="mt-2 font-display text-3xl font-semibold text-ink">
@@ -39,6 +48,7 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
             type="email"
             autoComplete="email"
             required
+            defaultValue={submittedEmail}
             className={inputClass}
           />
         </label>
@@ -90,6 +100,7 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
               type="checkbox"
               value="accepted"
               required
+              defaultChecked={submittedTermsAccepted}
               aria-describedby="terms-consent"
               className="mt-0.5 h-4 w-4 shrink-0 rounded border-line-strong accent-current"
             />
