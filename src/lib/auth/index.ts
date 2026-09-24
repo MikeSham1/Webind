@@ -55,6 +55,14 @@ export async function createUser(
   }
 }
 
+// A fixed, lazily-computed hash to verify against when no account matches —
+// see the comment in verifyCredentials for why.
+let dummyPasswordHash: Promise<string> | null = null;
+function getDummyPasswordHash(): Promise<string> {
+  if (!dummyPasswordHash) dummyPasswordHash = hashPassword(randomBytes(32).toString("hex"));
+  return dummyPasswordHash;
+}
+
 /** Return the user iff the email exists and the password matches. */
 export async function verifyCredentials(
   email: string,
@@ -67,7 +75,13 @@ export async function verifyCredentials(
     .from(users)
     .where(eq(users.email, email.trim().toLowerCase()))
     .limit(1);
-  if (!row || !(await verifyPassword(password, row.passwordHash))) return null;
+  // Run the same scrypt cost whether or not the account exists — otherwise an
+  // unregistered email returns immediately while a registered one pays for a
+  // real scrypt derivation first, and that latency gap enumerates accounts.
+  // requestPasswordResetAction already treats this as a real threat; login
+  // gets the same treatment here.
+  const valid = await verifyPassword(password, row?.passwordHash ?? (await getDummyPasswordHash()));
+  if (!row || !valid) return null;
   return { id: row.id, email: row.email, isAdmin: row.isAdmin };
 }
 

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { cleanupExpiredSessions } from "@/lib/auth";
+import { safeEqual } from "@/lib/gate";
 import { logInfo } from "@/lib/log";
 
 export const dynamic = "force-dynamic";
@@ -21,8 +22,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "CRON_SECRET is not configured." }, { status: 503 });
   }
 
-  const provided = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  if (provided !== secret) {
+  const provided = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+  if (!safeEqual(provided, secret)) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
