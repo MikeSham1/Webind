@@ -133,8 +133,8 @@ export default function ScoreDial({
             strokeDashoffset={offset}
           />
         </svg>
-        {/* Gauge ticks + crosshair — drawn upright (not rotated with the arc
-            above) since tick 0 is computed directly for the 12 o'clock start. */}
+        {/* Gauge ticks — drawn upright (not rotated with the arc above) since
+            tick 0 is computed directly for the 12 o'clock start. */}
         <svg
           width={SIZE}
           height={SIZE}
@@ -154,24 +154,6 @@ export default function ScoreDial({
               opacity={t.major ? 0.55 : 0.3}
             />
           ))}
-          <line
-            x1={SIZE / 2 - 5}
-            y1={SIZE / 2}
-            x2={SIZE / 2 + 5}
-            y2={SIZE / 2}
-            stroke="var(--muted)"
-            strokeWidth={1}
-            opacity={0.4}
-          />
-          <line
-            x1={SIZE / 2}
-            y1={SIZE / 2 - 5}
-            x2={SIZE / 2}
-            y2={SIZE / 2 + 5}
-            stroke="var(--muted)"
-            strokeWidth={1}
-            opacity={0.4}
-          />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span
