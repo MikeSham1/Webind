@@ -44,9 +44,7 @@ export default async function PricingPage() {
       <main className="mx-auto w-full max-w-5xl flex-1 px-6 pb-24">
         <section className="mx-auto max-w-2xl pt-12 text-center sm:pt-16">
           <p className="reveal font-mono text-xs uppercase tracking-[0.24em] text-accent">
-            <span aria-hidden="true">[ </span>
             Pricing
-            <span aria-hidden="true"> ]</span>
           </p>
           <h1
             className="reveal mt-5 font-display text-[2.3rem] font-semibold leading-[1.05] tracking-tight text-ink sm:text-5xl"
@@ -87,7 +85,7 @@ export default async function PricingPage() {
 
         <section className="mx-auto mt-16 max-w-2xl">
           <h2 className="text-center font-mono text-xs uppercase tracking-[0.2em] text-muted">
-            <span aria-hidden="true">[ </span>Questions<span aria-hidden="true"> ]</span>
+            Questions
           </h2>
           <dl className="mt-6 space-y-3">
             {FAQ.map((item) => (

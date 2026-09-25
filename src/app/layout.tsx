@@ -32,6 +32,10 @@ const DESCRIPTION =
   "See how well your website is structured for AI models and search engines to understand and cite. Get your AI readiness and traditional authority scores in seconds, plus the highest-impact fixes.";
 
 export const metadata: Metadata = {
+  // Without this, the generated OpenGraph image resolves to a relative URL and
+  // most scrapers drop it. APP_BASE_URL is already required in production; the
+  // localhost fallback only affects local previews.
+  metadataBase: new URL(process.env.APP_BASE_URL || "http://localhost:3000"),
   title: TITLE,
   description: DESCRIPTION,
   // Pre-launch: keep the whole site out of search indexes.
@@ -43,7 +47,9 @@ export const metadata: Metadata = {
     type: "website",
   },
   twitter: {
-    card: "summary",
+    // The generated card is 1200x630, which is the large format — "summary"
+    // would crop it to a small square thumbnail.
+    card: "summary_large_image",
     title: TITLE,
     description: DESCRIPTION,
   },

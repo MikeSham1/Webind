@@ -30,7 +30,7 @@ export default async function BenchmarkPage() {
           ← Dashboard
         </Link>
         <p className="mt-6 font-mono text-xs uppercase tracking-[0.2em] text-muted">
-          <span aria-hidden="true">[ </span>Competitive Benchmark<span aria-hidden="true"> ]</span>
+          Competitive Benchmark
         </p>
         <h1 className="mt-2 font-display text-4xl font-semibold text-ink">
           Grade against the pages actually winning
@@ -45,9 +45,7 @@ export default async function BenchmarkPage() {
         </p>
         {!configured && (
           <p className="mt-4 rounded-lg border border-dashed border-line bg-surface px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-            <span aria-hidden="true">[ </span>
             Set SERPER_API_KEY to enable live benchmarking
-            <span aria-hidden="true"> ]</span>
           </p>
         )}
       </div>

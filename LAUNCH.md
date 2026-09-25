@@ -86,14 +86,17 @@ the key actually works. A 404 there means you are not an admin.
 
 - **Rate limiting is per-instance**, held in memory (`src/lib/rateLimit.ts`).
   Scaling past one container weakens every limit proportionally. Move to Redis
-  before scaling horizontally.
-- **No Content-Security-Policy `script-src`.** Next injects inline bootstrap
-  scripts, so a real policy needs per-request nonces. `frame-ancestors` is
-  enforced today; the rest is deferred rather than faked with
-  `'unsafe-inline'`.
+  before adding a second replica — not before, since a shared store is only
+  worth its failure modes once there is something to share.
+- **`script-src` still allows inline scripts.** Every other CSP directive is
+  strict (`default-src 'self'`, `object-src 'none'`, `base-uri 'self'`,
+  `form-action 'self'`, `frame-ancestors 'none'`), so an externally-hosted
+  injected script is refused — but an inline one is not. Closing that needs
+  per-request nonces, which Next only supports under dynamic rendering, and
+  that would force the static marketing pages off static rendering. Revisit if
+  those pages ever need to be dynamic anyway.
 - **GitHub integration uses a PAT**, not a GitHub App. Fine for a single
   operator; revisit before offering it broadly.
 - **OpenAI / Perplexity / SERP visibility providers are honest stubs** — inert
   without a key, and an explicit "not implemented" error with one. Gemini and
   Claude are the real providers.
-- **No OpenGraph image.** Links unfurl with text only.

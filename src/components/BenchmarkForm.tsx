@@ -105,7 +105,7 @@ function Results({ report }: { report: BenchmarkReport }) {
     return (
       <div className="rounded-2xl border border-dashed border-line bg-surface p-6 text-center">
         <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent">
-          <span aria-hidden="true">[ </span>Not configured<span aria-hidden="true"> ]</span>
+          Not configured
         </p>
         <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted">{report.note}</p>
       </div>

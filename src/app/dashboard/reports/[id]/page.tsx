@@ -65,9 +65,7 @@ export default async function ReportDetailPage({
         ) : (
           <section className="scan-frame border border-line bg-surface p-6 sm:p-7">
             <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
-              <span aria-hidden="true">[ </span>
               Fix Generator · read-only
-              <span aria-hidden="true"> ]</span>
             </p>
             <p className="mt-2 text-sm leading-relaxed text-muted">
               This report is not owned by the account you are signed in with, so owner-only fix generation is disabled. Run a new report while signed in to generate and review fixes.

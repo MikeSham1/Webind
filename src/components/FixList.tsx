@@ -69,7 +69,7 @@ function SuggestionsPaywall() {
       <span className="scan-corner-tr" aria-hidden="true" />
       <span className="scan-corner-bl" aria-hidden="true" />
       <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-accent">
-        <span aria-hidden="true">[ </span>Starter<span aria-hidden="true"> ]</span>
+        Starter
       </p>
       <p className="mt-2 font-display text-lg font-semibold text-ink">
         Unlock step-by-step fixes for your page

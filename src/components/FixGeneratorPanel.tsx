@@ -196,9 +196,7 @@ export default function FixGeneratorPanel({ requestId }: { requestId: string }) 
     <section className="scan-frame border border-line bg-surface p-6 sm:p-7">
       <header className="border-b-2 border-line-strong pb-4">
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
-          <span aria-hidden="true">[ </span>
           Fix Generator · experimental
-          <span aria-hidden="true"> ]</span>
         </p>
         <p className="mt-1.5 text-sm leading-relaxed text-muted">
           Generate a small, evidence-grounded fix for review — every candidate is

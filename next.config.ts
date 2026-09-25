@@ -18,12 +18,43 @@ import type { NextConfig } from "next";
  *   out of the Referer header sent to third parties.
  * - Permissions-Policy turns off hardware APIs the app never uses.
  *
- * A full Content-Security-Policy is NOT set here: Next injects inline
- * bootstrap scripts, so a meaningful script-src needs per-request nonces
- * threaded through the proxy, and a blanket 'unsafe-inline' policy would be
- * security theatre. frame-ancestors is enforced on its own instead, since it
- * is the directive X-Frame-Options can't fully express.
+ * On the Content-Security-Policy below, being precise about what it does and
+ * does not buy:
+ *
+ * Every directive except script-src/style-src is strict. object-src 'none'
+ * and base-uri 'self' close two injection routes that are easy to forget (a
+ * planted <object>, and a <base> tag that silently re-points every relative
+ * URL on the page). form-action 'self' stops an injected form posting
+ * credentials elsewhere — safe here because Stripe checkout is a fetch() plus
+ * a JS navigation, not a cross-origin form POST. default-src 'self' means a
+ * script, frame or connection to an attacker's origin is refused outright.
+ *
+ * script-src keeps 'unsafe-inline' because the honest alternative is worse.
+ * Locking it down requires a per-request nonce, and Next only supports that
+ * under dynamic rendering — which would force /methodology, /privacy, /terms
+ * and /bot off static rendering. Deliberately trading away the static
+ * performance of the marketing pages, on a product that sells page
+ * experience, to gain a partial XSS defense is the wrong trade. So this
+ * blocks externally-hosted scripts (real, and the common injection vector)
+ * but not inline ones. Revisit if those pages ever need to be dynamic anyway.
  */
+const CSP = [
+  "default-src 'self'",
+  // 'unsafe-eval' is dev-only: React uses eval to rebuild server stack traces.
+  `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}`,
+  // Inline style ATTRIBUTES (React's style={{…}}) cannot carry a nonce, and
+  // the app uses them for its animations. Styles are a far lower risk than
+  // scripts, so this is allowed rather than pretending otherwise.
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "frame-src 'none'",
+].join("; ");
 const SECURITY_HEADERS = [
   {
     key: "Strict-Transport-Security",
@@ -31,7 +62,7 @@ const SECURITY_HEADERS = [
   },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
-  { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+  { key: "Content-Security-Policy", value: CSP },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
     key: "Permissions-Policy",

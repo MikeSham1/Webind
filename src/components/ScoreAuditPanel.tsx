@@ -23,9 +23,7 @@ export default function ScoreAuditPanel({ audit }: { audit: ScoreAudit }) {
     <section className="border border-dashed border-line-strong bg-surface p-6 sm:p-7">
       <header className="flex items-baseline justify-between gap-3 border-b border-line pb-3">
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
-          <span aria-hidden="true">[ </span>
           AI score review · admin
-          <span aria-hidden="true"> ]</span>
         </p>
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">Gemini</span>
       </header>

@@ -23,9 +23,7 @@ export default function ComparePage() {
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 pb-24">
         <section className="mx-auto max-w-2xl pt-16 text-center sm:pt-20">
           <p className="reveal font-mono text-xs uppercase tracking-[0.24em] text-accent">
-            <span aria-hidden="true">[ </span>
             Read two sites the same way
-            <span aria-hidden="true"> ]</span>
           </p>
           <h1 className="reveal mt-5 font-display text-4xl font-semibold leading-[1.05] tracking-tight text-ink sm:text-5xl">
             See who&apos;s actually ahead.

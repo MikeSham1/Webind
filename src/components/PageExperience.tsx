@@ -38,9 +38,7 @@ export default function PageExperience({ vitals }: { vitals: FieldVitals }) {
       <header className="flex items-baseline justify-between gap-3 border-b-2 border-line-strong pb-4">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
-            <span aria-hidden="true">[ </span>
             Page experience · real users
-            <span aria-hidden="true"> ]</span>
           </p>
           <p className="mt-1.5 text-sm leading-relaxed text-muted">
             Core Web Vitals from the Chrome UX Report — measured from actual

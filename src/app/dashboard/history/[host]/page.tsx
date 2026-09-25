@@ -55,9 +55,7 @@ export default async function HostHistoryPage({
 
       <header className="mt-8 border-b border-line pb-6">
         <p className="font-mono text-xs uppercase tracking-[0.22em] text-accent">
-          <span aria-hidden="true">[ </span>
           Score history
-          <span aria-hidden="true"> ]</span>
         </p>
         <h1 className="mt-2 font-display text-3xl font-semibold text-ink">{host}</h1>
         <p className="mt-2 text-sm text-muted">

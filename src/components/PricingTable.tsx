@@ -99,7 +99,7 @@ export default function PricingTable({ plans, billingConfigured, signedIn, testM
                 <h2 className="font-display text-lg font-semibold text-ink">{plan.name}</h2>
                 {plan.highlight && (
                   <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">
-                    <span aria-hidden="true">[ </span>recommended<span aria-hidden="true"> ]</span>
+                    recommended
                   </span>
                 )}
               </div>
@@ -178,9 +178,7 @@ export default function PricingTable({ plans, billingConfigured, signedIn, testM
 
       {!billingConfigured && (
         <p className="mt-6 text-center font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
-          <span aria-hidden="true">[ </span>
           Paid plans open at launch — start free today
-          <span aria-hidden="true"> ]</span>
         </p>
       )}
     </div>

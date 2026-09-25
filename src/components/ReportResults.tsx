@@ -75,9 +75,7 @@ export default function ReportResults({
       {/* Header */}
       <div className="reveal text-center">
         <p className="font-mono text-xs uppercase tracking-[0.22em] text-accent">
-          <span aria-hidden="true">[ </span>
           Parse complete
-          <span aria-hidden="true"> ]</span>
         </p>
         <h2 className="mt-2 font-display text-3xl font-semibold text-ink">
           {host}
