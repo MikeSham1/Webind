@@ -65,6 +65,55 @@ export async function recordUsage(userId: string, kind: UsageKind, quantity = 1)
   });
 }
 
+/**
+ * Atomically re-check the quota and record up to `quantity` units of usage,
+ * returning how many units actually fit under the cap.
+ *
+ * getQuota() + recordUsage() is a check-then-act pair: two concurrent requests
+ * can both read "quota available" before either has recorded its usage, so
+ * together they can exceed the monthly cap. This serializes concurrent
+ * reserves for the same (userId, kind) behind a transaction-scoped Postgres
+ * advisory lock, so the recheck-then-insert below can't race with another
+ * request's recheck-then-insert. Unlimited plans and a missing database both
+ * skip the lock — there's no cap to race against.
+ */
+export async function reserveUsage(
+  userId: string,
+  kind: UsageKind,
+  quantity: number,
+): Promise<{ granted: number }> {
+  if (quantity <= 0) return { granted: 0 };
+  const plan = await getUserPlan(userId);
+  const limit = monthlyLimit(plan, kind);
+  if (limit === -1) {
+    await recordUsage(userId, kind, quantity);
+    return { granted: quantity };
+  }
+  if (limit === 0) return { granted: 0 };
+
+  return withDb({ granted: quantity }, async (db) => {
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${userId}:${kind}`})::bigint)`);
+      const [row] = await tx
+        .select({ total: sql<number>`coalesce(sum(${usageEvents.quantity}), 0)` })
+        .from(usageEvents)
+        .where(
+          and(
+            eq(usageEvents.userId, userId),
+            eq(usageEvents.kind, kind),
+            gte(usageEvents.createdAt, startOfMonthUtc()),
+          ),
+        );
+      const used = Number(row?.total ?? 0);
+      const granted = Math.max(0, Math.min(quantity, limit - used));
+      if (granted > 0) {
+        await tx.insert(usageEvents).values({ userId, kind, quantity: granted });
+      }
+      return { granted };
+    });
+  });
+}
+
 export interface Quota {
   /** -1 = unlimited, 0 = not on this plan, otherwise the monthly cap. */
   limit: number;

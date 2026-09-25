@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { checkKeywordVisibility } from "@/lib/visibility/check";
 import { saveVisibilityOutcome } from "@/lib/visibility/store";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
-import { getQuota, recordUsage } from "@/lib/billing/usage";
+import { getQuota, reserveUsage } from "@/lib/billing/usage";
 import type { VisibilityState } from "./state";
 
 function parseKeywords(raw: string): string[] {
@@ -67,7 +67,10 @@ export async function runVisibilityCheck(
   // the readiness model. Best-effort — never blocks or breaks the user's check.
   await saveVisibilityOutcome(result.report, user.id);
   // Meter the probes actually run (post dedup/cap), against the monthly quota.
-  await recordUsage(user.id, "visibility_probe", result.report.keywords.length);
+  // The slice above used a stale quota.remaining, so re-check atomically here
+  // too — a concurrent request from the same user can't jointly overshoot the
+  // cap even though both read the same "remaining" a moment earlier.
+  await reserveUsage(user.id, "visibility_probe", result.report.keywords.length);
 
   return { status: "success", report: result.report };
 }

@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as schema from "@/lib/db/schema";
-import { __setTestDb } from "@/lib/db";
+import { __setTestDb, getDb } from "@/lib/db";
 import { DEFAULT_PLAN, PLANS, planById, stripePriceId } from "./plans";
 import {
   getSubscription,
@@ -14,7 +14,7 @@ import {
   upsertSubscription,
   wasStripeEventProcessed,
 } from "./store";
-import { getQuota, recordUsage, usageThisMonth } from "./usage";
+import { getQuota, recordUsage, reserveUsage, usageThisMonth } from "./usage";
 import {
   constructWebhookEvent,
   createBillingPortalSession,
@@ -128,6 +128,16 @@ describe("subscription store (real Postgres via PGlite)", () => {
     userId = row.id;
   }, 60_000);
 
+  /** A fresh user with no usage history, for tests that assert exact usage totals. */
+  async function freshUserId(): Promise<string> {
+    const db = getDb()!;
+    const [row] = await db
+      .insert(schema.users)
+      .values({ email: `${crypto.randomUUID()}@example.com`, passwordHash: "x" })
+      .returning();
+    return row.id;
+  }
+
   it("defaults an unknown user to the free plan", async () => {
     expect(await getSubscription("00000000-0000-0000-0000-000000000000")).toBeNull();
     expect(await getUserPlan("00000000-0000-0000-0000-000000000000")).toBe(DEFAULT_PLAN);
@@ -207,6 +217,60 @@ describe("subscription store (real Postgres via PGlite)", () => {
     expect(q.limit).toBe(-1);
     expect(q.remaining).toBe(Infinity);
     expect(q.allowed).toBe(true);
+  });
+
+  it("reserveUsage grants exactly what's asked while room remains", async () => {
+    const uid = await freshUserId();
+    await upsertSubscription({ userId: uid, plan: "starter", status: "active" });
+    const first = await reserveUsage(uid, "visibility_probe", 10);
+    expect(first.granted).toBe(10);
+    expect(await usageThisMonth(uid, "visibility_probe")).toBe(10);
+  });
+
+  it("reserveUsage clamps to whatever's left instead of overshooting the cap", async () => {
+    const uid = await freshUserId();
+    await upsertSubscription({ userId: uid, plan: "starter", status: "active" });
+    await recordUsage(uid, "fix_generation", 28); // 2 left of the 30-cap
+    const reserved = await reserveUsage(uid, "fix_generation", 5);
+    expect(reserved.granted).toBe(2);
+    expect(await usageThisMonth(uid, "fix_generation")).toBe(30);
+  });
+
+  it("reserveUsage grants nothing once the cap is already spent", async () => {
+    const uid = await freshUserId();
+    await upsertSubscription({ userId: uid, plan: "starter", status: "active" });
+    await recordUsage(uid, "fix_generation", 30);
+    const reserved = await reserveUsage(uid, "fix_generation", 1);
+    expect(reserved.granted).toBe(0);
+    expect(await usageThisMonth(uid, "fix_generation")).toBe(30);
+  });
+
+  it("reserveUsage never blocks unlimited plans", async () => {
+    const uid = await freshUserId();
+    await upsertSubscription({ userId: uid, plan: "growth", status: "active" });
+    const reserved = await reserveUsage(uid, "fix_generation", 7);
+    expect(reserved.granted).toBe(7);
+  });
+
+  it("reserveUsage rejects everything a free/off-plan user attempts", async () => {
+    const uid = await freshUserId();
+    await upsertSubscription({ userId: uid, plan: "free", status: "inactive" });
+    const reserved = await reserveUsage(uid, "visibility_probe", 3);
+    expect(reserved.granted).toBe(0);
+    expect(await usageThisMonth(uid, "visibility_probe")).toBe(0);
+  });
+
+  it("reserveUsage serializes concurrent reservations so they can't jointly overshoot the cap", async () => {
+    const uid = await freshUserId();
+    await upsertSubscription({ userId: uid, plan: "starter", status: "active" });
+    await recordUsage(uid, "fix_generation", 29); // 1 left of the 30-cap
+    const [a, b] = await Promise.all([
+      reserveUsage(uid, "fix_generation", 1),
+      reserveUsage(uid, "fix_generation", 1),
+    ]);
+    // Exactly one of the two concurrent requests gets the last unit.
+    expect([a.granted, b.granted].sort()).toEqual([0, 1]);
+    expect(await usageThisMonth(uid, "fix_generation")).toBe(30);
   });
 
   it("hasActiveSubscription reflects only active/trialing status", async () => {

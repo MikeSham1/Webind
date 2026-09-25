@@ -6,7 +6,7 @@ import { crawl } from "@/lib/crawler/crawl";
 import { CrawlerBusyError } from "@/lib/crawler/browser";
 import { BlockedUrlError, normalizeUrl } from "@/lib/crawler/ssrf";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
-import { getQuota, recordUsage } from "@/lib/billing/usage";
+import { getQuota, reserveUsage } from "@/lib/billing/usage";
 import { buildSnapshot } from "@/lib/fixgen/snapshot";
 import {
   buildMetaDescriptionContext,
@@ -96,8 +96,13 @@ export async function generateFixAction(
   }
 
   // A usable fix was produced — meter it against the monthly quota. (no_fix,
-  // fallback, and empty-accepted paths above don't consume quota.)
-  await recordUsage(user.id, "fix_generation", 1);
+  // fallback, and empty-accepted paths above don't consume quota.) Re-checked
+  // atomically here, not just at the top of this action, so a concurrent
+  // request from the same user can't slip through on the same stale read.
+  const reserved = await reserveUsage(user.id, "fix_generation", 1);
+  if (reserved.granted === 0) {
+    return { status: "error", error: `You've used all ${quota.limit} fixes this month. Upgrade for more.` };
+  }
 
   const ids = await persistFixRun(snapshot, gate.context, outcome, user.id);
   if (!ids) {
