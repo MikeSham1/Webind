@@ -1,5 +1,6 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { crawl } from "@/lib/crawler/crawl";
 import { CrawlerBusyError } from "@/lib/crawler/browser";
 import { BlockedUrlError } from "@/lib/crawler/ssrf";
@@ -13,7 +14,12 @@ import { auditReport } from "@/lib/scoring/audit";
 import { getUserPlan } from "@/lib/billing/store";
 import { planAllowsSuggestions } from "@/lib/billing/plans";
 import { buildOptimizations } from "@/lib/optimize/assets";
-import { attachEmail, getReportForUser, saveReportRequest } from "@/lib/leads";
+import {
+  attachEmail,
+  getReportForUser,
+  PENDING_REPORT_COOKIE,
+  saveReportRequest,
+} from "@/lib/leads";
 import { getCurrentUser } from "@/lib/auth";
 import { touchSite } from "@/lib/sites/store";
 import {
@@ -121,6 +127,22 @@ export async function runReport(
         // Fail-soft and never blocks the report.
         user ? touchSite(user.id, url) : Promise.resolve(),
       ]);
+
+    // A signed-out visitor's report can be claimed onto their account if they
+    // sign up right after — see claimPendingReport(). httpOnly and short-lived
+    // (an hour is generous for "ran a report, then signed up"), and only ever
+    // read back by our own signup action, never by client script or a form.
+    if (!user && requestId) {
+      const jar = await cookies();
+      jar.set(PENDING_REPORT_COOKIE, requestId, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60,
+      });
+    }
+
     return {
       status: "success",
       report,

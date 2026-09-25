@@ -42,6 +42,7 @@ import {
 } from "@/lib/auth/emailVerification";
 import {
   attachEmail,
+  claimPendingReport,
   getReportById,
   getReportForUser,
   latestReportForUserHost,
@@ -214,6 +215,37 @@ describe("report ownership", () => {
     expect(await getReportForUser(id, other.user.id)).toBeNull();
     expect((await getReportForUser(id, owner.user.id))?.url).toBe("https://owned.com");
     expect((await getReportById(id))?.url).toBe("https://owned.com");
+  });
+});
+
+describe("claiming an anonymous report onto a new/existing account", () => {
+  it("claims an unowned report", async () => {
+    const owner = await createUser("claim1@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+    const reportId = await saveReportRequest(report("https://claim-test-1.com"), null);
+    if (!reportId) throw new Error("setup failed");
+
+    expect(await claimPendingReport(owner.user.id, reportId)).toBe(true);
+    expect((await getReportForUser(reportId, owner.user.id))?.url).toBe(
+      "https://claim-test-1.com",
+    );
+  });
+
+  it("refuses to claim a report someone else already owns", async () => {
+    const original = await createUser("claim2@example.com", "password123");
+    const attacker = await createUser("claim3@example.com", "password123");
+    if (!original.ok || !attacker.ok) throw new Error("setup failed");
+    const reportId = await saveReportRequest(
+      report("https://claim-test-2.com"),
+      original.user.id,
+    );
+    if (!reportId) throw new Error("setup failed");
+
+    expect(await claimPendingReport(attacker.user.id, reportId)).toBe(false);
+    expect((await getReportForUser(reportId, original.user.id))?.url).toBe(
+      "https://claim-test-2.com",
+    );
+    expect(await getReportForUser(reportId, attacker.user.id)).toBeNull();
   });
 });
 

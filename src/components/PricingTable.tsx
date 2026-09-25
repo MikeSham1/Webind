@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Plan } from "@/lib/billing/plans";
 
@@ -12,6 +12,14 @@ interface Props {
   signedIn: boolean;
   /** Stripe is in test/sandbox mode — no real charges. */
   testMode?: boolean;
+  /**
+   * The plan someone was trying to buy before being sent to sign up/log in —
+   * carried back here via ?plan=, so they land back on the plan they chose
+   * instead of a blank pricing page they have to re-scan and re-decide on.
+   * Highlighted and scrolled into view, but still requires the same explicit
+   * click as anyone else — landing here never starts checkout on its own.
+   */
+  returningPlanId?: string;
 }
 
 /** A single instrument-panel stat: big display value over a mono label. */
@@ -38,9 +46,20 @@ function specs(plan: Plan): { value: string; label: string }[] {
   ];
 }
 
-export default function PricingTable({ plans, billingConfigured, signedIn, testMode = false }: Props) {
+export default function PricingTable({
+  plans,
+  billingConfigured,
+  signedIn,
+  testMode = false,
+  returningPlanId,
+}: Props) {
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const returningCardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    returningCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
 
   async function subscribe(plan: Plan) {
     setError(null);
@@ -76,14 +95,16 @@ export default function PricingTable({ plans, billingConfigured, signedIn, testM
           const paid = Boolean(plan.stripePriceEnv);
           const busy = pending === plan.id;
           const primary = Boolean(plan.highlight);
+          const isReturning = plan.id === returningPlanId;
           return (
             <div
               key={plan.id}
+              ref={isReturning ? returningCardRef : undefined}
               className={`reveal relative flex h-full flex-col rounded-xl border bg-surface p-6 ${
                 plan.highlight
                   ? "scan-frame border-accent md:-mt-2 md:pb-8 md:pt-8"
                   : "border-line"
-              }`}
+              } ${isReturning ? "ring-2 ring-accent ring-offset-2 ring-offset-paper" : ""}`}
               style={{ animationDelay: `${i * 80}ms` }}
             >
               {/* The two extra scan-frame corners: the recommended plan is the
@@ -93,6 +114,12 @@ export default function PricingTable({ plans, billingConfigured, signedIn, testM
                   <span className="scan-corner-tr" aria-hidden="true" />
                   <span className="scan-corner-bl" aria-hidden="true" />
                 </>
+              )}
+
+              {isReturning && (
+                <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-accent">
+                  Picking up where you left off
+                </p>
               )}
 
               <div className="flex items-center justify-between gap-3">
@@ -137,7 +164,7 @@ export default function PricingTable({ plans, billingConfigured, signedIn, testM
                   </Link>
                 ) : !signedIn ? (
                   <Link
-                    href={`/signup?next=${encodeURIComponent("/pricing")}`}
+                    href={`/signup?next=${encodeURIComponent("/pricing")}&plan=${plan.id}`}
                     className={ctaClass(primary)}
                   >
                     {plan.cta}

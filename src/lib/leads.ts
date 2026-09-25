@@ -1,9 +1,20 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { reportRequests, type ReportRequest } from "@/lib/db/schema";
 import type { ReportResult } from "@/lib/scoring/types";
 import type { OptimizationAssets } from "@/lib/optimize/assets";
 import { canonicalHost } from "@/lib/domainInput";
+
+/**
+ * Cookie naming the visitor's own most recent anonymous report, so signing up
+ * right after running one can claim it onto the new account instead of losing
+ * it. Deliberately just an id in an httpOnly cookie bound to this browser —
+ * never a value a form/URL could hand us, since claimPendingReport() below
+ * only ever acts on whatever this specific browser's cookie says, and only
+ * once (a signed-up-and-claimed id can't be reused to steal a later
+ * anonymous report someone else ran and left a copy of this cookie for).
+ */
+export const PENDING_REPORT_COOKIE = "wb_pending_report";
 
 type Database = NonNullable<ReturnType<typeof getDb>>;
 
@@ -167,6 +178,24 @@ export async function attachEmail(
       .update(reportRequests)
       .set({ email })
       .where(eq(reportRequests.id, requestId))
+      .returning({ id: reportRequests.id });
+    return updated.length > 0;
+  });
+}
+
+/**
+ * Attach a still-anonymous report to a just-created account — the "report,
+ * account creation, the same report" first-run path: a visitor runs a free
+ * report, signs up, and lands back on the exact report they ran instead of a
+ * blank dashboard. Scoped to `userId IS NULL` so this can only ever claim a
+ * genuinely unowned row, never re-point one that's already someone else's.
+ */
+export async function claimPendingReport(userId: string, requestId: string): Promise<boolean> {
+  return withDb("claimPendingReport", false, async (db) => {
+    const updated = await db
+      .update(reportRequests)
+      .set({ userId })
+      .where(and(eq(reportRequests.id, requestId), isNull(reportRequests.userId)))
       .returning({ id: reportRequests.id });
     return updated.length > 0;
   });

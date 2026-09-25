@@ -29,10 +29,15 @@ const FAQ = [
   },
 ];
 
-export default async function PricingPage() {
-  const [user, billingConfigured] = await Promise.all([
+export default async function PricingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ plan?: string }>;
+}) {
+  const [user, billingConfigured, { plan: returningPlanId }] = await Promise.all([
     getCurrentUser(),
     Promise.resolve(isBillingConfigured()),
+    searchParams,
   ]);
 
   return (
@@ -68,7 +73,13 @@ export default async function PricingPage() {
         </section>
 
         <div className="reveal mt-12" style={{ animationDelay: "180ms" }}>
-          <PricingTable plans={PLANS} billingConfigured={billingConfigured} signedIn={Boolean(user)} testMode={stripeMode() === "test"} />
+          <PricingTable
+            plans={PLANS}
+            billingConfigured={billingConfigured}
+            signedIn={Boolean(user)}
+            testMode={stripeMode() === "test"}
+            returningPlanId={returningPlanId}
+          />
         </div>
 
         <p className="mx-auto mt-6 max-w-xl text-center text-xs leading-relaxed text-muted">

@@ -8,7 +8,17 @@ import { initialAuthState } from "@/app/account/state";
 const inputClass =
   "mt-1.5 w-full rounded-lg border border-line-strong bg-paper px-3 py-2.5 font-sans text-[15px] text-ink placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
 
-export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
+export default function AuthForm({
+  mode,
+  next,
+  plan,
+}: {
+  mode: "login" | "signup";
+  /** Allowlisted internal destination to return to after auth (validated again server-side). */
+  next?: string;
+  /** Plan the visitor was trying to buy when they were sent here, if any. */
+  plan?: string;
+}) {
   const action = mode === "login" ? loginAction : signupAction;
   const [state, formAction, isPending] = useActionState(action, initialAuthState);
 
@@ -16,6 +26,15 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
   const submittedEmail = state.status === "error" ? state.email : undefined;
   const submittedTermsAccepted =
     state.status === "error" ? state.termsAccepted : undefined;
+  // Carried through to the login<->signup switch link too, so choosing "Log
+  // in instead" (or vice versa) doesn't drop the reason they came here.
+  const modeSwitchQuery = (() => {
+    const params = new URLSearchParams();
+    if (next) params.set("next", next);
+    if (plan) params.set("plan", plan);
+    const qs = params.toString();
+    return qs ? `?${qs}` : "";
+  })();
 
   return (
     <div className="w-full max-w-sm">
@@ -41,6 +60,8 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
         action={formAction}
         className="mt-6 space-y-4 rounded-2xl border border-line bg-surface p-6"
       >
+        {next && <input type="hidden" name="next" value={next} />}
+        {plan && <input type="hidden" name="plan" value={plan} />}
         <label className="block">
           <span className="font-sans text-sm font-medium text-ink">Email</span>
           <input
@@ -152,14 +173,20 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
         {isLogin ? (
           <>
             No account?{" "}
-            <Link href="/signup" className="font-medium text-accent hover:underline">
+            <Link
+              href={`/signup${modeSwitchQuery}`}
+              className="font-medium text-accent hover:underline"
+            >
               Sign up
             </Link>
           </>
         ) : (
           <>
             Already have one?{" "}
-            <Link href="/login" className="font-medium text-accent hover:underline">
+            <Link
+              href={`/login${modeSwitchQuery}`}
+              className="font-medium text-accent hover:underline"
+            >
               Log in
             </Link>
           </>

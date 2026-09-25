@@ -1,5 +1,6 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   createSession,
@@ -17,6 +18,8 @@ import {
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import { getClientIp } from "@/lib/requestIp";
 import { getBaseUrl } from "@/lib/baseUrl";
+import { claimPendingReport, PENDING_REPORT_COOKIE } from "@/lib/leads";
+import { planById } from "@/lib/billing/plans";
 import type {
   AuthState,
   DeleteAccountState,
@@ -27,6 +30,55 @@ import type {
 } from "./state";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/**
+ * Where login/signup send someone afterward, instead of always /studio.
+ * Deliberately an allowlist of exact internal paths, not "anything that
+ * doesn't start with //" or similar — `next` comes from a query param a link
+ * controls, so validating it loosely is an open-redirect risk the moment
+ * someone crafts a link with next=https://evil.example.
+ */
+const NEXT_ALLOWLIST = new Set(["/pricing", "/dashboard", "/studio"]);
+
+/** The validated `next` destination from a login/signup form, or null if absent/not allowlisted. */
+function resolveNext(formData: FormData): string | null {
+  const next = String(formData.get("next") ?? "");
+  return NEXT_ALLOWLIST.has(next) ? next : null;
+}
+
+/**
+ * Claim a signed-out visitor's just-run report onto the account they just
+ * created or signed into — "report, account, same report" instead of a blank
+ * dashboard — and clear the claim cookie either way (a stale claim attempt
+ * against a report someone else already claimed shouldn't linger).
+ */
+async function claimPendingReportForUser(userId: string): Promise<string | null> {
+  const jar = await cookies();
+  const pendingReportId = jar.get(PENDING_REPORT_COOKIE)?.value;
+  if (!pendingReportId) return null;
+  jar.set(PENDING_REPORT_COOKIE, "", { path: "/", maxAge: 0 });
+  const claimed = await claimPendingReport(userId, pendingReportId);
+  return claimed ? pendingReportId : null;
+}
+
+/**
+ * Resolve and perform the post-auth redirect, honoring (in order): an
+ * allowlisted `next` (carrying the selected plan along if headed to
+ * /pricing), then a just-claimed report, then the default landing page.
+ * Always redirects — never returns.
+ */
+function redirectAfterAuth(formData: FormData, claimedReportId: string | null): never {
+  const next = resolveNext(formData);
+  if (next === "/pricing") {
+    const planId = String(formData.get("plan") ?? "");
+    redirect(planById(planId) ? `/pricing?plan=${planId}` : "/pricing");
+  }
+  if (next) redirect(next);
+  if (claimedReportId) redirect(`/dashboard/reports/${claimedReportId}`);
+  // Content Studio is the portal's front page — it's where a signed-in user
+  // actually does work. The dashboard stays one click away in the nav.
+  redirect("/studio");
+}
 
 export async function signupAction(
   _prev: AuthState,
@@ -79,9 +131,8 @@ export async function signupAction(
   // Best-effort and never throws; awaited (not fire-and-forget) so it isn't
   // left racing the redirect that follows.
   await sendVerificationEmail(result.user.id, result.user.email, await getBaseUrl());
-  // Content Studio is the portal's front page — it's where a signed-in user
-  // actually does work. The dashboard stays one click away in the nav.
-  redirect("/studio");
+  const claimedReportId = await claimPendingReportForUser(result.user.id);
+  redirectAfterAuth(formData, claimedReportId);
 }
 
 export async function loginAction(
@@ -108,7 +159,8 @@ export async function loginAction(
   if (!user) return { status: "error", error: "Invalid email or password.", email };
 
   await createSession(user.id);
-  redirect("/studio");
+  const claimedReportId = await claimPendingReportForUser(user.id);
+  redirectAfterAuth(formData, claimedReportId);
 }
 
 export async function logoutAction(): Promise<void> {
