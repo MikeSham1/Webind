@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/auth", () => ({ getCurrentUser: mocks.getCurrentUser }));
+vi.mock("@/lib/baseUrl", () => ({ getBaseUrl: async () => "https://webind.design" }));
 vi.mock("@/lib/billing/stripe", () => ({
   isBillingConfigured: mocks.isBillingConfigured,
   createCheckoutSession: mocks.createCheckoutSession,

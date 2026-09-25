@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { getBaseUrl } from "@/lib/baseUrl";
 import { createBillingPortalSession, isBillingConfigured } from "@/lib/billing/stripe";
 import { getSubscription } from "@/lib/billing/store";
 
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
  * can only ever manage their own billing. 400 when they have no customer yet
  * (they haven't subscribed) — the UI shows an upgrade CTA instead.
  */
-export async function POST(request: Request) {
+export async function POST() {
   if (!isBillingConfigured()) {
     return NextResponse.json({ error: "Billing isn't available yet." }, { status: 503 });
   }
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
 
   const result = await createBillingPortalSession({
     customerId: subscription.stripeCustomerId,
-    returnUrl: `${new URL(request.url).origin}/dashboard/settings`,
+    returnUrl: `${await getBaseUrl()}/dashboard/settings`,
   });
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 502 });

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { getBaseUrl } from "@/lib/baseUrl";
 import { planById } from "@/lib/billing/plans";
 import { createCheckoutSession, isBillingConfigured } from "@/lib/billing/stripe";
 import { getSubscription, hasActiveSubscription } from "@/lib/billing/store";
@@ -45,13 +46,12 @@ export async function POST(request: Request) {
   }
 
   const existing = await getSubscription(user.id);
-  const origin = new URL(request.url).origin;
 
   const result = await createCheckoutSession({
     userId: user.id,
     email: user.email,
     plan,
-    baseUrl: origin,
+    baseUrl: await getBaseUrl(),
     existingCustomerId: existing?.stripeCustomerId,
   });
 

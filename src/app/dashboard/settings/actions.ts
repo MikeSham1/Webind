@@ -37,6 +37,17 @@ export async function connectWordPressAction(
       error: "Enter your site's web address, e.g. https://yoursite.com.",
     };
   }
+  // Every write here sends the Application Password as HTTP Basic auth —
+  // trivially decodable, not encrypted — so plain http:// would put a real
+  // credential on the wire in the clear. normalizeUrl() allows http because
+  // it's shared with the report crawler, which has no credential to protect;
+  // this connection does.
+  if (!siteUrl.startsWith("https://")) {
+    return {
+      status: "error",
+      error: "WordPress must be connected over https:// — this sends a real credential on every request.",
+    };
+  }
   if (!username || !appPassword) {
     return {
       status: "error",
