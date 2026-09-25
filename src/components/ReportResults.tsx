@@ -194,8 +194,9 @@ export default function ReportResults({
           Turn these fixes into rankings with WeBind.
         </h3>
         <p className="mx-auto mt-3 max-w-md text-[15px] leading-relaxed text-muted">
-          We implement every fix on this list, then monitor your AI and search
-          authority as it climbs — done for you.
+          We generate a grounded fix for each item above — meta tags, schema,
+          crawlability, structure — and you approve it before it ships to
+          WordPress or GitHub in one click.
         </p>
         {requestId ? (
           <LeadCapture requestId={requestId} />
