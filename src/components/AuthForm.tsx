@@ -101,7 +101,12 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
               value="accepted"
               required
               defaultChecked={submittedTermsAccepted}
-              aria-describedby="terms-consent"
+              // The consent sentence IS this checkbox's name. aria-describedby
+              // is only supplementary, so with it alone a screen reader
+              // announced an unnamed "checkbox, required". It can't be a
+              // wrapping <label> because the text contains links, which would
+              // toggle the box when clicked.
+              aria-labelledby="terms-consent"
               className="mt-0.5 h-4 w-4 shrink-0 rounded border-line-strong accent-current"
             />
             <p id="terms-consent" className="text-xs leading-relaxed text-muted">
