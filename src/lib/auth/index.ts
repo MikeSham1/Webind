@@ -3,6 +3,8 @@ import { cookies, headers } from "next/headers";
 import { and, desc, eq, gt, lt, ne } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { sessions, users, type SessionRow } from "@/lib/db/schema";
+import { cancelSubscription } from "@/lib/billing/stripe";
+import { getSubscription } from "@/lib/billing/store";
 import { hashPassword, verifyPassword } from "./password";
 
 const SESSION_COOKIE = "wb_session";
@@ -218,6 +220,14 @@ export async function revokeOtherSessions(
  * account). Cascades via FK `onDelete` rules to sessions, reset/verification
  * tokens, WordPress/GitHub connections, and publication records.
  *
+ * A live Stripe subscription is canceled FIRST, before anything is deleted —
+ * once the account and its local subscription row are gone, the customer can
+ * no longer log in or reach the billing portal, so an uncanceled subscription
+ * would keep charging someone with no way to stop it. If Stripe can't be
+ * reached, the account is left intact (nothing deleted) rather than deleting
+ * it and orphaning the subscription — the error explains why and the user
+ * can retry.
+ *
  * Report requests and content drafts are NOT deleted — their `userId` is set
  * to null instead (same schema rule an anonymous, logged-out run already
  * uses), so they keep existing as anonymized rows rather than being erased.
@@ -237,6 +247,18 @@ export async function deleteAccount(
   if (!row || !(await verifyPassword(password, row.passwordHash))) {
     return { ok: false, error: "Incorrect password." };
   }
+
+  const subscription = await getSubscription(userId);
+  if (subscription?.stripeSubscriptionId) {
+    const canceled = await cancelSubscription(subscription.stripeSubscriptionId);
+    if (!canceled.ok) {
+      return {
+        ok: false,
+        error: `Couldn't cancel your subscription (${canceled.error}) — your account was NOT deleted. Try again, or contact support.`,
+      };
+    }
+  }
+
   await db.delete(users).where(eq(users.id, userId));
   await logout();
   return { ok: true };

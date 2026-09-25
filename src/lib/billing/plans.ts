@@ -95,6 +95,18 @@ export function stripePriceId(plan: Plan): string | undefined {
 }
 
 /**
+ * Reverse lookup: which plan a live Stripe price id belongs to, read at call
+ * time from the same env vars stripePriceId() uses. This is the source of
+ * truth for what a subscription's plan actually is — Stripe metadata set at
+ * checkout time does NOT update itself when a customer changes plans through
+ * the billing portal, but the subscription's price id always does.
+ */
+export function planIdForPrice(priceId: string): PlanId | null {
+  const match = PLANS.find((p) => p.stripePriceEnv && process.env[p.stripePriceEnv] === priceId);
+  return match?.id ?? null;
+}
+
+/**
  * Whether a plan unlocks the detailed, page-grounded fix suggestions in the
  * report (the Fix Generator). Free (0/month) does not; Starter and up do. Used
  * to paywall the suggestions on the report.

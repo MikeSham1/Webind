@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { eq } from "drizzle-orm";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import * as schema from "./schema";
 import { __setTestDb } from "./index";
 
@@ -107,6 +107,7 @@ import {
   setPrimarySite,
   touchSite,
 } from "@/lib/sites/store";
+import { getSubscription, upsertSubscription } from "@/lib/billing/store";
 
 // Captures every "email" the password-reset flow would have sent, so tests
 // can pull the reset token out of the link without hitting a real provider.
@@ -118,6 +119,18 @@ vi.mock("@/lib/email", () => ({
     sentEmails.push(input);
     return { delivered: true };
   }),
+}));
+
+// deleteAccount() calls out to Stripe to cancel a live subscription before
+// deleting anything — no real Stripe call in a unit test, but the test needs
+// to control whether that cancellation succeeds or fails.
+const { cancelSubscriptionMock } = vi.hoisted(() => ({
+  cancelSubscriptionMock: vi.fn(
+    async (): Promise<{ ok: true } | { ok: false; error: string }> => ({ ok: true }),
+  ),
+}));
+vi.mock("@/lib/billing/stripe", () => ({
+  cancelSubscription: cancelSubscriptionMock,
 }));
 
 function tokenFromResetEmail(text: string): string {
@@ -559,6 +572,11 @@ describe("session management", () => {
 });
 
 describe("account deletion", () => {
+  afterEach(() => {
+    cancelSubscriptionMock.mockClear();
+    cancelSubscriptionMock.mockResolvedValue({ ok: true });
+  });
+
   it("refuses with the wrong password and leaves the account intact", async () => {
     const owner = await createUser("delete1@example.com", "correctpass1");
     if (!owner.ok) throw new Error("setup failed");
@@ -566,6 +584,51 @@ describe("account deletion", () => {
     const result = await deleteAccount(owner.user.id, "wrongpassword");
     expect(result).toEqual({ ok: false, error: "Incorrect password." });
     expect(await verifyCredentials("delete1@example.com", "correctpass1")).not.toBeNull();
+  });
+
+  it("cancels a live Stripe subscription before deleting the account", async () => {
+    const owner = await createUser("delete-billing1@example.com", "correctpass1");
+    if (!owner.ok) throw new Error("setup failed");
+    await upsertSubscription({
+      userId: owner.user.id,
+      stripeCustomerId: "cus_del1",
+      stripeSubscriptionId: "sub_del1",
+      plan: "starter",
+      status: "active",
+    });
+
+    const result = await deleteAccount(owner.user.id, "correctpass1");
+    expect(result).toEqual({ ok: true });
+    expect(cancelSubscriptionMock).toHaveBeenCalledWith("sub_del1");
+    expect(await verifyCredentials("delete-billing1@example.com", "correctpass1")).toBeNull();
+  });
+
+  it("refuses to delete the account when canceling billing fails, and leaves everything intact", async () => {
+    const owner = await createUser("delete-billing2@example.com", "correctpass1");
+    if (!owner.ok) throw new Error("setup failed");
+    await upsertSubscription({
+      userId: owner.user.id,
+      stripeCustomerId: "cus_del2",
+      stripeSubscriptionId: "sub_del2",
+      plan: "starter",
+      status: "active",
+    });
+    cancelSubscriptionMock.mockResolvedValueOnce({ ok: false, error: "Stripe is down" });
+
+    const result = await deleteAccount(owner.user.id, "correctpass1");
+    expect(result.ok).toBe(false);
+
+    // Nothing was touched: the account and its subscription record still exist.
+    expect(await verifyCredentials("delete-billing2@example.com", "correctpass1")).not.toBeNull();
+    expect((await getSubscription(owner.user.id))?.status).toBe("active");
+  });
+
+  it("deletes an account with no subscription without ever calling Stripe", async () => {
+    const owner = await createUser("delete-billing3@example.com", "correctpass1");
+    if (!owner.ok) throw new Error("setup failed");
+
+    expect(await deleteAccount(owner.user.id, "correctpass1")).toEqual({ ok: true });
+    expect(cancelSubscriptionMock).not.toHaveBeenCalled();
   });
 
   it("deletes the user, cascades sessions/connections, but anonymizes reports and drafts", async () => {

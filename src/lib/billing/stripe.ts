@@ -68,7 +68,11 @@ export async function createCheckoutSession(input: {
         ? { customer: input.existingCustomerId }
         : { customer_email: input.email }),
       subscription_data: {
-        trial_period_days: 14,
+        // Only a genuinely new Stripe customer gets a trial — an existing
+        // customer id means they've subscribed before (even if since
+        // canceled), and every checkout previously granted a fresh 14-day
+        // trial regardless of history.
+        ...(input.existingCustomerId ? {} : { trial_period_days: 14 }),
         metadata: { userId: input.userId, plan: input.plan.id },
       },
       metadata: { userId: input.userId, plan: input.plan.id },
@@ -105,6 +109,33 @@ export async function createBillingPortalSession(input: {
       : { ok: false, error: "Stripe did not return a portal URL." };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Couldn't open the billing portal." };
+  }
+}
+
+/**
+ * Cancel a subscription immediately (not "at period end") — used only when
+ * the local account owning it is being deleted, so continuing to bill them
+ * after they can no longer log in or reach the billing portal would be
+ * indefensible. Returns ok even if Stripe already considers it canceled
+ * (deleting an already-canceled subscription 404s on Stripe's side in some
+ * API versions; that's not a failure from the caller's point of view).
+ */
+export async function cancelSubscription(
+  subscriptionId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const stripe = getStripe();
+  if (!stripe) return { ok: false, error: "Billing isn't configured yet." };
+  try {
+    await stripe.subscriptions.cancel(subscriptionId);
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof Stripe.errors.StripeInvalidRequestError && err.code === "resource_missing") {
+      return { ok: true }; // already gone — nothing left to cancel
+    }
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Couldn't cancel the subscription.",
+    };
   }
 }
 

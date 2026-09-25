@@ -471,8 +471,28 @@ export const subscriptions = pgTable("subscriptions", {
   plan: text("plan").notNull().default("free"),
   status: text("status").notNull().default("inactive"),
   currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  /**
+   * When the Stripe event that last actually applied to this row was
+   * created. Stripe does not guarantee webhook delivery order; without this,
+   * a delayed/retried older event arriving after a newer one has already
+   * been applied would silently overwrite it. Null for rows never touched
+   * by an event-ordered write (tests, manual fixes).
+   */
+  lastStripeEventCreatedAt: timestamp("last_stripe_event_created_at", { withTimezone: true }),
 });
 export type SubscriptionRow = typeof subscriptions.$inferSelect;
+
+/**
+ * Every Stripe webhook event id we've finished processing, so a redelivered
+ * event (Stripe retries on a non-2xx, and can also just duplicate-deliver) is
+ * acknowledged without being re-applied. Append-only; rows are never updated.
+ */
+export const stripeEvents = pgTable("stripe_events", {
+  id: text("id").primaryKey(), // Stripe's own event id (evt_...) — the dedupe key
+  type: text("type").notNull(),
+  processedAt: timestamp("processed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export type StripeEventRow = typeof stripeEvents.$inferSelect;
 
 /**
  * Metered feature usage, for enforcing plan quotas (Keyword Visibility probes,

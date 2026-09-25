@@ -6,7 +6,14 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as schema from "@/lib/db/schema";
 import { __setTestDb } from "@/lib/db";
 import { DEFAULT_PLAN, PLANS, planById, stripePriceId } from "./plans";
-import { getSubscription, getUserPlan, upsertSubscription } from "./store";
+import {
+  getSubscription,
+  getUserPlan,
+  hasActiveSubscription,
+  markStripeEventProcessed,
+  upsertSubscription,
+  wasStripeEventProcessed,
+} from "./store";
 import { getQuota, recordUsage, usageThisMonth } from "./usage";
 import {
   constructWebhookEvent,
@@ -200,5 +207,64 @@ describe("subscription store (real Postgres via PGlite)", () => {
     expect(q.limit).toBe(-1);
     expect(q.remaining).toBe(Infinity);
     expect(q.allowed).toBe(true);
+  });
+
+  it("hasActiveSubscription reflects only active/trialing status", async () => {
+    await upsertSubscription({ userId, plan: "starter", status: "canceled" });
+    expect(await hasActiveSubscription(userId)).toBe(false);
+    await upsertSubscription({ userId, plan: "starter", status: "trialing" });
+    expect(await hasActiveSubscription(userId)).toBe(true);
+  });
+
+  it("upsertSubscription reports the real outcome instead of always succeeding", async () => {
+    const applied = await upsertSubscription({ userId, plan: "starter", status: "active" });
+    expect(applied).toBe("applied");
+  });
+
+  it("an event-ordered write is skipped, not applied, when an equal-or-newer event already landed — Stripe does not guarantee delivery order", async () => {
+    const newer = new Date("2030-01-02T00:00:00Z");
+    const older = new Date("2030-01-01T00:00:00Z");
+
+    expect(
+      await upsertSubscription({
+        userId,
+        plan: "growth",
+        status: "active",
+        eventCreatedAt: newer,
+      }),
+    ).toBe("applied");
+    expect(await getUserPlan(userId)).toBe("growth");
+
+    // A delayed/retried older event arrives after the newer one already
+    // landed — it must not overwrite the current (correct) state.
+    const result = await upsertSubscription({
+      userId,
+      plan: "starter",
+      status: "active",
+      eventCreatedAt: older,
+    });
+    expect(result).toBe("skipped_stale");
+    expect(await getUserPlan(userId)).toBe("growth"); // unchanged
+  });
+
+  it("a newer event still applies after an older one", async () => {
+    const older = new Date("2030-02-01T00:00:00Z");
+    const newer = new Date("2030-02-02T00:00:00Z");
+
+    await upsertSubscription({ userId, plan: "starter", status: "active", eventCreatedAt: older });
+    expect(
+      await upsertSubscription({ userId, plan: "growth", status: "active", eventCreatedAt: newer }),
+    ).toBe("applied");
+    expect(await getUserPlan(userId)).toBe("growth");
+  });
+
+  it("Stripe event ids are recorded once and reported as already-processed on redelivery", async () => {
+    expect(await wasStripeEventProcessed("evt_test_1")).toBe(false);
+    await markStripeEventProcessed("evt_test_1", "customer.subscription.updated");
+    expect(await wasStripeEventProcessed("evt_test_1")).toBe(true);
+    // Marking twice (e.g. a race between two redeliveries) must not throw.
+    await expect(
+      markStripeEventProcessed("evt_test_1", "customer.subscription.updated"),
+    ).resolves.toBeUndefined();
   });
 });
