@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { cookies, headers } from "next/headers";
-import { and, desc, eq, gt, lt, ne } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, lt, ne } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { sessions, users, type SessionRow } from "@/lib/db/schema";
+import { reportRequests, sessions, users, type SessionRow } from "@/lib/db/schema";
 import { cancelSubscription } from "@/lib/billing/stripe";
 import { getSubscription } from "@/lib/billing/store";
 import { hashPassword, verifyPassword } from "./password";
@@ -231,9 +231,13 @@ export async function revokeOtherSessions(
  * Report requests and content drafts are NOT deleted — their `userId` is set
  * to null instead (same schema rule an anonymous, logged-out run already
  * uses), so they keep existing as anonymized rows rather than being erased.
- * The audit log similarly keeps its rows with `actorUserId` set to null,
- * since it is an append-only record of writes to external sites, not of the
- * account that made them. Also clears the caller's own session cookie.
+ * "Anonymized" has to actually mean that, though: a report's `email` column
+ * (the address someone left in the lead-capture form) is direct PII that
+ * survives a bare userId->null unlink, so it's explicitly cleared here too —
+ * otherwise the row still names exactly who ran it. The audit log similarly
+ * keeps its rows with `actorUserId` set to null, since it is an append-only
+ * record of writes to external sites, not of the account that made them.
+ * Also clears the caller's own session cookie.
  */
 export async function deleteAccount(
   userId: string,
@@ -258,6 +262,14 @@ export async function deleteAccount(
       };
     }
   }
+
+  // Redact the identifying email BEFORE the delete cascades userId to null —
+  // afterward there'd be no way to distinguish this user's now-anonymous
+  // rows from any other anonymous run's.
+  await db
+    .update(reportRequests)
+    .set({ email: null })
+    .where(and(eq(reportRequests.userId, userId), isNotNull(reportRequests.email)));
 
   await db.delete(users).where(eq(users.id, userId));
   await logout();

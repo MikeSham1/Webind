@@ -80,7 +80,9 @@ export default function PrivacyPage() {
         Content Studio drafts (topic, generated title and body, and the
         inputs you gave it) are stored so you can come back to them, edit
         them, and publish when you&apos;re ready. Nothing is published to
-        your site or repo without an explicit action from you.
+        your site or repo without an explicit action from you. A draft you
+        approve, and your edited final if you changed it, may also be used to
+        improve the writer model — never a rejected or unreviewed one.
       </P>
 
       <H2>Keyword Visibility</H2>
@@ -95,10 +97,28 @@ export default function PrivacyPage() {
 
       <H2>Third parties</H2>
       <P>
-        We send data to Anthropic (report narration, citation and visibility
-        checks — only when an API key is configured), and to Resend
-        (transactional email — only when configured). We don&apos;t sell
-        data, and we don&apos;t use it for advertising.
+        We send data to: <strong className="font-semibold text-ink">Google
+        (Gemini)</strong>, the primary model behind reports, Content Studio
+        drafts and planning, and the fabrication/originality checks —
+        whenever a Gemini key is configured, which is the normal case;{" "}
+        <strong className="font-semibold text-ink">Google Vertex AI</strong>,
+        only if a tuned model endpoint is separately configured for the
+        content writer;{" "}
+        <strong className="font-semibold text-ink">Anthropic</strong> (report
+        narration, and Claude-based citation/visibility checks — only when an
+        Anthropic key is configured);{" "}
+        <strong className="font-semibold text-ink">Google PageSpeed
+        Insights</strong>, sent the page URL to fetch real-user Core Web
+        Vitals; <strong className="font-semibold text-ink">Serper</strong>,
+        for the competitive benchmark&apos;s search results — only when
+        configured; <strong className="font-semibold text-ink">Stripe</strong>,
+        for checkout and billing, whenever a paid plan is purchased or
+        managed; and <strong className="font-semibold text-ink">Resend</strong>{" "}
+        (transactional email — only when configured). OpenAI, Perplexity, and
+        a generic search-API slot exist in the code as visibility-check
+        options but send nothing anywhere unless you independently configure
+        a key for them. We don&apos;t sell data, and we don&apos;t use it for
+        advertising.
       </P>
 
       <H2>Deleting your data</H2>
@@ -108,12 +128,18 @@ export default function PrivacyPage() {
           Settings
         </Link>
         . That permanently removes your user record, sessions, WordPress and
-        GitHub connections, and publication records. Reports and content
-        drafts you created are anonymized (kept, but no longer tied to your
-        account) rather than deleted, the same as a report run while logged
-        out — email us if you&apos;d like one of those removed outright. It
-        does not un-publish content already live on your own WordPress site
-        or already merged on GitHub; you control those directly.
+        GitHub connections, and publication records, and cancels any active
+        subscription. Reports and content drafts you created are anonymized
+        (userId cleared, and any email you left on a report is cleared too)
+        rather than deleted, the same as a report run while logged out —
+        email us if you&apos;d like one removed outright. Anonymizing a row
+        doesn&apos;t redact free-text content itself: if a report&apos;s URL,
+        or a draft&apos;s topic/brief/body, includes your name, company, or
+        other identifying details you typed in, that text is not
+        automatically scrubbed — request removal by email if that matters to
+        you. Account deletion also does not un-publish content already live
+        on your own WordPress site or already merged on GitHub; you control
+        those directly.
       </P>
 
       <H2>Questions</H2>

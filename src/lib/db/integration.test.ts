@@ -41,6 +41,7 @@ import {
   sendVerificationEmail,
 } from "@/lib/auth/emailVerification";
 import {
+  attachEmail,
   getReportById,
   getReportForUser,
   latestReportForUserHost,
@@ -682,6 +683,24 @@ describe("account deletion", () => {
 
     expect(await deleteAccount(owner.user.id, "correctpass1")).toEqual({ ok: true });
     expect(cancelSubscriptionMock).not.toHaveBeenCalled();
+  });
+
+  it("clears the lead-capture email from a deleted user's reports — unlinking userId alone is not anonymization", async () => {
+    const owner = await createUser("delete-email@example.com", "correctpass1");
+    if (!owner.ok) throw new Error("setup failed");
+
+    const reportId = await saveReportRequest(report("https://redact-email-test.com"), owner.user.id);
+    if (!reportId) throw new Error("setup failed");
+    expect(await attachEmail(reportId, "owner-left-this@example.com")).toBe(true);
+
+    expect(await deleteAccount(owner.user.id, "correctpass1")).toEqual({ ok: true });
+
+    const [row] = await testDb
+      .select()
+      .from(schema.reportRequests)
+      .where(eq(schema.reportRequests.id, reportId));
+    expect(row.userId).toBeNull();
+    expect(row.email).toBeNull();
   });
 
   it("deletes the user, cascades sessions/connections, but anonymizes reports and drafts", async () => {
