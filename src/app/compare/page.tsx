@@ -12,7 +12,6 @@ export const metadata: Metadata = {
   title: "Compare — WeBind Design",
   description:
     "Run two sites through the same AI-readiness read and see who's ahead, signal by signal.",
-  robots: { index: false, follow: false, nocache: true },
 };
 
 export default function ComparePage() {

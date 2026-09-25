@@ -5,8 +5,6 @@ export const metadata: Metadata = {
   title: "Privacy — WeBind Design",
   description:
     "What WeBind Design stores about you and the sites you scan, why each piece is kept, which third parties process it, and how to delete your account and its data.",
-  // Pre-launch: keep the whole site out of search indexes (see root layout).
-  robots: { index: false, follow: false, nocache: true },
 };
 
 function H2({ children }: { children: React.ReactNode }) {

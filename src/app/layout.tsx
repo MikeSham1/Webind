@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, Hanken_Grotesk, Archivo_Narrow } from "next/font/google";
+import { isPublicLaunch } from "@/lib/gate";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -38,8 +39,11 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.APP_BASE_URL || "http://localhost:3000"),
   title: TITLE,
   description: DESCRIPTION,
-  // Pre-launch: keep the whole site out of search indexes.
-  robots: { index: false, follow: false, nocache: true },
+  // Pre-launch default: keep the whole site out of search indexes, driven by
+  // the same SITE_PUBLIC flag as next.config.ts and robots.ts. Account-gated
+  // pages (dashboard, studio auth-only actions, login, etc.) set their own
+  // robots:noindex regardless of this default — see each page's metadata.
+  robots: isPublicLaunch() ? undefined : { index: false, follow: false, nocache: true },
   openGraph: {
     title: TITLE,
     description: DESCRIPTION,

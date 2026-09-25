@@ -8,7 +8,6 @@ import { resolveActiveSite } from "@/lib/sites/store";
 
 export const metadata: Metadata = {
   title: "Content Studio — WeBind Design",
-  robots: { index: false, follow: false, nocache: true },
 };
 
 export const dynamic = "force-dynamic";

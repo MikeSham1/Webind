@@ -20,6 +20,18 @@ export function sitePassword(): string | null {
   return p && p.length > 0 ? p : null;
 }
 
+/**
+ * Whether the site is deliberately public. Unsetting SITE_PASSWORD alone does
+ * NOT open the site — proxy.ts fails closed with no password configured — so
+ * going live needs this explicit, separate flag instead of an absence being
+ * silently read as "public". Also the single switch that flips indexing (see
+ * next.config.ts, robots.ts, sitemap.ts, and the root layout's metadata) so
+ * there's one flag to set at launch, not several files to remember to edit.
+ */
+export function isPublicLaunch(): boolean {
+  return process.env.SITE_PUBLIC === "true";
+}
+
 async function hmacHex(key: string, msg: string): Promise<string> {
   const cryptoKey = await crypto.subtle.importKey(
     "raw",

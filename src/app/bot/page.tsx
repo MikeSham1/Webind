@@ -5,8 +5,6 @@ export const metadata: Metadata = {
   title: "WebindBot — WeBind Design",
   description:
     "WebindBot is the crawler behind WeBind Design's AI readiness reports. What it requests, how often, how to identify it in your logs, and how to block it in robots.txt.",
-  // Pre-launch: keep the whole site out of search indexes (see root layout).
-  robots: { index: false, follow: false, nocache: true },
 };
 
 function Code({ children }: { children: React.ReactNode }) {

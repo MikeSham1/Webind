@@ -1,4 +1,7 @@
 import type { NextConfig } from "next";
+// Relative, not the "@/" alias: next.config.ts loads outside the app's normal
+// module resolution, before tsconfig paths are wired up.
+import { isPublicLaunch } from "./src/lib/gate";
 
 /**
  * Security headers.
@@ -76,10 +79,12 @@ const nextConfig: NextConfig = {
       {
         source: "/:path*",
         headers: [
-          // PRE-LAUNCH ONLY — remove this header (and the matching rules in
-          // src/app/robots.ts and the root layout's metadata) to let search
-          // engines index the site. See LAUNCH.md.
-          { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
+          // Pre-launch lock, driven by the same SITE_PUBLIC flag as robots.ts,
+          // sitemap.ts, and the root layout's metadata — one switch to flip at
+          // launch instead of several files to remember to edit. See LAUNCH.md.
+          ...(isPublicLaunch()
+            ? []
+            : [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }]),
           ...SECURITY_HEADERS,
         ],
       },

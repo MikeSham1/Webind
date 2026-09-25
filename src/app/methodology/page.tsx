@@ -6,8 +6,6 @@ import { MODEL_META } from "@/lib/model/predict";
 export const metadata: Metadata = {
   title: "Methodology — WeBind Design",
   description: "How WeBind's AI Readiness and Traditional Authority scores are built, and what they don't yet measure.",
-  // Pre-launch: keep the whole site out of search indexes (see root layout).
-  robots: { index: false, follow: false, nocache: true },
 };
 
 const AI_LABELS: Record<keyof typeof AI_WEIGHTS, { label: string; note: string }> = {

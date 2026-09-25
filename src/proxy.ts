@@ -1,14 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { GATE_COOKIE, gateToken, safeEqual, sitePassword } from "@/lib/gate";
+import { GATE_COOKIE, gateToken, isPublicLaunch, safeEqual, sitePassword } from "@/lib/gate";
 
 // Reachable without the password: the splash itself, its auth endpoints, the
-// container-orchestration health checks, and the cron cleanup endpoint.
-// None of these can send our gate cookie (a health prober or an external
-// scheduler isn't a browser with our cookie jar), and a redirect-to-splash
-// would defeat their purpose. Neither health endpoint reveals anything
-// sensitive, and the cron endpoint is independently protected by its own
-// CRON_SECRET bearer token — this list only controls whether the gate's
-// password applies, not whether the route itself is protected.
+// container-orchestration health checks, the cron cleanup endpoint, and the
+// Stripe webhook. None of these can send our gate cookie (a health prober, an
+// external scheduler, or Stripe's own servers aren't a browser with our
+// cookie jar), and a redirect-to-splash would defeat their purpose. Neither
+// health endpoint reveals anything sensitive, the cron endpoint has its own
+// CRON_SECRET bearer token, and the webhook independently verifies Stripe's
+// signature before trusting anything — this list only controls whether the
+// gate's password applies, not whether the route itself is protected.
 const PUBLIC_PATHS = [
   "/splash",
   "/api/login",
@@ -16,6 +17,7 @@ const PUBLIC_PATHS = [
   "/api/health",
   "/api/ready",
   "/api/cron",
+  "/api/billing/webhook",
 ];
 
 /**
@@ -29,6 +31,13 @@ export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    return NextResponse.next();
+  }
+
+  // The deliberate "go live" switch — see isPublicLaunch()'s comment. This
+  // only lifts the shared preview password; per-account pages still gate
+  // themselves via getCurrentUser().
+  if (isPublicLaunch()) {
     return NextResponse.next();
   }
 

@@ -7,38 +7,40 @@ Work top to bottom. Steps 1 and 2 are the ones that will bite.
 
 ---
 
-## 1. Open the site to the public — do NOT just unset `SITE_PASSWORD`
+## 1. Open the site to the public — set `SITE_PUBLIC=true`, don't just unset `SITE_PASSWORD`
 
-**Unsetting `SITE_PASSWORD` locks the site completely.** It does not open it.
+**Unsetting `SITE_PASSWORD` alone locks the site completely.** It does not open
+it: `src/proxy.ts` fails *closed* — with no password configured it still
+redirects every request to `/splash`. The result is a site nobody, including
+you, can get into.
 
-`src/proxy.ts` fails *closed*: with no password configured it skips the cookie
-check and redirects every request to `/splash`, and `/api/login` rejects every
-submission because there is nothing to compare against. The result is a site
-nobody — including you — can get into.
+To actually open it, set `SITE_PUBLIC=true` on Railway (see `isPublicLaunch()`
+in `src/lib/gate.ts`). This is the one switch that both lifts the shared
+preview password in `src/proxy.ts` **and** drives every indexing control below
+— there's nothing else to flip in code. `SITE_PASSWORD` can stay set or be
+removed either way; once `SITE_PUBLIC=true` it's no longer consulted.
 
-To actually open it, remove the gate:
+Per-account pages (`/dashboard`, `/login`, `/studio`'s signed-in actions, …)
+are unaffected — they gate themselves via `getCurrentUser()`, independent of
+this flag.
 
-- Delete `src/proxy.ts` (and `src/lib/gate.ts`, `src/app/splash/`,
-  `src/app/api/login/`, `src/app/api/logout/` if you don't want them around),
-  **or** change `proxy()` to return `NextResponse.next()` when
-  `sitePassword()` is null.
-- Then remove `SITE_PASSWORD` from Railway.
+The Stripe webhook (`/api/billing/webhook`) is exempt from the gate
+unconditionally, password set or not — Stripe can't carry our cookie, and the
+route verifies Stripe's signature itself before trusting anything. If billing
+needs to go live before the rest of the site, it already can.
 
-Verify: an incognito window reaches `/` without a password prompt.
+Verify: an incognito window reaches `/` without a password prompt, and
+`/api/billing/webhook` returns something other than a redirect to `/splash`
+even while `SITE_PUBLIC` is unset.
 
 ## 2. Let search engines index the site
 
-Three independent locks, all of which must come off. Missing one keeps the
-site invisible — which for an SEO product is the worst possible launch bug.
-
-| Where | What to change |
-| --- | --- |
-| `next.config.ts` | Delete the `X-Robots-Tag` header (keep `SECURITY_HEADERS`) |
-| `src/app/robots.ts` | Replace `disallow: "/"` with real rules; add `sitemap` |
-| `src/app/layout.tsx` | Remove `robots: { index: false, ... }` from `metadata` |
-
-Auth-gated pages (`/dashboard`, `/studio`, `/visibility`, …) set their own
-`robots: { index: false }` per route. Leave those alone.
+`next.config.ts`'s `X-Robots-Tag` header, `src/app/robots.ts`'s rules,
+`src/app/sitemap.ts`'s output, and the root layout's `robots` metadata are all
+driven by the same `SITE_PUBLIC` flag from step 1 — nothing left to edit by
+hand. Auth-gated pages (`/dashboard`, `/visibility`, `/benchmark`, `/login`,
+…) keep their own `robots: { index: false }` regardless of the flag, and
+`robots.ts` also disallows those paths outright as a second layer.
 
 Verify: `curl -I https://<domain>/` shows no `X-Robots-Tag`, and
 `curl https://<domain>/robots.txt` no longer disallows `/`.

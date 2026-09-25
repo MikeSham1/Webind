@@ -12,8 +12,6 @@ export const metadata: Metadata = {
   title: "Pricing — WeBind Design",
   description:
     "Simple, honest pricing for AI visibility. Diagnose free, then fix and track from $19/mo — under every other AI-visibility tool.",
-  // Pre-launch: keep the whole site out of search indexes (see root layout).
-  robots: { index: false, follow: false, nocache: true },
 };
 
 const FAQ = [

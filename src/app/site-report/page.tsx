@@ -11,7 +11,6 @@ export const metadata: Metadata = {
   title: "Site scan — WeBind",
   description:
     "Assess every page in a site's sitemap: AI Readiness and Traditional Authority across the whole site, with the fixes that recur most.",
-  robots: { index: false, follow: false, nocache: true },
 };
 
 export default function SiteReportPage() {

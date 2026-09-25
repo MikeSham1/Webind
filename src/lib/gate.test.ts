@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { GATE_COOKIE, gateToken, safeEqual, sitePassword } from "./gate";
+import { GATE_COOKIE, gateToken, isPublicLaunch, safeEqual, sitePassword } from "./gate";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -36,6 +36,22 @@ describe("sitePassword", () => {
   it("returns the configured password", () => {
     vi.stubEnv("SITE_PASSWORD", "Mshamoyan2026");
     expect(sitePassword()).toBe("Mshamoyan2026");
+  });
+});
+
+describe("isPublicLaunch", () => {
+  it("is false unless SITE_PUBLIC is exactly \"true\"", () => {
+    vi.stubEnv("SITE_PUBLIC", "");
+    expect(isPublicLaunch()).toBe(false);
+    vi.stubEnv("SITE_PUBLIC", "1");
+    expect(isPublicLaunch()).toBe(false);
+    vi.stubEnv("SITE_PUBLIC", "TRUE");
+    expect(isPublicLaunch()).toBe(false);
+  });
+
+  it("is true when SITE_PUBLIC=true", () => {
+    vi.stubEnv("SITE_PUBLIC", "true");
+    expect(isPublicLaunch()).toBe(true);
   });
 });
 

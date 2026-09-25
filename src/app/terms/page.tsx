@@ -5,8 +5,6 @@ export const metadata: Metadata = {
   title: "Terms of Service — WeBind Design",
   description:
     "The terms for using WeBind Design: what the AI readiness reports and generated drafts may be used for, your responsibilities as an account holder, and the limits of our liability.",
-  // Pre-launch: keep the whole site out of search indexes (see root layout).
-  robots: { index: false, follow: false, nocache: true },
 };
 
 function H2({ children }: { children: React.ReactNode }) {
