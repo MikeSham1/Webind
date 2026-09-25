@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { listReportsForUserHost } from "@/lib/leads";
+import { latestReportForUserHost } from "@/lib/leads";
 import { resolveActiveSite } from "@/lib/sites/store";
 
 /**
@@ -31,8 +31,7 @@ export default async function SiteInsights({ userId }: { userId: string }) {
     );
   }
 
-  const reports = await listReportsForUserHost(userId, active.host);
-  const latest = reports[0] ?? null;
+  const latest = await latestReportForUserHost(userId, active.host);
 
   if (!latest) {
     return (

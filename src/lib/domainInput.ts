@@ -75,6 +75,30 @@ function cleanHostname(hostname: string): string {
   return hostname.toLowerCase().replace(/\.$/, "");
 }
 
+/**
+ * Canonical host for a URL or bare domain: lowercase, no `www.`, no port/path.
+ * Returns null when there's no usable host, so callers never store or compare
+ * against junk. Pure — this is the identity rule that makes acme.com,
+ * www.acme.com and https://Acme.com/pricing the same site, and it must be the
+ * ONE place that decision is made: anywhere a host from a stored URL is
+ * compared against a host from user input needs both sides run through this,
+ * or a www/case mismatch makes an otherwise-identical site look unrelated.
+ */
+export function canonicalHost(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  let host: string;
+  try {
+    host = new URL(withScheme).hostname;
+  } catch {
+    return null;
+  }
+  const clean = cleanHostname(host).replace(/^www\./, "");
+  // Require a dotted name so "localhost" or a stray word never becomes a site.
+  return clean.includes(".") ? clean : null;
+}
+
 export function isInternalHostname(hostname: string): boolean {
   const host = cleanHostname(hostname);
   return (

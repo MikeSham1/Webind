@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import { reportRequests, type ReportRequest } from "@/lib/db/schema";
 import type { ReportResult } from "@/lib/scoring/types";
 import type { OptimizationAssets } from "@/lib/optimize/assets";
+import { canonicalHost } from "@/lib/domainInput";
 
 type Database = NonNullable<ReturnType<typeof getDb>>;
 
@@ -67,9 +68,13 @@ export async function listReportsForUser(userId: string): Promise<ReportRequest[
 /**
  * A user's own report runs for one host, oldest first — the shape a trend
  * chart wants. `url` is stored as the exact crawled URL (path included), not
- * a separate host column, so this filters in application code with the same
- * `new URL(...).host` extraction the UI already uses elsewhere, rather than
- * a SQL LIKE that could false-match a substring of an unrelated domain.
+ * a separate host column, so this filters in application code by
+ * canonicalHost (lowercase, www-insensitive) rather than a SQL LIKE that
+ * could false-match a substring of an unrelated domain, or a raw
+ * `URL(...).host` comparison that would miss a www-prefixed report against
+ * its canonical (www-stripped) site host. `host` is expected to already be
+ * canonical (e.g. from resolveActiveSite/listSites), but is normalized here
+ * too so a caller passing a raw domain still matches correctly.
  * Reads a wider window (200) than the dashboard's plain list (50) since a
  * tracked site is exactly the case where someone has run it many times.
  */
@@ -77,6 +82,7 @@ export async function listReportsForUserHost(
   userId: string,
   host: string,
 ): Promise<ReportRequest[]> {
+  const target = canonicalHost(host) ?? host;
   const rows = await withDb("listReportsForUserHost", [], (db) =>
     db
       .select()
@@ -85,15 +91,29 @@ export async function listReportsForUserHost(
       .orderBy(desc(reportRequests.createdAt))
       .limit(200),
   );
-  return rows
-    .filter((r) => {
-      try {
-        return new URL(r.url).host === host;
-      } catch {
-        return false;
-      }
-    })
-    .reverse();
+  return rows.filter((r) => canonicalHost(r.url) === target).reverse();
+}
+
+/**
+ * The single newest report for one host — the shape a "current status" card
+ * wants, distinct from {@link listReportsForUserHost}'s oldest-first history:
+ * that function's own first element is the OLDEST matching report, not the
+ * newest, and reading it as "latest" silently shows stale scores.
+ */
+export async function latestReportForUserHost(
+  userId: string,
+  host: string,
+): Promise<ReportRequest | null> {
+  const target = canonicalHost(host) ?? host;
+  const rows = await withDb("latestReportForUserHost", [], (db) =>
+    db
+      .select()
+      .from(reportRequests)
+      .where(eq(reportRequests.userId, userId))
+      .orderBy(desc(reportRequests.createdAt))
+      .limit(200),
+  );
+  return rows.find((r) => canonicalHost(r.url) === target) ?? null;
 }
 
 /** All recent report runs, including anonymous lead-gen ones. Admin only. */

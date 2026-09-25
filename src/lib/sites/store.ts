@@ -1,6 +1,9 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { reportRequests, sites, type SiteRow } from "@/lib/db/schema";
+import { canonicalHost } from "@/lib/domainInput";
+
+export { canonicalHost };
 
 /**
  * A user's websites — the context that lets the product know which site
@@ -23,27 +26,6 @@ async function withDb<T>(label: string, fallback: T, fn: (db: Database) => Promi
     console.error(`${label} failed:`, err);
     return fallback;
   }
-}
-
-/**
- * Canonical host for a URL or bare domain: lowercase, no `www.`, no port/path.
- * Returns null when there's no usable host, so callers never store junk.
- * Pure — this is the identity rule that makes acme.com, www.acme.com and
- * https://Acme.com/pricing one site instead of three.
- */
-export function canonicalHost(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-  let host: string;
-  try {
-    host = new URL(withScheme).hostname;
-  } catch {
-    return null;
-  }
-  const clean = host.toLowerCase().replace(/^www\./, "");
-  // Require a dotted name so "localhost" or a stray word never becomes a site.
-  return clean.includes(".") ? clean : null;
 }
 
 /** Every site for a user: primary first, then most recently seen. */
@@ -177,6 +159,14 @@ export async function removeSite(userId: string, siteId: string): Promise<boolea
 /**
  * The most recent report for a site, so AI context can include real scores
  * ("acme.com scored 62 AI readiness") instead of just a hostname.
+ *
+ * Filters in application code against canonicalHost(row.url), not a SQL
+ * `LIKE %host%` — a substring match on the raw URL made "example.com" match
+ * "notexample.com" or a path containing that text, and it also never
+ * recognized a www-prefixed report as the same site as its canonical host.
+ * `reportRequests` has no dedicated host column, so this reads a bounded
+ * recent window per user (same trade-off `listReportsForUserHost` already
+ * makes) rather than every report ever run.
  */
 export async function latestReportForHost(
   userId: string,
@@ -190,15 +180,9 @@ export async function latestReportForHost(
         traditionalTotal: reportRequests.traditionalTotal,
       })
       .from(reportRequests)
-      .where(
-        and(
-          eq(reportRequests.userId, userId),
-          // Match the canonical host against the stored URL.
-          sql`lower(${reportRequests.url}) like ${`%${host}%`}`,
-        ),
-      )
+      .where(eq(reportRequests.userId, userId))
       .orderBy(desc(reportRequests.createdAt))
-      .limit(1);
-    return rows[0] ?? null;
+      .limit(200);
+    return rows.find((r) => canonicalHost(r.url) === host) ?? null;
   });
 }

@@ -43,6 +43,7 @@ import {
 import {
   getReportById,
   getReportForUser,
+  latestReportForUserHost,
   listAllReports,
   listReportsForUser,
   listReportsForUserHost,
@@ -212,6 +213,55 @@ describe("report ownership", () => {
     expect(await getReportForUser(id, other.user.id)).toBeNull();
     expect((await getReportForUser(id, owner.user.id))?.url).toBe("https://owned.com");
     expect((await getReportById(id))?.url).toBe("https://owned.com");
+  });
+});
+
+describe("report/site host identity matching", () => {
+  it("finds a www-prefixed report against its canonical (www-stripped) site host", async () => {
+    const owner = await createUser("wwwmatch@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+
+    await saveReportRequest(report("https://www.acme-host-test.com/pricing"), owner.user.id);
+
+    // The site is tracked canonically (no www), but the report was run
+    // against the www-prefixed URL — a raw host-string comparison would
+    // miss it entirely.
+    const runs = await listReportsForUserHost(owner.user.id, "acme-host-test.com");
+    expect(runs).toHaveLength(1);
+    expect(await latestReportForUserHost(owner.user.id, "acme-host-test.com")).not.toBeNull();
+    expect(await latestReportForHost(owner.user.id, "acme-host-test.com")).not.toBeNull();
+  });
+
+  it("does not match a similarly-named but different domain", async () => {
+    const owner = await createUser("similardomain@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+
+    await saveReportRequest(report("https://notexample-host-test.com/"), owner.user.id);
+
+    expect(await listReportsForUserHost(owner.user.id, "example-host-test.com")).toEqual([]);
+    expect(await latestReportForUserHost(owner.user.id, "example-host-test.com")).toBeNull();
+    expect(await latestReportForHost(owner.user.id, "example-host-test.com")).toBeNull();
+  });
+
+  it("latestReportForUserHost returns the newest report, not the oldest", async () => {
+    const owner = await createUser("newestreport@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+
+    await saveReportRequest(report("https://newest-host-test.com/"), owner.user.id);
+    await new Promise((resolve) => setTimeout(resolve, 5)); // force a distinct createdAt
+    await saveReportRequest(
+      { ...report("https://newest-host-test.com/"), ai: { total: 91, signals: [], coverage: 1 } },
+      owner.user.id,
+    );
+
+    // listReportsForUserHost is deliberately oldest-first (the history/trend
+    // shape) — its own first element is the OLDEST match, which is exactly
+    // the bug this dedicated function exists to not reproduce.
+    const history = await listReportsForUserHost(owner.user.id, "newest-host-test.com");
+    expect(history[0].aiTotal).not.toBe(91);
+
+    const latest = await latestReportForUserHost(owner.user.id, "newest-host-test.com");
+    expect(latest?.aiTotal).toBe(91);
   });
 });
 
