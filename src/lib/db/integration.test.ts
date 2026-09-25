@@ -84,6 +84,7 @@ import {
 } from "@/lib/integrations/connections";
 import {
   beginPublish,
+  destinationMatches,
   getPublicationForDraft,
   recordPublished,
   recordPublishFailed,
@@ -245,7 +246,8 @@ describe("WordPress connection", () => {
     expect(status).toEqual({ siteUrl: creds.siteUrl, username: creds.username });
 
     const decrypted = await getWordPressCredentials(owner.user.id);
-    expect(decrypted).toEqual(creds);
+    expect(decrypted).toEqual({ ...creds, connectionId: decrypted?.connectionId });
+    expect(decrypted?.connectionId).toBeTruthy();
 
     // Without the key configured, the row exists but the secret is unusable.
     vi.unstubAllEnvs();
@@ -281,10 +283,24 @@ describe("publications (pending -> wp_draft -> published -> rolled_back)", () =>
     previewUrl: "https://acme.example/?page_id=7&preview=true",
   };
 
+  /** A real WordPress connection, so a destination has a real connectionId to reference. */
+  async function connectWordPress(userId: string): Promise<{ siteUrl: string; connectionId: string }> {
+    vi.stubEnv("CREDENTIALS_KEY", Buffer.alloc(32, 9).toString("base64"));
+    await saveWordPressConnection(userId, {
+      siteUrl: "https://acme.example",
+      username: "editor",
+      appPassword: "abcd efgh ijkl mnop",
+    });
+    const creds = await getWordPressCredentials(userId);
+    if (!creds) throw new Error("setup failed");
+    return { siteUrl: creds.siteUrl, connectionId: creds.connectionId };
+  }
+
   it("records pending BEFORE any WordPress call, then progresses through the full lifecycle", async () => {
     const owner = await createUser("publisher@example.com", "password123");
     if (!owner.ok) throw new Error("setup failed");
     const draftId = await newDraft(owner.user.id);
+    const destination = await connectWordPress(owner.user.id);
 
     expect(await getPublicationForDraft(draftId)).toBeNull();
 
@@ -294,7 +310,7 @@ describe("publications (pending -> wp_draft -> published -> rolled_back)", () =>
     expect(row?.status).toBe("pending");
     expect(row?.wpPostId).toBeNull(); // nothing on WordPress yet -- intent only
 
-    expect(await recordWpDraftCreated(draftId, page)).toBe(true);
+    expect(await recordWpDraftCreated(draftId, page, destination)).toBe(true);
     row = await getPublicationForDraft(draftId);
     expect(row?.status).toBe("wp_draft");
     expect(row?.wpPostId).toBe(7);
@@ -343,9 +359,10 @@ describe("publications (pending -> wp_draft -> published -> rolled_back)", () =>
     const owner = await createUser("publisher4@example.com", "password123");
     if (!owner.ok) throw new Error("setup failed");
     const draftId = await newDraft(owner.user.id);
+    const destination = await connectWordPress(owner.user.id);
 
     await beginPublish(draftId, owner.user.id);
-    await recordWpDraftCreated(draftId, page);
+    await recordWpDraftCreated(draftId, page, destination);
 
     const attempt = await beginPublish(draftId, owner.user.id);
     expect(attempt).toMatchObject({ ok: false, reason: "already_active" });
@@ -370,6 +387,53 @@ describe("publications (pending -> wp_draft -> published -> rolled_back)", () =>
     // A failed attempt never created anything on WordPress, so a retry is safe.
     const retried = await beginPublish(draftId, owner.user.id);
     expect(retried.ok).toBe(true);
+  });
+
+  it("two concurrent claims on the same never-published draft: exactly one wins", async () => {
+    const owner = await createUser("publisher6@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+    const draftId = await newDraft(owner.user.id);
+
+    // Both calls read "no existing row" before either has inserted — the
+    // unique constraint on draftId decides the race, and the loser must get
+    // a clean claim_failed, never { ok: true }.
+    const [a, b] = await Promise.all([
+      beginPublish(draftId, owner.user.id),
+      beginPublish(draftId, owner.user.id),
+    ]);
+    const results = [a, b];
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok)).toHaveLength(1);
+    const loser = results.find((r) => !r.ok);
+    expect(loser).toMatchObject({ ok: false, reason: "claim_failed" });
+  });
+
+  it("confirming go-live refuses when the WordPress connection now points at a different site", async () => {
+    const owner = await createUser("publisher7@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+    const draftId = await newDraft(owner.user.id);
+    await connectWordPress(owner.user.id);
+
+    await beginPublish(draftId, owner.user.id);
+    await recordWpDraftCreated(draftId, page, {
+      siteUrl: "https://acme.example",
+      connectionId: (await getWordPressCredentials(owner.user.id))!.connectionId,
+    });
+
+    // Reconnect to a completely different site — same connection row (unique
+    // on userId), new siteUrl.
+    vi.stubEnv("CREDENTIALS_KEY", Buffer.alloc(32, 9).toString("base64"));
+    await saveWordPressConnection(owner.user.id, {
+      siteUrl: "https://different-client.example",
+      username: "editor",
+      appPassword: "zzzz yyyy xxxx wwww",
+    });
+
+    const row = await getPublicationForDraft(draftId);
+    expect(row?.wpSiteUrl).toBe("https://acme.example");
+    const creds = await getWordPressCredentials(owner.user.id);
+    expect(creds?.siteUrl).toBe("https://different-client.example");
+    expect(destinationMatches(row!, creds!.siteUrl)).toBe(false);
   });
 });
 

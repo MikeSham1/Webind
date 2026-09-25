@@ -14,6 +14,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getWordPressCredentials } from "@/lib/integrations/connections";
 import {
   beginPublish,
+  destinationMatches,
   getPublicationForDraft,
   recordPublished,
   recordPublishFailed,
@@ -230,9 +231,25 @@ export async function publishDraftAction(
         error: "A publish is already in progress for this draft — try again shortly.",
       };
     }
+    if (begin.reason === "claim_failed") {
+      // Fail closed: never proceed to a live WordPress call without a
+      // durably recorded intent to write. Safe to ask the user to retry —
+      // no write has happened yet.
+      return {
+        status: "error",
+        error: "Couldn't start the publish — please try again.",
+      };
+    }
     // already_active: something real already exists on WordPress; report it
-    // rather than creating a second page.
+    // rather than creating a second page — but only if it's still on the
+    // site we're currently connected to (see destinationMatches).
     const row = begin.row;
+    if (!destinationMatches(row, creds.siteUrl)) {
+      return {
+        status: "error",
+        error: `This draft was already published to a different WordPress site (${row.wpSiteUrl}) than the one currently connected (${creds.siteUrl}). Reconnect that site to manage it, or start a fresh draft.`,
+      };
+    }
     if (row.status === "published" && row.wpViewUrl && row.wpEditUrl) {
       return { status: "published", viewUrl: row.wpViewUrl, editUrl: row.wpEditUrl };
     }
@@ -263,7 +280,10 @@ export async function publishDraftAction(
     return { status: "error", error: page.error };
   }
 
-  const recorded = await recordWpDraftCreated(draftId, page);
+  const recorded = await recordWpDraftCreated(draftId, page, {
+    siteUrl: creds.siteUrl,
+    connectionId: creds.connectionId,
+  });
   await recordAudit({
     actorUserId: user.id,
     action: "wordpress.create_draft",
@@ -323,6 +343,12 @@ export async function confirmGoLiveAction(
 
   const creds = await getWordPressCredentials(draft.userId);
   if (!creds) return { status: "error", error: "WordPress isn't connected anymore." };
+  if (!destinationMatches(publication, creds.siteUrl)) {
+    return {
+      status: "error",
+      error: `This draft's WordPress post lives on ${publication.wpSiteUrl}, not the currently connected ${creds.siteUrl}. Reconnect the original site before going live.`,
+    };
+  }
 
   const result = await setPageStatus(creds, publication.wpPostId, "publish");
   if (!result.ok) {
@@ -387,6 +413,12 @@ export async function rollbackPublicationAction(
 
   const creds = await getWordPressCredentials(draft.userId);
   if (!creds) return { status: "error", error: "WordPress isn't connected anymore." };
+  if (!destinationMatches(publication, creds.siteUrl)) {
+    return {
+      status: "error",
+      error: `This draft's WordPress post lives on ${publication.wpSiteUrl}, not the currently connected ${creds.siteUrl}. Reconnect the original site before rolling it back.`,
+    };
+  }
 
   const result = await setPageStatus(creds, publication.wpPostId, "draft");
   if (!result.ok) {

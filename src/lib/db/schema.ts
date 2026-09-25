@@ -232,6 +232,20 @@ export const publications = pgTable("publications", {
   wpPostId: integer("wp_post_id"),
   wpViewUrl: text("wp_view_url"),
   wpEditUrl: text("wp_edit_url"),
+  /**
+   * The WordPress site this row's wpPostId actually belongs to, captured the
+   * moment the page is first created — never updated afterward. A user can
+   * disconnect and reconnect WordPress to a different site without deleting
+   * old publications, and wordpress_connections.user_id is unique (one
+   * connection row REPLACED in place on reconnect, same connection id), so
+   * neither "the user's current connection" nor "the connection id" alone
+   * proves this post still exists on that site. Every write against
+   * wpPostId must check it still matches the currently connected site.
+   */
+  wpSiteUrl: text("wp_site_url"),
+  wpConnectionId: uuid("wp_connection_id").references(() => wordpressConnections.id, {
+    onDelete: "set null",
+  }),
   status: text("status")
     .$type<"pending" | "wp_draft" | "published" | "rolled_back" | "failed">()
     .notNull(),

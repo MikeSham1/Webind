@@ -62,10 +62,17 @@ export async function getWordPressConnectionStatus(
   });
 }
 
-/** Usable credentials for publishing. Null if not connected, or the stored secret can't be decrypted. Never throws. */
+/**
+ * Usable credentials for publishing, plus the connection's own row id — every
+ * publish/go-live/rollback write must record and re-check this id (and
+ * siteUrl) against the publication row it's about to act on, since a
+ * reconnect REPLACES this row in place (same id, new site) rather than
+ * creating a new one. Null if not connected, or the stored secret can't be
+ * decrypted. Never throws.
+ */
 export async function getWordPressCredentials(
   userId: string,
-): Promise<WordPressCredentials | null> {
+): Promise<(WordPressCredentials & { connectionId: string }) | null> {
   return withDb("getWordPressCredentials", null, async (db) => {
     const [row] = await db
       .select()
@@ -75,7 +82,7 @@ export async function getWordPressCredentials(
     if (!row) return null;
     const appPassword = decryptSecret(row.encryptedAppPassword);
     if (!appPassword) return null;
-    return { siteUrl: row.siteUrl, username: row.username, appPassword };
+    return { siteUrl: row.siteUrl, username: row.username, appPassword, connectionId: row.id };
   });
 }
 

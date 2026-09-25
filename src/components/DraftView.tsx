@@ -26,6 +26,7 @@ export default function DraftView({
   initialStatus = "pending_review",
   wordPressConnected = false,
   initialPublication = null,
+  wordPressSiteUrl = null,
 }: {
   draft: ContentDraft;
   draftId: string | null;
@@ -33,6 +34,8 @@ export default function DraftView({
   initialStatus?: DraftStatus;
   wordPressConnected?: boolean;
   initialPublication?: PublicationSnapshot | null;
+  /** The connected WordPress site this draft will actually publish to. */
+  wordPressSiteUrl?: string | null;
 }) {
   const [copied, setCopied] = useState(false);
   // Editable: the reviewer can tweak the draft before approving, and the edit
@@ -138,6 +141,7 @@ export default function DraftView({
           draftId={draftId}
           wordPressConnected={wordPressConnected}
           initialPublication={initialPublication}
+          siteUrl={wordPressSiteUrl}
         />
       )}
     </section>

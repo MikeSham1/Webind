@@ -18,10 +18,11 @@ import type { PlannerMessage } from "@/app/studio/planner-state";
  */
 export default function StudioWorkspace({
   wordPressConnected,
-  siteHost,
+  wordPressSiteUrl,
 }: {
   wordPressConnected: boolean;
-  siteHost: string | null;
+  /** The connected WordPress site drafts will actually publish to — not the analyzed site. */
+  wordPressSiteUrl: string | null;
 }) {
   const [brief, setBrief] = useState<DraftBrief | null>(null);
   // Bumped with each new brief so the form remounts and picks up the new
@@ -64,7 +65,7 @@ export default function StudioWorkspace({
           key={briefVersion}
           brief={brief}
           wordPressConnected={wordPressConnected}
-          siteHost={siteHost}
+          wordPressSiteUrl={wordPressSiteUrl}
         />
       </div>
     </>

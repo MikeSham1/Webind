@@ -4,7 +4,6 @@ import SiteContextBar from "@/components/SiteContextBar";
 import SiteHeader from "@/components/SiteHeader";
 import { getCurrentUser } from "@/lib/auth";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
-import { resolveActiveSite } from "@/lib/sites/store";
 
 export const metadata: Metadata = {
   title: "Content Studio — WeBind Design",
@@ -14,12 +13,7 @@ export const dynamic = "force-dynamic";
 
 export default async function StudioPage() {
   const user = await getCurrentUser();
-  const [wpConnection, activeSite] = user
-    ? await Promise.all([
-        getWordPressConnectionStatus(user.id),
-        resolveActiveSite(user.id),
-      ])
-    : [null, null];
+  const wpConnection = user ? await getWordPressConnectionStatus(user.id) : null;
 
   return (
     <div className="flex min-h-full flex-col">
@@ -45,7 +39,7 @@ export default async function StudioPage() {
 
         <StudioWorkspace
           wordPressConnected={wpConnection !== null}
-          siteHost={activeSite?.host ?? null}
+          wordPressSiteUrl={wpConnection?.siteUrl ?? null}
         />
       </main>
     </div>

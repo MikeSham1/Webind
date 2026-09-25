@@ -6,7 +6,6 @@ import { getCurrentUser } from "@/lib/auth";
 import { listAllDrafts, listDraftsForUser } from "@/lib/content/store";
 import { listAllReports, listReportsForUser } from "@/lib/leads";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
-import { resolveActiveSite } from "@/lib/sites/store";
 import SiteContextBar from "@/components/SiteContextBar";
 import SiteInsights from "@/components/SiteInsights";
 import StudioWorkspace from "@/components/StudioWorkspace";
@@ -46,14 +45,12 @@ export default async function DashboardPage() {
   if (!user) redirect("/login");
   const isAdmin = user.isAdmin;
 
-  const [reports, drafts, wpConnection, activeSite] = await Promise.all([
+  const [reports, drafts, wpConnection] = await Promise.all([
     isAdmin ? listAllReports() : listReportsForUser(user.id),
     isAdmin ? listAllDrafts() : listDraftsForUser(user.id),
     getWordPressConnectionStatus(user.id),
-    resolveActiveSite(user.id),
   ]);
   const wordPressConnected = wpConnection !== null;
-  const activeHost = activeSite?.host ?? null;
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-12">
@@ -178,7 +175,7 @@ export default async function DashboardPage() {
         <div className="mt-5">
           <StudioWorkspace
             wordPressConnected={wordPressConnected}
-            siteHost={activeHost}
+            wordPressSiteUrl={wpConnection?.siteUrl ?? null}
           />
         </div>
       </section>

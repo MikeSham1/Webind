@@ -154,6 +154,34 @@ describe("server-side safety enforcement on approval", () => {
   });
 });
 
+describe("publications are bound to the site they were created on", () => {
+  it("refuses to go live once WordPress has been reconnected to a different site", async () => {
+    const draftId = await newApprovedDraft();
+
+    wp.createPage.mockResolvedValue({
+      ok: true,
+      postId: 3,
+      viewUrl: "https://acme.example/x/",
+      editUrl: "https://acme.example/wp-admin/post.php?post=3&action=edit",
+      previewUrl: "https://acme.example/?page_id=3&preview=true",
+    });
+    const created = await publishDraftAction({ status: "idle" }, form({ draftId }));
+    expect(created.status).toBe("wp_draft");
+
+    // The user disconnects and reconnects WordPress to a different client's
+    // site — same connection row (unique on userId), different destination.
+    await saveWordPressConnection(userId, {
+      siteUrl: "https://a-different-clients-site.example",
+      username: "editor",
+      appPassword: "zzzz yyyy xxxx wwww",
+    });
+
+    const goLive = await confirmGoLiveAction({ status: "idle" }, form({ draftId }));
+    expect(goLive.status).toBe("error");
+    expect(wp.setPageStatus).not.toHaveBeenCalled();
+  });
+});
+
 describe("go-live re-checks approval", () => {
   it("refuses to go live once approval has been revoked, even with a WordPress draft already created", async () => {
     const draftId = await newApprovedDraft();

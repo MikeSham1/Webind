@@ -12,12 +12,13 @@ const inputClass =
 export default function StudioForm({
   wordPressConnected,
   brief = null,
-  siteHost = null,
+  wordPressSiteUrl = null,
 }: {
   wordPressConnected: boolean;
   /** Starting values carried over from the planning conversation, if any. */
   brief?: DraftBrief | null;
-  siteHost?: string | null;
+  /** The connected WordPress site drafts will actually publish to. */
+  wordPressSiteUrl?: string | null;
 }) {
   const [state, formAction, isPending] = useActionState(
     createDraftAction,
@@ -159,7 +160,7 @@ export default function StudioForm({
             <>
               Approved drafts publish to{" "}
               <strong className="font-semibold text-ink">
-                {siteHost ?? "your connected WordPress site"}
+                {wordPressSiteUrl ?? "your connected WordPress site"}
               </strong>{" "}
               — as a WordPress draft first, then only go live when you confirm.
             </>
@@ -180,6 +181,7 @@ export default function StudioForm({
           draft={state.draft}
           draftId={state.draftId}
           wordPressConnected={wordPressConnected}
+          wordPressSiteUrl={wordPressSiteUrl}
         />
       )}
     </div>

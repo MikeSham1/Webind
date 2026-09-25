@@ -43,10 +43,13 @@ export default function PublishBar({
   draftId,
   wordPressConnected,
   initialPublication,
+  siteUrl = null,
 }: {
   draftId: string;
   wordPressConnected: boolean;
   initialPublication: PublicationSnapshot | null;
+  /** The connected WordPress site this will actually write to. */
+  siteUrl?: string | null;
 }) {
   const [state, setState] = useState<KnownState>(toKnownState(initialPublication));
   const [error, setError] = useState<string | null>(null);
@@ -140,8 +143,13 @@ export default function PublishBar({
           <div className="rounded-lg border border-warn/40 bg-paper p-4">
             <p className="text-sm text-ink">
               Review the draft above first. This will make it publicly visible
-              on your WordPress site — there&apos;s no undo except manually
-              rolling it back afterward.
+              on{" "}
+              {siteUrl ? (
+                <span className="font-medium">{siteUrl}</span>
+              ) : (
+                "your WordPress site"
+              )}{" "}
+              — there&apos;s no undo except manually rolling it back afterward.
             </p>
             <div className="mt-3 flex gap-3">
               <button
@@ -183,7 +191,10 @@ export default function PublishBar({
       >
         {isPending ? "Creating draft…" : "Publish to WordPress"}
       </button>
-      <span className="text-xs text-muted">Creates a draft first — not live immediately.</span>
+      <span className="text-xs text-muted">
+        Creates a draft first — not live immediately.
+        {siteUrl && <> Destination: <span className="font-medium text-ink">{siteUrl}</span>.</>}
+      </span>
       {state.status === "rolled_back" && !error && (
         <span className="text-sm text-muted">Rolled back — not live.</span>
       )}

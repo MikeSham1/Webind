@@ -104,6 +104,7 @@ export default async function DraftDetailPage({
         initialStatus={row.status}
         wordPressConnected={connection !== null}
         initialPublication={toSnapshot(publication, connection?.siteUrl ?? null)}
+        wordPressSiteUrl={connection?.siteUrl ?? null}
       />
     </main>
   );
