@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import DraftView from "@/components/DraftView";
 import type { PublicationSnapshot } from "@/components/PublishBar";
 import { getCurrentUser } from "@/lib/auth";
-import { getDraftById, getDraftForUser } from "@/lib/content/store";
+import { approvedMarkdown, getDraftById, getDraftForUser } from "@/lib/content/store";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
 import { buildPreviewUrl } from "@/lib/integrations/wordpress";
 import { getPublicationForDraft } from "@/lib/integrations/publications";
@@ -63,9 +63,12 @@ export default async function DraftDetailPage({
     : await getDraftForUser(id, user.id);
   if (!row) notFound();
 
+  // The approved revision (the human's edit, if they made one) once a
+  // decision exists; the original generation otherwise. Reloading this page
+  // must never show — or let someone publish from — the pre-edit original.
   const draft: ContentDraft = {
     title: row.title ?? row.topic,
-    markdown: row.markdown ?? "",
+    markdown: approvedMarkdown(row),
     gates: row.gates ?? EMPTY_GATES,
   };
 

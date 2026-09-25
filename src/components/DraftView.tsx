@@ -45,6 +45,7 @@ export default function DraftView({
 
   const currentStatus: DraftStatus =
     decisionState.status === "done" ? decisionState.decision : initialStatus;
+  const isApproved = currentStatus === "approved";
   const edited = markdown.trim() !== draft.markdown.trim();
 
   async function copy() {
@@ -104,15 +105,22 @@ export default function DraftView({
         </div>
         <textarea
           value={markdown}
-          onChange={(e) => setMarkdown(e.target.value)}
+          onChange={(e) => !isApproved && setMarkdown(e.target.value)}
+          readOnly={isApproved}
           spellCheck={false}
-          aria-label="Draft markdown (editable)"
-          className="block max-h-[28rem] min-h-[16rem] w-full resize-y overflow-auto bg-paper p-5 font-mono text-[13px] leading-relaxed text-ink focus:outline-none"
+          aria-label={isApproved ? "Draft markdown (locked — already approved)" : "Draft markdown (editable)"}
+          className={`block max-h-[28rem] min-h-[16rem] w-full resize-y overflow-auto bg-paper p-5 font-mono text-[13px] leading-relaxed text-ink focus:outline-none ${isApproved ? "cursor-default opacity-80" : ""}`}
         />
-        {edited && (
+        {isApproved ? (
           <p className="border-t border-line px-5 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-            Edited — your version is saved as the approved copy
+            Locked — this is the exact text that was approved and will publish
           </p>
+        ) : (
+          edited && (
+            <p className="border-t border-line px-5 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+              Edited — your version is saved as the approved copy
+            </p>
+          )
         )}
       </div>
 

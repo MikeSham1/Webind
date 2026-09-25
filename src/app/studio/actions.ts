@@ -1,7 +1,9 @@
 "use server";
 
 import { generateDraft } from "@/lib/content/generate";
+import { runSafetyGates } from "@/lib/content/gates";
 import {
+  approvedMarkdown,
   getDraftById,
   getDraftForUser,
   saveDraft,
@@ -23,7 +25,7 @@ import { buildPreviewUrl, createPage, setPageStatus } from "@/lib/integrations/w
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import { getClientIp } from "@/lib/requestIp";
 import { recordAudit } from "@/lib/audit";
-import type { ContentInputs, DraftStatus, PageType } from "@/lib/content/types";
+import type { ContentInputs, DraftStatus, GateReport, PageType } from "@/lib/content/types";
 import type { DecisionState, PublishState, StudioState } from "./state";
 
 const PAGE_TYPES: PageType[] = ["landing", "blog", "product", "about", "faq"];
@@ -112,21 +114,47 @@ export async function decideDraftAction(
     return { status: "error", error: "Log in to approve or reject this draft." };
   }
 
-  // Capture the human's edits on approval — the highest-value training target.
-  // Only stored when the text actually changed from the model's draft.
-  let humanFinal: string | null | undefined;
-  if (status === "approved") {
-    const edited = String(formData.get("markdown") ?? "").trim();
-    const existing = await getDraftById(draftId);
-    if (existing && edited && edited !== (existing.markdown ?? "").trim()) {
-      humanFinal = edited;
-    }
+  // Admins can moderate any draft; everyone else only their own — load through
+  // the same boundary the write below uses, not just for the write itself.
+  const existing = user.isAdmin
+    ? await getDraftById(draftId)
+    : await getDraftForUser(draftId, user.id);
+  if (!existing) {
+    return { status: "error", error: "Couldn't find that draft." };
   }
 
-  // Admins can moderate any draft; everyone else only their own.
+  // The revision this decision actually covers: the submitted (possibly
+  // edited) text, so what gets checked, stored, and later published is always
+  // the same thing the reviewer looked at — never a stale value read back
+  // from the row after the fact.
+  let humanFinal: string | null | undefined;
+  let gates: GateReport | undefined;
+  if (status === "approved") {
+    const submitted = String(formData.get("markdown") ?? "").trim();
+    const revision = submitted || (existing.markdown ?? "").trim();
+    if (!existing.inputs) {
+      return {
+        status: "error",
+        error: "This draft is missing its source facts, so its safety checks can't be verified. Contact support.",
+      };
+    }
+    // The UI disables Approve on a blocked draft, but that's advisory only —
+    // a direct submission must be re-checked here against the revision being
+    // approved, not the stale gates computed at generation time against the
+    // model's original (pre-edit) text.
+    gates = runSafetyGates(existing.inputs, revision);
+    if (gates.blocked) {
+      return {
+        status: "error",
+        error: "A safety check is blocking this revision — resolve it before approving.",
+      };
+    }
+    humanFinal = revision;
+  }
+
   const ok = user.isAdmin
-    ? await setAnyDraftStatus(draftId, status, humanFinal)
-    : await setDraftStatus(draftId, user.id, status, humanFinal);
+    ? await setAnyDraftStatus(draftId, status, humanFinal, gates)
+    : await setDraftStatus(draftId, user.id, status, humanFinal, gates);
 
   return ok
     ? { status: "done", decision: status }
@@ -219,7 +247,7 @@ export async function publishDraftAction(
   }
 
   const title = draft.title || draft.topic;
-  const contentHtml = markdownToHtml(stripLeadingTitle(draft.markdown ?? "", title));
+  const contentHtml = markdownToHtml(stripLeadingTitle(approvedMarkdown(draft), title));
 
   const page = await createPage(creds, { title, contentHtml, status: "draft" });
   if (!page.ok) {
@@ -277,6 +305,16 @@ export async function confirmGoLiveAction(
 
   const draft = await loadOwnedDraft(draftId, user.id);
   if (!draft || !draft.userId) return { status: "error", error: "Couldn't find that draft." };
+  // Approval can be revoked or superseded between creating the WordPress draft
+  // and confirming it live (rejected by an admin, or re-decided some other
+  // way) — re-check it here rather than trusting that publishDraftAction's
+  // earlier check still holds.
+  if (draft.status !== "approved") {
+    return {
+      status: "error",
+      error: "This draft is no longer approved — approve it again before going live.",
+    };
+  }
 
   const publication = await getPublicationForDraft(draftId);
   if (!publication || publication.status !== "wp_draft" || !publication.wpPostId) {

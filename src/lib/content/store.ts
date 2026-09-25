@@ -1,7 +1,21 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { contentDrafts, type ContentDraftRow } from "@/lib/db/schema";
-import type { ContentDraft, ContentInputs, DraftStatus } from "./types";
+import type { ContentDraft, ContentInputs, DraftStatus, GateReport } from "./types";
+
+/**
+ * The text a draft's approval actually covers: the human's edit if they made
+ * one when approving, otherwise the original generation. This is the ONLY
+ * value that should ever be loaded, previewed, exported, or published for a
+ * draft — reading `.markdown` directly anywhere downstream of approval risks
+ * publishing text the approver never saw.
+ */
+export function approvedMarkdown(row: {
+  markdown: string | null;
+  humanFinal: string | null;
+}): string {
+  return row.humanFinal ?? row.markdown ?? "";
+}
 
 type Database = NonNullable<ReturnType<typeof getDb>>;
 
@@ -59,11 +73,17 @@ export async function setDraftStatus(
   userId: string,
   status: DraftStatus,
   humanFinal?: string | null,
+  gates?: GateReport,
 ): Promise<boolean> {
   return withDb("setDraftStatus", false, async (db) => {
     const updated = await db
       .update(contentDrafts)
-      .set({ status, updatedAt: new Date(), ...(humanFinal !== undefined ? { humanFinal } : {}) })
+      .set({
+        status,
+        updatedAt: new Date(),
+        ...(humanFinal !== undefined ? { humanFinal } : {}),
+        ...(gates !== undefined ? { gates } : {}),
+      })
       .where(and(eq(contentDrafts.id, id), eq(contentDrafts.userId, userId)))
       .returning({ id: contentDrafts.id });
     return updated.length > 0;
@@ -121,11 +141,17 @@ export async function setAnyDraftStatus(
   id: string,
   status: DraftStatus,
   humanFinal?: string | null,
+  gates?: GateReport,
 ): Promise<boolean> {
   return withDb("setAnyDraftStatus", false, async (db) => {
     const updated = await db
       .update(contentDrafts)
-      .set({ status, updatedAt: new Date(), ...(humanFinal !== undefined ? { humanFinal } : {}) })
+      .set({
+        status,
+        updatedAt: new Date(),
+        ...(humanFinal !== undefined ? { humanFinal } : {}),
+        ...(gates !== undefined ? { gates } : {}),
+      })
       .where(eq(contentDrafts.id, id))
       .returning({ id: contentDrafts.id });
     return updated.length > 0;
