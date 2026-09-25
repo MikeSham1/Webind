@@ -29,10 +29,21 @@ function seedsFromEnv(): SeedSpec[] {
 }
 
 /**
- * Create (or re-sync) the seed accounts. Idempotent: an existing account has
- * its password and admin flag reset to match env, so rotating the env values
- * and redeploying updates the account. Never throws — a seed failure must not
- * stop the server from booting.
+ * Create the seed accounts if they don't exist yet; never rewrite an
+ * existing one's password. This runs on every server boot (see
+ * instrumentation.ts) — a Railway restart, redeploy, or scale event — not
+ * just once, and it used to reset an existing account's password to the env
+ * value every single time. That silently undid a real password change the
+ * moment the process next restarted, for as long as anyone forgot to unset
+ * SEED_*_PASSWORD after initial setup. Password RECOVERY for a seeded
+ * account is the normal forgot-password flow, same as any other account —
+ * this seeder's job is only "does the account exist at all yet."
+ *
+ * `isAdmin` is still synced on an existing account: unlike a password, an
+ * operator flipping SEED_ADMIN_EMAIL to a different address (or wanting to
+ * grant/revoke admin) is a deliberate config decision to apply, not a
+ * self-service action of the account holder's that this could clobber.
+ * Never throws — a seed failure must not stop the server from booting.
  */
 export async function seedAccounts(): Promise<void> {
   const db = getDb();
@@ -44,17 +55,16 @@ export async function seedAccounts(): Promise<void> {
     const email = spec.email.trim().toLowerCase();
     try {
       const [existing] = await db
-        .select({ id: users.id })
+        .select({ id: users.id, isAdmin: users.isAdmin })
         .from(users)
         .where(eq(users.email, email))
         .limit(1);
 
       if (existing) {
-        await db
-          .update(users)
-          .set({ passwordHash: await hashPassword(spec.password), isAdmin: spec.isAdmin })
-          .where(eq(users.id, existing.id));
-        console.log(`[seed] synced ${email}${spec.isAdmin ? " (admin)" : ""}`);
+        if (existing.isAdmin !== spec.isAdmin) {
+          await db.update(users).set({ isAdmin: spec.isAdmin }).where(eq(users.id, existing.id));
+          console.log(`[seed] updated admin flag for ${email} -> ${spec.isAdmin}`);
+        }
       } else {
         // Pre-verified: this account was provisioned by whoever controls the
         // deployment's env vars, not self-registered, so there's no email

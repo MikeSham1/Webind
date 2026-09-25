@@ -36,6 +36,7 @@ import {
   verifyCredentials,
 } from "@/lib/auth";
 import { consumePasswordResetToken, requestPasswordReset } from "@/lib/auth/passwordReset";
+import { hashPassword } from "@/lib/auth/password";
 import {
   consumeEmailVerificationToken,
   sendVerificationEmail,
@@ -583,7 +584,7 @@ describe("code fix PRs", () => {
 });
 
 describe("account seeding", () => {
-  it("creates an admin from env and re-syncs its password idempotently", async () => {
+  it("creates an admin from env on first run, but a later boot never rewrites its password", async () => {
     vi.stubEnv("SEED_ADMIN_EMAIL", "admin@webind.design");
     vi.stubEnv("SEED_ADMIN_PASSWORD", "adminpass123");
     await seedAccounts();
@@ -591,11 +592,41 @@ describe("account seeding", () => {
     const admin = await verifyCredentials("admin@webind.design", "adminpass123");
     expect(admin?.isAdmin).toBe(true);
 
-    // Rotating the env password and re-seeding updates the existing account.
+    // Simulates the account holder changing their password through the
+    // normal flow (password reset, or Settings) — this must survive every
+    // later restart's re-run of seedAccounts(), not get silently reverted to
+    // whatever's still sitting in SEED_ADMIN_PASSWORD.
+    await testDb
+      .update(schema.users)
+      .set({ passwordHash: await hashPassword("hand-changed-789") })
+      .where(eq(schema.users.id, admin!.id));
+
+    // A later boot with a DIFFERENT env password must not touch the password
+    // the account holder actually set.
     vi.stubEnv("SEED_ADMIN_PASSWORD", "rotated456");
     await seedAccounts();
-    expect(await verifyCredentials("admin@webind.design", "rotated456")).not.toBeNull();
-    expect(await verifyCredentials("admin@webind.design", "adminpass123")).toBeNull();
+    expect(await verifyCredentials("admin@webind.design", "hand-changed-789")).not.toBeNull();
+    expect(await verifyCredentials("admin@webind.design", "rotated456")).toBeNull();
+
+    vi.unstubAllEnvs();
+  });
+
+  it("still syncs the admin flag on an existing seeded account — a deliberate operator config, not a self-service action", async () => {
+    vi.stubEnv("SEED_USER_EMAIL", "promote-me@webind.design");
+    vi.stubEnv("SEED_USER_PASSWORD", "userpass123");
+    await seedAccounts();
+    expect((await verifyCredentials("promote-me@webind.design", "userpass123"))?.isAdmin).toBe(
+      false,
+    );
+
+    vi.stubEnv("SEED_ADMIN_EMAIL", "promote-me@webind.design");
+    vi.stubEnv("SEED_ADMIN_PASSWORD", "userpass123");
+    vi.stubEnv("SEED_USER_EMAIL", "");
+    vi.stubEnv("SEED_USER_PASSWORD", "");
+    await seedAccounts();
+    expect((await verifyCredentials("promote-me@webind.design", "userpass123"))?.isAdmin).toBe(
+      true,
+    );
 
     vi.unstubAllEnvs();
   });

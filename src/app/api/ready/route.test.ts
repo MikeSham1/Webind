@@ -7,11 +7,11 @@ afterEach(() => {
 });
 
 describe("GET /api/ready", () => {
-  it("reports ok with database not_configured when no DB is set", async () => {
+  it("reports NOT ready when no DB is configured — accounts/billing/reports all need one in production", async () => {
     const res = await GET();
     const body = await res.json();
-    expect(res.status).toBe(200);
-    expect(body.status).toBe("ok");
+    expect(res.status).toBe(503);
+    expect(body.status).toBe("degraded");
     expect(body.database).toBe("not_configured");
     expect(body.crawler).toMatchObject({
       active: expect.any(Number),
