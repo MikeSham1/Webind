@@ -1,9 +1,17 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { reportRequests, sites, type SiteRow } from "@/lib/db/schema";
 import { canonicalHost } from "@/lib/domainInput";
+import { getUserPlan } from "@/lib/billing/store";
+import { planById } from "@/lib/billing/plans";
 
 export { canonicalHost };
+
+/** The plan's managed-site cap, or Infinity if the plan is somehow unknown (never block on a lookup gap). */
+async function siteLimitFor(userId: string): Promise<number> {
+  const planId = await getUserPlan(userId);
+  return planById(planId)?.limits.sites ?? Infinity;
+}
 
 /**
  * A user's websites — the context that lets the product know which site
@@ -40,23 +48,36 @@ export async function listSites(userId: string): Promise<SiteRow[]> {
 }
 
 /**
- * Record that a user just worked on `url`. Inserts the site the first time and
- * bumps `lastSeenAt` after that. The user's FIRST site becomes primary
- * automatically, so a single-site user never has to choose anything.
+ * Record that a user just worked on `url`. Bumps `lastSeenAt` if the host is
+ * already tracked; inserts it as a new site otherwise, UNLESS the user is
+ * already at their plan's managed-site cap — this is best-effort background
+ * discovery (every report/scan run calls it), so hitting the cap here just
+ * means this particular host silently isn't added, the same "fails soft,
+ * never blocks the caller's real work" contract every other function in this
+ * module follows. The EXPLICIT "add a site" action (addSite, below) is where
+ * a user actually needs to be told they're at their limit.
  */
 export async function touchSite(userId: string, url: string): Promise<void> {
   const host = canonicalHost(url);
   if (!host) return;
   await withDb("touchSite", undefined, async (db) => {
-    const existing = await db.select().from(sites).where(eq(sites.userId, userId)).limit(1);
-    const isFirst = existing.length === 0;
-    await db
-      .insert(sites)
-      .values({ userId, host, isPrimary: isFirst })
-      .onConflictDoUpdate({
-        target: [sites.userId, sites.host],
-        set: { lastSeenAt: new Date() },
-      });
+    const [existing] = await db
+      .select({ id: sites.id })
+      .from(sites)
+      .where(and(eq(sites.userId, userId), eq(sites.host, host)))
+      .limit(1);
+    if (existing) {
+      await db.update(sites).set({ lastSeenAt: new Date() }).where(eq(sites.id, existing.id));
+      return;
+    }
+
+    const [{ value: total }] = await db
+      .select({ value: count() })
+      .from(sites)
+      .where(eq(sites.userId, userId));
+    if (total >= (await siteLimitFor(userId))) return;
+
+    await db.insert(sites).values({ userId, host, isPrimary: total === 0 });
   });
 }
 
@@ -118,12 +139,23 @@ export async function setPrimarySite(userId: string, siteId: string): Promise<bo
   });
 }
 
-/** Add a site by hand (e.g. before the first report has been run on it). */
-export async function addSite(userId: string, url: string): Promise<SiteRow | null> {
+export type AddSiteResult =
+  | { ok: true; site: SiteRow }
+  | { ok: false; reason: "invalid" }
+  | { ok: false; reason: "limit"; limit: number };
+
+/**
+ * Add a site by hand (e.g. before the first report has been run on it).
+ * Distinguishes "that's not a usable address" from "you're at your plan's
+ * site limit" — touchSite's own silent no-op is correct for its background-
+ * discovery callers, but a user who explicitly asked to add a site needs to
+ * be told which of those actually happened.
+ */
+export async function addSite(userId: string, url: string): Promise<AddSiteResult> {
   const host = canonicalHost(url);
-  if (!host) return null;
-  await touchSite(userId, host);
-  return withDb("addSite", null, async (db) => {
+  if (!host) return { ok: false, reason: "invalid" };
+
+  const existing = await withDb("addSite:lookup", null as SiteRow | null, async (db) => {
     const [row] = await db
       .select()
       .from(sites)
@@ -131,6 +163,25 @@ export async function addSite(userId: string, url: string): Promise<SiteRow | nu
       .limit(1);
     return row ?? null;
   });
+  if (existing) {
+    await touchSite(userId, host);
+    return { ok: true, site: existing };
+  }
+
+  const limit = await siteLimitFor(userId);
+  const total = (await listSites(userId)).length;
+  if (total >= limit) return { ok: false, reason: "limit", limit };
+
+  await touchSite(userId, host);
+  const added = await withDb("addSite:reload", null as SiteRow | null, async (db) => {
+    const [row] = await db
+      .select()
+      .from(sites)
+      .where(and(eq(sites.userId, userId), eq(sites.host, host)))
+      .limit(1);
+    return row ?? null;
+  });
+  return added ? { ok: true, site: added } : { ok: false, reason: "invalid" };
 }
 
 /** Remove a site. Re-points `isPrimary` at the next one so context survives. */

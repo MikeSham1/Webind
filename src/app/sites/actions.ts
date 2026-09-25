@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/auth";
-import { addSite, setPrimarySite } from "@/lib/sites/store";
+import { addSite, removeSite, setPrimarySite } from "@/lib/sites/store";
 import type { SiteActionState } from "./state";
 
 /**
@@ -47,13 +47,32 @@ export async function addSiteAction(
   const url = String(formData.get("url") ?? "").trim();
   if (!url) return { status: "error", error: "Enter a website address." };
 
-  const site = await addSite(user.id, url);
-  if (!site) {
+  const result = await addSite(user.id, url);
+  if (!result.ok) {
     return {
       status: "error",
-      error: "That doesn't look like a website address — try just the domain, like yourdomain.com.",
+      error:
+        result.reason === "limit"
+          ? `Your plan manages up to ${result.limit} site${result.limit === 1 ? "" : "s"}. Remove one in Settings first, or upgrade for more.`
+          : "That doesn't look like a website address — try just the domain, like yourdomain.com.",
     };
   }
   revalidateSiteContext();
   return { status: "idle" };
+}
+
+/**
+ * Remove a managed site — the counterpart addSite's limit error points to.
+ * Never deletes the reports/drafts already run against it, only stops
+ * tracking it as one of the user's active sites (freeing a slot on plans
+ * with a cap). Ownership is enforced in removeSite.
+ */
+export async function removeSiteAction(formData: FormData): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) return;
+  const siteId = String(formData.get("siteId") ?? "");
+  if (!siteId) return;
+  await removeSite(user.id, siteId);
+  revalidateSiteContext();
+  revalidatePath("/dashboard/settings");
 }

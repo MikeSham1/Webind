@@ -104,6 +104,7 @@ import {
 import { getPrForReport, recordPrOpened } from "@/lib/integrations/codeFixes";
 import { listAuditLog, recordAudit } from "@/lib/audit";
 import {
+  addSite,
   latestReportForHost,
   listSites,
   removeSite,
@@ -1213,6 +1214,9 @@ describe("user sites (which website the AI is talking about)", () => {
   it("backfills sites from existing report history (no interrogation)", async () => {
     const u = await createUser("sites-backfill@example.com", "password123");
     if (!u.ok) throw new Error("setup failed");
+    // Free's 1-site cap would collapse this scenario to one site; this test
+    // is about backfill mechanics, not plan limits, so give it room.
+    await upsertSubscription({ userId: u.user.id, plan: "growth", status: "active" });
 
     // The user already ran reports before sites existed as a concept.
     await saveReportRequest(report("https://shop.example/pricing"), u.user.id);
@@ -1231,6 +1235,7 @@ describe("user sites (which website the AI is talking about)", () => {
   it("switches the primary site and keeps exactly one primary", async () => {
     const u = await createUser("sites-primary@example.com", "password123");
     if (!u.ok) throw new Error("setup failed");
+    await upsertSubscription({ userId: u.user.id, plan: "growth", status: "active" });
 
     await touchSite(u.user.id, "first.example");
     await touchSite(u.user.id, "second.example");
@@ -1260,6 +1265,7 @@ describe("user sites (which website the AI is talking about)", () => {
   it("re-points primary to a surviving site when the primary is removed", async () => {
     const u = await createUser("sites-remove@example.com", "password123");
     if (!u.ok) throw new Error("setup failed");
+    await upsertSubscription({ userId: u.user.id, plan: "growth", status: "active" });
 
     await touchSite(u.user.id, "a.example");
     await touchSite(u.user.id, "b.example");
@@ -1272,6 +1278,43 @@ describe("user sites (which website the AI is talking about)", () => {
     // Context survives: the remaining site becomes the active one.
     expect(left[0].isPrimary).toBe(true);
     expect((await resolveActiveSite(u.user.id))?.host).toBe(left[0].host);
+  });
+
+  it("enforces the plan's site cap: Growth advertised 5 sites but nothing stopped a 6th from being tracked for free", async () => {
+    const u = await createUser("sites-limit-growth@example.com", "password123");
+    if (!u.ok) throw new Error("setup failed");
+    await upsertSubscription({ userId: u.user.id, plan: "growth", status: "active" });
+
+    for (const host of ["s1.example", "s2.example", "s3.example", "s4.example", "s5.example"]) {
+      await touchSite(u.user.id, host);
+    }
+    expect(await listSites(u.user.id)).toHaveLength(5);
+
+    // A 6th site silently isn't added — touchSite is best-effort background
+    // discovery, so it fails soft rather than throwing on every report run.
+    await touchSite(u.user.id, "s6.example");
+    expect(await listSites(u.user.id)).toHaveLength(5);
+    expect((await listSites(u.user.id)).some((s) => s.host === "s6.example")).toBe(false);
+  });
+
+  it("addSite reports the limit explicitly, unlike touchSite's silent no-op", async () => {
+    const u = await createUser("sites-limit-explicit@example.com", "password123");
+    if (!u.ok) throw new Error("setup failed");
+    // Free plan: 1 site.
+    await touchSite(u.user.id, "only-site.example");
+
+    const result = await addSite(u.user.id, "second-site.example");
+    expect(result).toEqual({ ok: false, reason: "limit", limit: 1 });
+    expect(await listSites(u.user.id)).toHaveLength(1);
+  });
+
+  it("adding a site you're already tracking is not blocked by the cap (touch, not a new slot)", async () => {
+    const u = await createUser("sites-limit-retouch@example.com", "password123");
+    if (!u.ok) throw new Error("setup failed");
+    await touchSite(u.user.id, "already-tracked.example");
+
+    const result = await addSite(u.user.id, "already-tracked.example");
+    expect(result.ok).toBe(true);
   });
 });
 

@@ -5,6 +5,7 @@ import WordPressConnectionForm from "@/components/WordPressConnectionForm";
 import GitHubConnectionForm from "@/components/GitHubConnectionForm";
 import DeleteAccountForm from "@/components/DeleteAccountForm";
 import BillingSection from "@/components/BillingSection";
+import { AddSiteForm } from "@/components/SiteSwitcher";
 import { getCurrentUser, listSessions } from "@/lib/auth";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
 import { getGitHubConnectionStatus } from "@/lib/integrations/githubConnections";
@@ -12,7 +13,9 @@ import { getSubscription, getUserPlan } from "@/lib/billing/store";
 import { planById } from "@/lib/billing/plans";
 import { isBillingConfigured, stripeMode } from "@/lib/billing/stripe";
 import { summarizeUserAgent } from "@/lib/userAgent";
+import { listSites } from "@/lib/sites/store";
 import { revokeOtherSessionsAction, revokeSessionAction } from "./actions";
+import { removeSiteAction } from "@/app/sites/actions";
 
 export const metadata: Metadata = {
   title: "Settings — WeBind Design",
@@ -25,14 +28,17 @@ export default async function SettingsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [wordpress, github, sessions, subscription, planId] = await Promise.all([
+  const [wordpress, github, sessions, subscription, planId, mySites] = await Promise.all([
     getWordPressConnectionStatus(user.id),
     getGitHubConnectionStatus(user.id),
     listSessions(user.id),
     getSubscription(user.id),
     getUserPlan(user.id),
+    listSites(user.id),
   ]);
-  const planName = planById(planId)?.name ?? "Free";
+  const plan = planById(planId);
+  const planName = plan?.name ?? "Free";
+  const siteLimit = plan?.limits.sites ?? 1;
 
   return (
     <main className="mx-auto w-full max-w-2xl px-6 py-12">
@@ -72,6 +78,46 @@ export default async function SettingsPage() {
               billingConfigured={isBillingConfigured()}
               testMode={stripeMode() === "test"}
             />
+          </div>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg font-semibold text-ink">
+            Managed sites
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            {mySites.length} of {siteLimit} site{siteLimit === 1 ? "" : "s"} on your {planName} plan.
+          </p>
+          {mySites.length > 0 && (
+            <ul className="mt-4 space-y-2">
+              {mySites.map((site) => (
+                <li
+                  key={site.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface px-4 py-2.5"
+                >
+                  <span className="text-sm text-ink">
+                    {site.label ?? site.host}
+                    {site.isPrimary && (
+                      <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+                        Active
+                      </span>
+                    )}
+                  </span>
+                  <form action={removeSiteAction}>
+                    <input type="hidden" name="siteId" value={site.id} />
+                    <button
+                      type="submit"
+                      className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted hover:text-bad"
+                    >
+                      Remove
+                    </button>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-4">
+            <AddSiteForm />
           </div>
         </section>
 
