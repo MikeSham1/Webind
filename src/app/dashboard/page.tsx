@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { logoutAction, resendVerificationEmailAction } from "@/app/account/actions";
+import { logoutAction } from "@/app/account/actions";
 import { getCurrentUser } from "@/lib/auth";
 import { listAllDrafts, listDraftsForUser } from "@/lib/content/store";
 import { listAllReports, listReportsForUser } from "@/lib/leads";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
+import ResendVerificationButton from "@/components/ResendVerificationButton";
 import SiteContextBar from "@/components/SiteContextBar";
 import SiteInsights from "@/components/SiteInsights";
 import StudioWorkspace from "@/components/StudioWorkspace";
@@ -132,14 +133,7 @@ export default async function DashboardPage() {
           <p className="text-sm text-ink">
             Verify your email ({user.email}) to secure your account.
           </p>
-          <form action={resendVerificationEmailAction}>
-            <button
-              type="submit"
-              className="whitespace-nowrap font-mono text-xs uppercase tracking-[0.14em] text-accent hover:underline"
-            >
-              Resend verification email
-            </button>
-          </form>
+          <ResendVerificationButton />
         </div>
       )}
 

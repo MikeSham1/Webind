@@ -154,9 +154,13 @@ function hostIsValid(domain: string): boolean {
  * and Keyword Visibility use {@link parseDomainInput} (domain only) instead.
  */
 export function parsePageInput(raw: string): DomainInputResult {
-  const input = raw.trim();
-  // The field supplies the scheme, so a typed scheme is a mistake; reject
-  // whitespace and embedded credentials too. Paths/queries ARE allowed.
+  // The field supplies the scheme, so a typed one is redundant, not an
+  // error — browser autocomplete and pasting straight from the address bar
+  // both routinely include it. Strip a leading http(s) scheme rather than
+  // reject the input outright; any OTHER scheme (ftp:, javascript:, or one
+  // hiding after the stripped prefix) still fails the check below. Paths/
+  // queries ARE allowed; whitespace and embedded credentials are not.
+  const input = raw.trim().replace(/^https?:\/\//i, "");
   if (
     !input ||
     input.length > 2000 ||
@@ -193,7 +197,12 @@ export function parsePageInput(raw: string): DomainInputResult {
  * Successful values are canonicalized to an HTTPS origin for the crawler.
  */
 export function parseDomainInput(raw: string): DomainInputResult {
-  const input = raw.trim();
+  // As in parsePageInput: a pasted or autocompleted value routinely carries
+  // its scheme even though this field asks for a bare domain. Strip a
+  // leading http(s) scheme rather than reject it; this field still has no
+  // path support, so "https://example.com/pricing" correctly still fails
+  // below (the path survives the strip and trips the character check).
+  const input = raw.trim().replace(/^https?:\/\//i, "");
   if (
     !input ||
     input.length > 253 ||

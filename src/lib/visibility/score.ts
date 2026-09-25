@@ -98,8 +98,11 @@ function buildRecommendations(
   overallScore: number | null,
 ): string[] {
   if (overallScore === null) {
+    // Missing/unconfigured API keys are an operator problem, not something a
+    // customer reading this recommendation can act on — this used to name
+    // the exact env var to set, which just told the customer to do our job.
     return [
-      "Add an answer-engine API key (ANTHROPIC_API_KEY) so we can measure whether you surface for these keywords.",
+      "AI visibility scoring isn't available for your account right now. Try again shortly, or contact support if this continues.",
     ];
   }
 

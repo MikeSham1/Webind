@@ -84,12 +84,13 @@ describe("buildVisibilityReport", () => {
     expect(report.coverage).toBeCloseTo(0.75);
   });
 
-  it("is null overall (not zero) when no engine ran", () => {
+  it("is null overall (not zero) when no engine ran, with a customer-facing message — not an env var to set", () => {
     const report = buildVisibilityReport(query, [
       summarizeKeyword("best widgets", [eng("claude", null)]),
     ]);
     expect(report.overallScore).toBeNull();
-    expect(report.recommendations[0]).toMatch(/ANTHROPIC_API_KEY/);
+    expect(report.recommendations[0]).not.toMatch(/API_KEY|env(ironment)? var/i);
+    expect(report.recommendations[0]).toMatch(/support/i);
   });
 
   it("ranks competitors by citation frequency and normalizes them", () => {

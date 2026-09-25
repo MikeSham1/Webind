@@ -16,14 +16,21 @@ function sha256(value: string): string {
  * `emailVerifiedAt` column comment) — never blocks signup or login, and
  * degrades to a server-side log when no email provider is configured, same
  * pattern as password reset. Never throws.
+ *
+ * Returns whether the email was actually delivered. Signup's caller ignores
+ * this (verification is optional there, so there's nothing useful to tell a
+ * brand-new signup mid-flow), but the "resend" button — where the user is
+ * already identified and explicitly asked for another attempt — uses it to
+ * say honestly whether anything happened, instead of a click that silently
+ * does nothing when the email provider is unconfigured or rejects the send.
  */
 export async function sendVerificationEmail(
   userId: string,
   email: string,
   baseUrl: string,
-): Promise<void> {
+): Promise<boolean> {
   const db = getDb();
-  if (!db) return;
+  if (!db) return false;
 
   try {
     await db
@@ -47,8 +54,10 @@ export async function sendVerificationEmail(
     if (!sent.delivered) {
       logInfo("email_verification.link_not_emailed", { userId, reason: sent.reason });
     }
+    return sent.delivered;
   } catch (err) {
     console.error("sendVerificationEmail failed:", err);
+    return false;
   }
 }
 

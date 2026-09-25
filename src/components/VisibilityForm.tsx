@@ -129,8 +129,12 @@ function Results({ report }: { report: VisibilityReport }) {
           </p>
         ) : (
           <p className="max-w-md text-sm text-muted">
-            No answer engine is configured, so nothing could be measured. Set an
-            engine API key to get real scores.
+            AI visibility scoring isn&apos;t available for your account right
+            now, so nothing could be measured. Try again shortly, or{" "}
+            <a href="mailto:info@webind.design" className="text-accent hover:underline">
+              contact support
+            </a>{" "}
+            if this continues.
           </p>
         )}
         {report.visibilityRate && (

@@ -13,6 +13,11 @@ describe("parseDomainInput", () => {
     ["  EXAMPLE.COM  ", "example.com"],
     ["www.example.co.uk", "www.example.co.uk"],
     ["münich.example", "xn--mnich-kva.example"],
+    // Browser autocomplete/paste routinely includes the scheme even though
+    // this field asks for a bare domain — stripped, not rejected.
+    ["https://example.com", "example.com"],
+    ["http://example.com", "example.com"],
+    ["HTTPS://Example.com", "example.com"],
   ])("accepts a bare domain: %s", (raw, domain) => {
     expect(parseDomainInput(raw)).toEqual({
       ok: true,
@@ -24,12 +29,12 @@ describe("parseDomainInput", () => {
   it.each([
     "",
     "example",
-    "https://example.com",
     "example.com/",
     "example.com/pricing",
     "example.com?ref=test",
     "example.com#section",
     "example.com:443",
+    "https://example.com/pricing", // scheme stripped, but this field has no path support
     "user@example.com",
     "two domains.com",
     "-example.com",
@@ -83,7 +88,19 @@ describe("parsePageInput", () => {
   });
 
   it.each([
-    "https://example.com", // scheme
+    ["https://example.com", "https://example.com/"],
+    ["https://example.com/blog/my-post?ref=x", "https://example.com/blog/my-post?ref=x"],
+    ["HTTP://Example.com/Pricing", "https://example.com/Pricing"],
+  ])("strips a pasted/autocompleted http(s) scheme rather than rejecting it: %s", (raw, url) => {
+    expect(parsePageInput(raw)).toEqual({
+      ok: true,
+      domain: "example.com",
+      url,
+    });
+  });
+
+  it.each([
+    "ftp://example.com", // a non-http(s) scheme is still rejected
     "example.com:8080", // explicit port
     "user@example.com", // credentials
     "has space.com", // whitespace

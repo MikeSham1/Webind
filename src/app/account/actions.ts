@@ -21,6 +21,7 @@ import type {
   AuthState,
   DeleteAccountState,
   ForgotPasswordState,
+  ResendVerificationState,
   ResetPasswordState,
   VerifyEmailState,
 } from "./state";
@@ -175,15 +176,25 @@ export async function verifyEmailAction(
 }
 
 /** Re-send the verification email to the signed-in (but unverified) user. */
-export async function resendVerificationEmailAction(): Promise<void> {
+export async function resendVerificationEmailAction(
+  _prev: ResendVerificationState,
+  _formData: FormData,
+): Promise<ResendVerificationState> {
   const user = await getCurrentUser();
-  if (!user || user.emailVerifiedAt) return;
+  if (!user) return { status: "error", error: "Log in to resend your verification email." };
+  if (user.emailVerifiedAt) return { status: "sent" }; // already verified — nothing left to do
 
   const ip = await getClientIp();
   const limit = checkRateLimit(`resend-verify:${user.id}:${ip}`, 60 * 60 * 1000, 5);
-  if (!limit.allowed) return;
+  if (!limit.allowed) {
+    return { status: "error", error: formatRetryAfter(limit.retryAfterMs) };
+  }
 
-  await sendVerificationEmail(user.id, user.email, await getBaseUrl());
+  const delivered = await sendVerificationEmail(user.id, user.email, await getBaseUrl());
+  if (!delivered) {
+    return { status: "error", error: "Couldn't send the verification email right now — try again shortly." };
+  }
+  return { status: "sent" };
 }
 
 /**

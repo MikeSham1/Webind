@@ -36,3 +36,10 @@ export const initialVerifyEmailState: VerifyEmailState = { status: "idle" };
 export type DeleteAccountState = { status: "idle" } | { status: "error"; error: string };
 
 export const initialDeleteAccountState: DeleteAccountState = { status: "idle" };
+
+export type ResendVerificationState =
+  | { status: "idle" }
+  | { status: "sent" }
+  | { status: "error"; error: string };
+
+export const initialResendVerificationState: ResendVerificationState = { status: "idle" };

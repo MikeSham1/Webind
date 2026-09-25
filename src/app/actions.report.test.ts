@@ -3,9 +3,15 @@ import { runReport } from "./actions";
 import { initialReportState } from "./report-state";
 
 /**
- * runReport accepts a domain OR a specific page (example.com/blog/post) but not
- * a scheme or a port, and rejects adult-content hosts — all before any crawl,
- * cookie read, or rate-limit work, which is why this runs without mocking those.
+ * runReport accepts a domain OR a specific page (example.com/blog/post),
+ * strips a leading http(s) scheme rather than rejecting it (pasting or
+ * autocompleting a URL routinely includes one), but still rejects a port,
+ * embedded credentials, or a non-http(s) scheme — and rejects adult-content
+ * hosts. All of that happens before any crawl, cookie read, or rate-limit
+ * work, which is why this runs without mocking those; the accepted-scheme
+ * case specifically is covered at the parser level in domainInput.test.ts,
+ * since accepting it here means runReport proceeds into work this file
+ * deliberately doesn't mock.
  */
 function form(url: string): FormData {
   const fd = new FormData();
@@ -15,12 +21,8 @@ function form(url: string): FormData {
 
 describe("runReport page-input validation", () => {
   it.each([
-    "https://example.com", // scheme (the field supplies it)
-    "http://example.com",
-    "HTTPS://example.com",
-    "  https://example.com  ",
-    "https://https://example.com",
-    "ftp://example.com",
+    "https://https://example.com", // scheme survives the strip once, still rejected
+    "ftp://example.com", // non-http(s) scheme
     "example.com:8080", // explicit non-default port
     "user@example.com", // embedded credentials
     "not a domain", // whitespace
