@@ -22,7 +22,12 @@ import {
   recordWpDraftCreated,
 } from "@/lib/integrations/publications";
 import { markdownToHtml, stripLeadingTitle } from "@/lib/integrations/markdown";
-import { buildPreviewUrl, createPage, setPageStatus } from "@/lib/integrations/wordpress";
+import {
+  buildPreviewUrl,
+  createPage,
+  setPageStatus,
+  wordPressPostTypeFor,
+} from "@/lib/integrations/wordpress";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import { getClientIp } from "@/lib/requestIp";
 import { recordAudit } from "@/lib/audit";
@@ -92,6 +97,17 @@ export async function createDraftAction(
   const draft = await generateDraft(inputs);
   const draftId = await saveDraft(inputs, draft, user?.id ?? null); // best-effort
   return { status: "created", draft, draftId };
+}
+
+/**
+ * Render markdown to the exact HTML that would be sent to WordPress, so the
+ * in-editor preview and the published page can never silently diverge —
+ * there is no separate preview renderer to keep in sync with this one.
+ * Stateless and side-effect-free; no auth/rate-limit needed; the caller
+ * already has this text (it's in their own editor).
+ */
+export async function previewMarkdownAction(markdown: string, title: string): Promise<string> {
+  return markdownToHtml(stripLeadingTitle(markdown, title));
 }
 
 /** Approve or reject a saved draft — the mandatory human step. */
@@ -265,8 +281,9 @@ export async function publishDraftAction(
 
   const title = draft.title || draft.topic;
   const contentHtml = markdownToHtml(stripLeadingTitle(approvedMarkdown(draft), title));
+  const postType = wordPressPostTypeFor(draft.inputs?.pageType ?? "landing");
 
-  const page = await createPage(creds, { title, contentHtml, status: "draft" });
+  const page = await createPage(creds, { title, contentHtml, status: "draft", postType });
   if (!page.ok) {
     await recordPublishFailed(draftId, page.error);
     await recordAudit({
@@ -283,6 +300,7 @@ export async function publishDraftAction(
   const recorded = await recordWpDraftCreated(draftId, page, {
     siteUrl: creds.siteUrl,
     connectionId: creds.connectionId,
+    postType,
   });
   await recordAudit({
     actorUserId: user.id,
@@ -350,7 +368,9 @@ export async function confirmGoLiveAction(
     };
   }
 
-  const result = await setPageStatus(creds, publication.wpPostId, "publish");
+  const result = await setPageStatus(creds, publication.wpPostId, "publish", undefined, {
+    postType: publication.wpPostType ?? "page",
+  });
   if (!result.ok) {
     await recordAudit({
       actorUserId: user.id,
@@ -420,7 +440,9 @@ export async function rollbackPublicationAction(
     };
   }
 
-  const result = await setPageStatus(creds, publication.wpPostId, "draft");
+  const result = await setPageStatus(creds, publication.wpPostId, "draft", undefined, {
+    postType: publication.wpPostType ?? "page",
+  });
   if (!result.ok) {
     await recordAudit({
       actorUserId: user.id,

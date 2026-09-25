@@ -250,19 +250,45 @@ export interface PublishedPage {
 }
 
 /**
- * Create a new WordPress page. `status` is required (not defaulted) so every
- * call site has to say explicitly whether it's writing a draft or going live
- * — see studio/actions.ts, which always creates as `"draft"` first and
- * requires a separate, explicit confirmation before ever passing `"publish"`.
+ * WordPress core's two built-in content types. "post" is the chronological
+ * blog content type (REST endpoint /posts); "page" is static, hierarchical
+ * content (REST endpoint /pages). Every draft used to go to /pages
+ * regardless of its content type — a draft explicitly labeled "Blog post"
+ * was still created as a Page, silently wrong for anyone whose theme/SEO
+ * setup treats Posts and Pages differently (archives, feeds, the blog index).
+ */
+export type WordPressPostType = "page" | "post";
+
+/** Map a Content Studio page type to the WordPress content type it actually belongs in. */
+export function wordPressPostTypeFor(pageType: string): WordPressPostType {
+  return pageType === "blog" ? "post" : "page";
+}
+
+function restCollection(postType: WordPressPostType): string {
+  return postType === "post" ? "/posts" : "/pages";
+}
+
+/**
+ * Create a new WordPress page or post. `status` is required (not defaulted)
+ * so every call site has to say explicitly whether it's writing a draft or
+ * going live — see studio/actions.ts, which always creates as `"draft"`
+ * first and requires a separate, explicit confirmation before ever passing
+ * `"publish"`.
  */
 export async function createPage(
   creds: WordPressCredentials,
-  page: { title: string; contentHtml: string; status: "draft" | "publish" },
+  page: {
+    title: string;
+    contentHtml: string;
+    status: "draft" | "publish";
+    postType?: WordPressPostType;
+  },
   opts: WordPressCallOptions = {},
 ): Promise<WordPressResult<PublishedPage>> {
+  const postType = page.postType ?? "page";
   const result = await call(
     creds,
-    "/pages",
+    restCollection(postType),
     {
       method: "POST",
       body: JSON.stringify({ title: page.title, content: page.contentHtml, status: page.status }),
@@ -273,7 +299,10 @@ export async function createPage(
   const postId = Number(result.body.id);
   const link = typeof result.body.link === "string" ? result.body.link : creds.siteUrl;
   if (!Number.isFinite(postId)) {
-    return { ok: false, error: "WordPress didn't return a page id." };
+    return {
+      ok: false,
+      error: `WordPress didn't return a ${postType} id.`,
+    };
   }
   return {
     ok: true,
@@ -285,24 +314,30 @@ export async function createPage(
 }
 
 /**
- * Set an existing page's status (`publish` to bring it live, `draft` to pull
- * it down without deleting it — this is the entire "roll back" mechanism).
+ * Set an existing page or post's status (`publish` to bring it live,
+ * `draft` to pull it down without deleting it — this is the entire "roll
+ * back" mechanism). `postType` MUST match what the resource was actually
+ * created as — /pages/{id} and /posts/{id} are different resources on
+ * WordPress's side, and hitting the wrong one 404s (best case) or, if the
+ * numeric id happens to collide with an unrelated post/page, silently acts
+ * on the wrong content.
  */
 export async function setPageStatus(
   creds: WordPressCredentials,
   postId: number,
   status: "publish" | "draft",
   contentHtml?: string,
-  opts: WordPressCallOptions = {},
+  opts: WordPressCallOptions & { postType?: WordPressPostType } = {},
 ): Promise<WordPressResult<PublishedPage>> {
+  const { postType = "page", ...callOpts } = opts;
   const result = await call(
     creds,
-    `/pages/${postId}`,
+    `${restCollection(postType)}/${postId}`,
     {
       method: "POST",
       body: JSON.stringify(contentHtml ? { status, content: contentHtml } : { status }),
     },
-    opts,
+    callOpts,
   );
   if (!result.ok) return result;
   const link = typeof result.body.link === "string" ? result.body.link : creds.siteUrl;

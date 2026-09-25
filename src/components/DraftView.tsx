@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { decideDraftAction } from "@/app/studio/actions";
+import { useActionState, useState, useTransition } from "react";
+import { decideDraftAction, previewMarkdownAction } from "@/app/studio/actions";
 import { initialDecisionState, type DecisionState } from "@/app/studio/state";
 import type { ContentDraft, DraftStatus, GateResult } from "@/lib/content/types";
 import PublishBar, { type PublicationSnapshot } from "./PublishBar";
@@ -45,6 +45,24 @@ export default function DraftView({
     decideDraftAction,
     initialDecisionState,
   );
+
+  // Preview renders through the SAME markdownToHtml() call publishing uses
+  // (previewMarkdownAction just wraps it) — there is no separate preview
+  // renderer that could silently drift from what actually reaches WordPress.
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [isPreviewing, startPreview] = useTransition();
+
+  function togglePreview() {
+    if (showPreview) {
+      setShowPreview(false);
+      return;
+    }
+    startPreview(async () => {
+      setPreviewHtml(await previewMarkdownAction(markdown, draft.title));
+      setShowPreview(true);
+    });
+  }
 
   const currentStatus: DraftStatus =
     decisionState.status === "done" ? decisionState.decision : initialStatus;
@@ -98,22 +116,47 @@ export default function DraftView({
               </p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={copy}
-            className="shrink-0 rounded-full border border-line-strong px-4 py-1.5 font-sans text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent"
-          >
-            {copied ? "Copied ✓" : "Copy markdown"}
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={togglePreview}
+              disabled={isPreviewing}
+              className="rounded-full border border-line-strong px-4 py-1.5 font-sans text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isPreviewing ? "Rendering…" : showPreview ? "Edit" : "Preview"}
+            </button>
+            <button
+              type="button"
+              onClick={copy}
+              className="rounded-full border border-line-strong px-4 py-1.5 font-sans text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent"
+            >
+              {copied ? "Copied ✓" : "Copy markdown"}
+            </button>
+          </div>
         </div>
-        <textarea
-          value={markdown}
-          onChange={(e) => !isApproved && setMarkdown(e.target.value)}
-          readOnly={isApproved}
-          spellCheck={false}
-          aria-label={isApproved ? "Draft markdown (locked — already approved)" : "Draft markdown (editable)"}
-          className={`block max-h-[28rem] min-h-[16rem] w-full resize-y overflow-auto bg-paper p-5 font-mono text-[13px] leading-relaxed text-ink focus:outline-none ${isApproved ? "cursor-default opacity-80" : ""}`}
-        />
+        {showPreview ? (
+          <>
+            {/* Safe: previewHtml is the sanitized output of markdownToHtml()
+                (allowlisted tags/attributes only) — the same function that
+                builds the HTML actually sent to WordPress, run server-side. */}
+            <div
+              className="prose-preview max-h-[28rem] min-h-[16rem] overflow-auto bg-paper p-5 text-[15px] leading-relaxed text-ink [&_a]:text-accent [&_a]:underline [&_h1]:font-display [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:font-display [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:font-display [&_h3]:text-lg [&_h3]:font-semibold [&_li]:ml-5 [&_ul]:list-disc"
+              dangerouslySetInnerHTML={{ __html: previewHtml ?? "" }}
+            />
+            <p className="border-t border-line px-5 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+              Preview — exactly what WordPress will receive
+            </p>
+          </>
+        ) : (
+          <textarea
+            value={markdown}
+            onChange={(e) => !isApproved && setMarkdown(e.target.value)}
+            readOnly={isApproved}
+            spellCheck={false}
+            aria-label={isApproved ? "Draft markdown (locked — already approved)" : "Draft markdown (editable)"}
+            className={`block max-h-[28rem] min-h-[16rem] w-full resize-y overflow-auto bg-paper p-5 font-mono text-[13px] leading-relaxed text-ink focus:outline-none ${isApproved ? "cursor-default opacity-80" : ""}`}
+          />
+        )}
         {isApproved ? (
           <p className="border-t border-line px-5 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
             Locked — this is the exact text that was approved and will publish

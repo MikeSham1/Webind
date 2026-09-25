@@ -18,7 +18,7 @@ export interface ContentInputs {
 export type GateStatus = "pass" | "warn" | "block" | "info";
 
 export interface GateResult {
-  key: "fabrication" | "ymyl" | "originality" | "approval";
+  key: "facts_coverage" | "ymyl" | "originality" | "approval";
   label: string;
   status: GateStatus;
   detail: string;

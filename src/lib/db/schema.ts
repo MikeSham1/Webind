@@ -246,6 +246,16 @@ export const publications = pgTable("publications", {
   wpConnectionId: uuid("wp_connection_id").references(() => wordpressConnections.id, {
     onDelete: "set null",
   }),
+  /**
+   * Which WordPress content type wpPostId actually is — "page" or "post".
+   * Set once, at creation, from the draft's content type, and never
+   * re-derived afterward: /wp/v2/pages/{id} and /wp/v2/posts/{id} are
+   * different REST resources, so every later write (go-live, rollback) must
+   * use the type the resource was actually created as. Null on rows created
+   * before this column existed, back when every draft was a page regardless
+   * of content type — callers default a null value to "page" accordingly.
+   */
+  wpPostType: text("wp_post_type").$type<"page" | "post">(),
   status: text("status")
     .$type<"pending" | "wp_draft" | "published" | "rolled_back" | "failed">()
     .notNull(),

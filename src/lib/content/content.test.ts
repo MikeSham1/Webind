@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { assembleDraft } from "./assemble";
 import {
-  checkFabrication,
+  checkFactsCoverage,
   checkOriginality,
   checkYmyl,
   runSafetyGates,
@@ -33,15 +33,23 @@ describe("assembleDraft", () => {
   });
 });
 
-describe("checkFabrication", () => {
+describe("checkFactsCoverage", () => {
   it("passes when every supplied fact appears in the draft", () => {
     const { markdown } = assembleDraft(inputs());
-    expect(checkFabrication(inputs(), markdown).status).toBe("pass");
+    expect(checkFactsCoverage(inputs(), markdown).status).toBe("pass");
   });
 
   it("warns when a supplied fact is missing from the draft", () => {
-    const res = checkFabrication(inputs(), "# Managed IT Support\n\nNothing here.");
+    const res = checkFactsCoverage(inputs(), "# Managed IT Support\n\nNothing here.");
     expect(res.status).toBe("warn");
+  });
+
+  it("still passes when the draft contains extra, unsupplied claims — this check cannot detect fabrication, only missing coverage", () => {
+    const { markdown } = assembleDraft(inputs());
+    const withInventedClaim = `${markdown}\n\n- Certified by the International Widget Board (invented)`;
+    const res = checkFactsCoverage(inputs(), withInventedClaim);
+    expect(res.status).toBe("pass");
+    expect(res.detail).not.toMatch(/nothing invented|no fabricat/i);
   });
 });
 

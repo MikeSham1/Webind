@@ -1,87 +1,55 @@
 /**
  * Convert a Content Studio draft's markdown to HTML for WordPress.
  *
- * Deliberately not a general-purpose parser: `assembleDraft()` and the YMYL
- * disclaimer only ever emit `#`/`##` headings, `- ` list items, `---` rules,
- * `*italic*` spans, and plain paragraphs, so that's the entire grammar here.
- * A key fact or brand name is user-supplied and lands in this markdown
- * unescaped, so every span of literal text is HTML-escaped before it's
- * emitted — this is what stands between that and a stored-XSS payload on the
- * customer's own WordPress site.
+ * Uses `marked` (full CommonMark) rather than a hand-rolled converter: the
+ * previous version only understood the narrow grammar the deterministic
+ * template assembler emitted (`#`/`##` headings, `- ` lists, `---` rules,
+ * `*italic*`) — real Markdown constructs an LLM writer produces routinely
+ * (`**bold**`, `### ` H3s, `[text](url)` links) were left as literal,
+ * unrendered text on the published page.
+ *
+ * `marked` does not escape or strip raw HTML embedded in its input — that's
+ * standard Markdown behavior, and exactly the shape of a stored-XSS risk
+ * here: a key fact or brand name is user-supplied and flows into this
+ * markdown unescaped. `sanitize-html` is the second, mandatory pass that
+ * actually closes that: an explicit tag/attribute allowlist strips anything
+ * else regardless of whether it arrived as raw HTML in the source or via
+ * some Markdown construct, so the security property the old escaper
+ * provided is preserved even though the parser itself doesn't provide it.
  */
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+import { marked } from "marked";
+import sanitizeHtml from "sanitize-html";
 
-/** Escape, then apply the one supported inline span: `*italic*`. */
-function inline(text: string): string {
-  return escapeHtml(text).replace(/\*(.+?)\*/g, "<em>$1</em>");
-}
+marked.setOptions({ gfm: true, breaks: false });
+
+const ALLOWED_TAGS = [
+  "p", "br", "hr",
+  "h1", "h2", "h3", "h4",
+  "ul", "ol", "li",
+  "strong", "em", "a",
+  "blockquote", "code", "pre",
+];
+
+const ALLOWED_ATTRIBUTES: sanitizeHtml.IOptions["allowedAttributes"] = {
+  a: ["href", "title", "rel"],
+};
 
 export function markdownToHtml(markdown: string): string {
-  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
-  const html: string[] = [];
-  let paragraph: string[] = [];
-
-  const flushParagraph = () => {
-    if (paragraph.length) {
-      html.push(`<p>${inline(paragraph.join(" "))}</p>`);
-      paragraph = [];
-    }
-  };
-
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i].trim();
-
-    if (line === "") {
-      flushParagraph();
-      i++;
-      continue;
-    }
-    if (line === "---") {
-      flushParagraph();
-      html.push("<hr />");
-      i++;
-      continue;
-    }
-    const h1 = /^#\s+(.*)$/.exec(line);
-    if (h1) {
-      flushParagraph();
-      html.push(`<h1>${inline(h1[1])}</h1>`);
-      i++;
-      continue;
-    }
-    const h2 = /^##\s+(.*)$/.exec(line);
-    if (h2) {
-      flushParagraph();
-      html.push(`<h2>${inline(h2[1])}</h2>`);
-      i++;
-      continue;
-    }
-    if (/^-\s+/.test(line)) {
-      flushParagraph();
-      const items: string[] = [];
-      while (i < lines.length && /^-\s+/.test(lines[i].trim())) {
-        items.push(lines[i].trim().replace(/^-\s+/, ""));
-        i++;
-      }
-      html.push(`<ul>${items.map((item) => `<li>${inline(item)}</li>`).join("")}</ul>`);
-      continue;
-    }
-
-    paragraph.push(line);
-    i++;
-  }
-  flushParagraph();
-
-  return html.join("\n");
+  const rawHtml = marked.parse(markdown, { async: false });
+  return sanitizeHtml(rawHtml, {
+    allowedTags: ALLOWED_TAGS,
+    allowedAttributes: ALLOWED_ATTRIBUTES,
+    // http(s) only — a javascript: or data: href in a link is a live XSS
+    // vector the moment someone clicks it on the published page.
+    allowedSchemes: ["http", "https", "mailto"],
+    // Marked emits target/rel-free links; WordPress's own editor adds
+    // rel="noopener" for external links, but we're bypassing that editor —
+    // add it here so a link a reviewer approved can't tab-nab the original page.
+    transformTags: {
+      a: sanitizeHtml.simpleTransform("a", { rel: "noopener noreferrer" }),
+    },
+  });
 }
 
 /**

@@ -1,0 +1,1 @@
+ALTER TABLE "publications" ADD COLUMN "wp_post_type" text;

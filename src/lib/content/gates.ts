@@ -42,12 +42,18 @@ function jaccard(a: Set<string>, b: Set<string>): number {
 }
 
 /**
- * No fabricated facts. The deterministic assembler only ever restates the
- * user's supplied facts, so this passes by construction; the check confirms
- * every supplied fact is actually present (nothing dropped or altered) and
- * documents the grounding for when an LLM writer is plugged in.
+ * Supplied-facts coverage — NOT a fabrication/invented-claims detector. This
+ * only confirms every fact the user supplied is actually present in the
+ * draft (nothing dropped or altered); it has no way to notice a claim the
+ * draft ADDED that the user never supplied, which is what "no fabrication"
+ * would actually require. Mislabeling this as a fabrication check let a
+ * draft with invented claims layered on top of the real facts still show a
+ * "pass" — a plugged-in LLM writer (rather than the deterministic
+ * assembler, which only ever restates supplied facts) is exactly the case
+ * where that gap matters. Human review of the actual draft text remains the
+ * real safeguard against invented claims; this check does not provide it.
  */
-export function checkFabrication(
+export function checkFactsCoverage(
   inputs: ContentInputs,
   draftMarkdown: string,
 ): GateResult {
@@ -56,17 +62,18 @@ export function checkFabrication(
   const missing = facts.filter((f) => !md.includes(f.toLowerCase()));
   if (missing.length > 0) {
     return {
-      key: "fabrication",
-      label: "No fabricated facts",
+      key: "facts_coverage",
+      label: "Supplied-facts coverage",
       status: "warn",
       detail: `Some supplied facts aren't reflected in the draft (${missing.length}). Review before use.`,
     };
   }
   return {
-    key: "fabrication",
-    label: "No fabricated facts",
+    key: "facts_coverage",
+    label: "Supplied-facts coverage",
     status: "pass",
-    detail: "Draft asserts only the facts you supplied — nothing invented.",
+    detail:
+      "Every fact you supplied appears in the draft. This does not check for claims the draft may have added beyond what you supplied — read it before approving.",
   };
 }
 
@@ -154,7 +161,7 @@ export function runSafetyGates(
   draftMarkdown: string,
 ): GateReport {
   const results: GateResult[] = [
-    checkFabrication(inputs, draftMarkdown),
+    checkFactsCoverage(inputs, draftMarkdown),
     checkYmyl(inputs),
     checkOriginality(inputs, draftMarkdown),
     approvalGate(),

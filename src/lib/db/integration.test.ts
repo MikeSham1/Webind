@@ -347,7 +347,9 @@ describe("publications (pending -> wp_draft -> published -> rolled_back)", () =>
   };
 
   /** A real WordPress connection, so a destination has a real connectionId to reference. */
-  async function connectWordPress(userId: string): Promise<{ siteUrl: string; connectionId: string }> {
+  async function connectWordPress(
+    userId: string,
+  ): Promise<{ siteUrl: string; connectionId: string; postType: "page" | "post" }> {
     vi.stubEnv("CREDENTIALS_KEY", Buffer.alloc(32, 9).toString("base64"));
     await saveWordPressConnection(userId, {
       siteUrl: "https://acme.example",
@@ -356,7 +358,7 @@ describe("publications (pending -> wp_draft -> published -> rolled_back)", () =>
     });
     const creds = await getWordPressCredentials(userId);
     if (!creds) throw new Error("setup failed");
-    return { siteUrl: creds.siteUrl, connectionId: creds.connectionId };
+    return { siteUrl: creds.siteUrl, connectionId: creds.connectionId, postType: "page" };
   }
 
   it("records pending BEFORE any WordPress call, then progresses through the full lifecycle", async () => {
@@ -481,6 +483,7 @@ describe("publications (pending -> wp_draft -> published -> rolled_back)", () =>
     await recordWpDraftCreated(draftId, page, {
       siteUrl: "https://acme.example",
       connectionId: (await getWordPressCredentials(owner.user.id))!.connectionId,
+      postType: "page",
     });
 
     // Reconnect to a completely different site — same connection row (unique

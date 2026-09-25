@@ -122,10 +122,11 @@ export async function beginPublish(draftId: string, userId: string): Promise<Beg
   );
 }
 
-/** Which WordPress connection a write actually targeted — captured once, at creation. */
+/** Which WordPress connection and content type a write actually targeted — captured once, at creation. */
 export interface PublishDestination {
   siteUrl: string;
   connectionId: string;
+  postType: "page" | "post";
 }
 
 /**
@@ -148,6 +149,7 @@ export async function recordWpDraftCreated(
         wpEditUrl: page.editUrl,
         wpSiteUrl: destination.siteUrl,
         wpConnectionId: destination.connectionId,
+        wpPostType: destination.postType,
         status: "wp_draft",
         updatedAt: new Date(),
         error: null,

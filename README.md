@@ -90,8 +90,12 @@ the same safety pattern:
   a real WordPress preview link; a separate "Confirm & go live" is required
   to flip it to `publish`. A connection uses a WordPress Application
   Password — not the account password — encrypted at rest with
-  AES-256-GCM, and we recommend connecting a least-privilege Author/Editor
-  account rather than an Administrator.
+  AES-256-GCM. Recommend connecting an **Editor** account rather than an
+  Administrator — Editor is the lowest built-in WordPress role that can
+  create/edit **Pages** (WordPress core's Author role can publish Posts but
+  cannot touch Pages at all). Author is only sufficient if every draft you
+  publish is the "blog" content type (routed to Posts); anything else
+  (landing/product/about/FAQ, routed to Pages) needs Editor or above.
 - **GitHub** (`src/lib/integrations/github.ts`, `openFixPrAction` in
   `src/app/actions.ts`) opens a pull request with deterministic, file-shaped
   fixes (`llms.txt`, `robots.txt`) — never arbitrary generated code — using a
