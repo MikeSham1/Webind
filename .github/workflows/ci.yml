@@ -65,8 +65,13 @@ jobs:
             exit 1
           fi
 
-  # Best-effort supply-chain visibility. Non-blocking so a new advisory doesn't
-  # wedge deploys, but surfaced in the logs for triage.
+  # Blocking supply-chain gate for what actually ships: high/critical
+  # vulnerabilities in production dependencies fail the build. Dev-only
+  # tooling (drizzle-kit, vitest, etc.) is excluded deliberately — it never
+  # reaches the deployed image, and gating on it would block merges on
+  # advisories with no production exposure. A specific advisory that doesn't
+  # apply to this deployment (e.g. a Windows-only path issue on a Linux
+  # container) needs a documented, scoped exception here, not a blanket `|| true`.
   audit:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -77,8 +82,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - name: Dependency audit (high severity)
-        run: npm audit --audit-level=high || true
+      - name: Dependency audit (production, high severity+)
+        run: npm audit --omit=dev --audit-level=high
 
   # Container-only failures (e.g. a lockfile entry that's fine on the host
   # platform but missing for the Dockerfile's Linux base image) don't show up
