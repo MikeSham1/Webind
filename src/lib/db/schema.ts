@@ -9,7 +9,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { ReportResult } from "../scoring/types";
+import type { ActionableSuggestion, ReportResult } from "../scoring/types";
 import type { OptimizationAssets as OptimizationAssetsData } from "../optimize/assets";
 import type {
   ContentInputs,
@@ -19,6 +19,8 @@ import type {
 import type { VisibilityReport } from "../visibility/types";
 import type { PageSnapshot as PageSnapshotData } from "../fixgen/snapshot";
 import type { FixCandidate as FixCandidateData } from "../fixgen/types";
+import type { FieldVitals } from "../vitals/types";
+import type { ScoreAudit as ScoreAuditData } from "../scoring/audit";
 
 /**
  * Every free-report run is logged here (the preview doubles as a lead funnel).
@@ -40,6 +42,20 @@ export const reportRequests = pgTable("report_requests", {
   traditionalTotal: integer("traditional_total"),
   report: jsonb("report").$type<ReportResult>(),
   optimizations: jsonb("optimizations").$type<OptimizationAssetsData>(),
+  // The plain-English overview and page-grounded suggestions shown alongside
+  // the scores when the report first ran — persisted so revisiting a saved
+  // report shows the same narrative and (if unlocked) the same AI-tailored
+  // fixes, instead of silently falling back to generic ones with no context.
+  narrative: text("narrative"),
+  narrativeIsAi: boolean("narrative_is_ai").notNull().default(false),
+  suggestions: jsonb("suggestions").$type<ActionableSuggestion[]>(),
+  suggestionsLocked: boolean("suggestions_locked").notNull().default(false),
+  // Core Web Vitals field data (CrUX via PSI) at the time of the run — real-user
+  // data drifts, but the report should show what was actually measured then.
+  pageExperience: jsonb("page_experience").$type<FieldVitals>(),
+  // Admin-only LLM score audit, so re-opening a past report doesn't require
+  // re-running the audit model to see what it flagged the first time.
+  scoreAudit: jsonb("score_audit").$type<ScoreAuditData>(),
 });
 
 export type ReportRequest = typeof reportRequests.$inferSelect;

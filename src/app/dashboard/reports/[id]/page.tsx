@@ -57,6 +57,15 @@ export default async function ReportDetailPage({
           optimizations={row.optimizations ?? undefined}
           githubConnected={githubConnected}
           initialPr={pr ? { prUrl: pr.prUrl, prNumber: pr.prNumber } : null}
+          // Persisted at the time the report ran — showing the same narrative
+          // and (if unlocked) the same tailored suggestions the visitor saw
+          // then, rather than an empty/generic state on revisit.
+          narrative={row.narrative ?? undefined}
+          narrativeIsAi={row.narrativeIsAi}
+          suggestions={row.suggestions ?? undefined}
+          suggestionsLocked={row.suggestionsLocked}
+          pageExperience={row.pageExperience}
+          scoreAudit={row.scoreAudit}
         />
       </div>
       <div className="mt-10">

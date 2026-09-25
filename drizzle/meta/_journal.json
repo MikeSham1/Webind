@@ -148,6 +148,13 @@
       "when": 1790360917424,
       "tag": "0020_mysterious_richard_fisk",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1790376900575,
+      "tag": "0021_unusual_norrin_radd",
+      "breakpoints": true
     }
   ]
 }

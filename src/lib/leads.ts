@@ -1,8 +1,10 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { reportRequests, type ReportRequest } from "@/lib/db/schema";
-import type { ReportResult } from "@/lib/scoring/types";
+import type { ActionableSuggestion, ReportResult } from "@/lib/scoring/types";
 import type { OptimizationAssets } from "@/lib/optimize/assets";
+import type { FieldVitals } from "@/lib/vitals/types";
+import type { ScoreAudit } from "@/lib/scoring/audit";
 import { canonicalHost } from "@/lib/domainInput";
 
 /**
@@ -34,19 +36,38 @@ async function withDb<T>(
   }
 }
 
+export interface SaveReportExtras {
+  optimizations?: OptimizationAssets | null;
+  /** The plain-English overview shown above the dials. */
+  narrative?: string | null;
+  /** True when `narrative` was written by the AI, not the deterministic fallback. */
+  narrativeIsAi?: boolean;
+  /** Page-grounded fix suggestions; empty/absent when the plan doesn't unlock them. */
+  suggestions?: ActionableSuggestion[] | null;
+  /** True when `suggestions` is paywalled rather than genuinely empty. */
+  suggestionsLocked?: boolean;
+  /** Core Web Vitals field data measured at run time, or null when unavailable. */
+  pageExperience?: FieldVitals | null;
+  /** Admin-only LLM score audit computed at run time, or null. */
+  scoreAudit?: ScoreAudit | null;
+}
+
 /**
  * Persist a report run. `userId` is the owner when the run was made while
- * logged in, or null for anonymous lead-gen runs. `optimizations` is stored
- * alongside so the ready-to-apply fixes (and the "open a PR" action built on
- * them) are still there when a signed-in user revisits this report later, not
- * just in the client state right after running it. Returns the new row id, or
- * null when persistence is disabled (no DATABASE_URL) or the write fails —
- * never throws, so a database hiccup can't break the user's report.
+ * logged in, or null for anonymous lead-gen runs. `extras` carries everything
+ * generated alongside the core report — optimizations, the AI narrative,
+ * tailored suggestions, Core Web Vitals, and the admin score audit — so
+ * revisiting this report later shows exactly what was shown the first time,
+ * instead of silently losing the narrative and suggestions (and showing a
+ * generic paywalled state) the moment the client state is gone. Returns the
+ * new row id, or null when persistence is disabled (no DATABASE_URL) or the
+ * write fails — never throws, so a database hiccup can't break the user's
+ * report.
  */
 export async function saveReportRequest(
   report: ReportResult,
   userId: string | null = null,
-  optimizations: OptimizationAssets | null = null,
+  extras: SaveReportExtras = {},
 ): Promise<string | null> {
   return withDb("saveReportRequest", null, async (db) => {
     const [row] = await db
@@ -57,7 +78,13 @@ export async function saveReportRequest(
         aiTotal: report.ai.total,
         traditionalTotal: report.traditional.total,
         report,
-        optimizations,
+        optimizations: extras.optimizations ?? null,
+        narrative: extras.narrative ?? null,
+        narrativeIsAi: extras.narrativeIsAi ?? false,
+        suggestions: extras.suggestions ?? null,
+        suggestionsLocked: extras.suggestionsLocked ?? false,
+        pageExperience: extras.pageExperience ?? null,
+        scoreAudit: extras.scoreAudit ?? null,
       })
       .returning({ id: reportRequests.id });
     return row?.id ?? null;

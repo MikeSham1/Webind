@@ -218,6 +218,61 @@ describe("report ownership", () => {
     expect((await getReportForUser(id, owner.user.id))?.url).toBe("https://owned.com");
     expect((await getReportById(id))?.url).toBe("https://owned.com");
   });
+
+  it("persists the narrative, suggestions, and CWV alongside the report so a revisit shows the same thing", async () => {
+    const owner = await createUser("narrative-persist@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+
+    const suggestions = [
+      {
+        key: "metaDescription",
+        title: "Tighten the meta description",
+        steps: ["Lead with the specific service", "Cut to under 155 characters"],
+        rationale: "A tighter description improves click-through from search.",
+        aiGenerated: true,
+      },
+    ];
+    const pageExperience = {
+      url: "https://narrative-persist.com",
+      source: "page" as const,
+      overall: "good" as const,
+      metrics: [{ metric: "LCP" as const, value: 2100, rating: "good" as const }],
+    };
+    const scoreAudit = { configured: true, flags: [], note: "Scores look consistent with the page." };
+
+    const id = await saveReportRequest(report("https://narrative-persist.com"), owner.user.id, {
+      narrative: "This page is in decent shape.",
+      narrativeIsAi: true,
+      suggestions,
+      suggestionsLocked: false,
+      pageExperience,
+      scoreAudit,
+    });
+    if (!id) throw new Error("setup failed");
+
+    const row = await getReportForUser(id, owner.user.id);
+    expect(row?.narrative).toBe("This page is in decent shape.");
+    expect(row?.narrativeIsAi).toBe(true);
+    expect(row?.suggestions).toEqual(suggestions);
+    expect(row?.suggestionsLocked).toBe(false);
+    expect(row?.pageExperience).toEqual(pageExperience);
+    expect(row?.scoreAudit).toEqual(scoreAudit);
+  });
+
+  it("defaults the new report extras to unset when the caller doesn't pass any", async () => {
+    const owner = await createUser("narrative-default@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+    const id = await saveReportRequest(report("https://narrative-default.com"), owner.user.id);
+    if (!id) throw new Error("setup failed");
+
+    const row = await getReportForUser(id, owner.user.id);
+    expect(row?.narrative).toBeNull();
+    expect(row?.narrativeIsAi).toBe(false);
+    expect(row?.suggestions).toBeNull();
+    expect(row?.suggestionsLocked).toBe(false);
+    expect(row?.pageExperience).toBeNull();
+    expect(row?.scoreAudit).toBeNull();
+  });
 });
 
 describe("claiming an anonymous report onto a new/existing account", () => {

@@ -113,12 +113,37 @@ export async function runReport(
     // time is the SLOWEST of these, not their sum. The DB write and the GitHub
     // status lookup used to run sequentially after the AI calls — that added
     // their latency on top for no reason.
+    const narrativeP = explainReportDetailed(report);
+    const suggestionsP = canSuggest
+      ? generateSuggestions(report, page)
+      : Promise.resolve([]);
+    const scoreAuditP = user?.isAdmin
+      ? auditReport(report, page)
+      : Promise.resolve(null);
+    // The DB write needs the AI results to persist alongside the report (so a
+    // later revisit shows the same narrative and tailored suggestions instead
+    // of losing them), but still runs in the same Promise.all as everything
+    // else below — its wall time only adds once the AI calls resolve, not on
+    // top of them, and github/touchSite never wait on it either.
+    const savedP = Promise.all([narrativeP, suggestionsP, scoreAuditP]).then(
+      ([narrative, suggestions, scoreAudit]) =>
+        saveReportRequest(report, user?.id ?? null, {
+          optimizations,
+          narrative: narrative.text,
+          narrativeIsAi: narrative.aiGenerated,
+          suggestions,
+          suggestionsLocked: !canSuggest,
+          pageExperience,
+          scoreAudit,
+        }),
+    );
+
     const [narrative, suggestions, scoreAudit, requestId, githubConnected] =
       await Promise.all([
-        explainReportDetailed(report),
-        canSuggest ? generateSuggestions(report, page) : Promise.resolve([]),
-        user?.isAdmin ? auditReport(report, page) : Promise.resolve(null),
-        saveReportRequest(report, user?.id ?? null, optimizations),
+        narrativeP,
+        suggestionsP,
+        scoreAuditP,
+        savedP,
         user
           ? getGitHubConnectionStatus(user.id).then((s) => s !== null)
           : Promise.resolve(false),
