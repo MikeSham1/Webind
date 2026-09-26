@@ -71,13 +71,20 @@ import { buildSftDataset } from "@/lib/fixgen/sft-export";
 import type { GenerateFixesOutcome } from "@/lib/fixgen/generate";
 import type { FixCandidate } from "@/lib/fixgen/types";
 import {
+  currentDraftMarkdown,
   getDraftForUser,
   listDraftsForUser,
   saveDraft,
+  saveDraftEdit,
   setAnyDraftStatus,
   setDraftStatus,
 } from "@/lib/content/store";
 import { generateDraft } from "@/lib/content/generate";
+import {
+  clearPlannerConversation,
+  getPlannerConversation,
+  savePlannerConversation,
+} from "@/lib/content/planner-store";
 import { seedAccounts } from "./seed";
 import type { ReportResult } from "@/lib/scoring/types";
 import {
@@ -383,6 +390,85 @@ describe("draft ownership + moderation", () => {
 
     // Admin override reaches any draft.
     expect(await setAnyDraftStatus(id, "rejected")).toBe(true);
+  });
+
+  it("autosaves an in-progress edit and shows it on reload, without touching the original generation", async () => {
+    const owner = await createUser("draftautosave@example.com", "password123");
+    if (!owner.ok) throw new Error("setup failed");
+
+    const inputs = {
+      topic: "Managed IT",
+      pageType: "landing" as const,
+      audience: "smbs",
+      tone: "professional",
+      keyFacts: ["24/7 helpdesk"],
+    };
+    const draft = await generateDraft(inputs);
+    const id = await saveDraft(inputs, draft, owner.user.id);
+    if (!id) throw new Error("setup failed");
+
+    // Before any edit, the working copy is just the original generation.
+    const fresh = await getDraftForUser(id, owner.user.id);
+    expect(fresh && currentDraftMarkdown(fresh)).toBe(draft.markdown);
+
+    expect(await saveDraftEdit(id, owner.user.id, "edited but not yet approved")).toBe(true);
+    const withEdit = await getDraftForUser(id, owner.user.id);
+    expect(withEdit?.markdown).toBe(draft.markdown); // original generation untouched
+    expect(withEdit && currentDraftMarkdown(withEdit)).toBe("edited but not yet approved");
+
+    // Someone else's autosave attempt doesn't touch it.
+    const other = await createUser("draftautosave-other@example.com", "password123");
+    if (!other.ok) throw new Error("setup failed");
+    expect(await saveDraftEdit(id, other.user.id, "hijacked")).toBe(false);
+
+    // Once approved, the approved revision wins over any autosaved edit.
+    expect(await setDraftStatus(id, owner.user.id, "approved", "the actually-approved text")).toBe(
+      true,
+    );
+    const decided = await getDraftForUser(id, owner.user.id);
+    expect(decided && currentDraftMarkdown(decided)).toBe("the actually-approved text");
+
+    // And a further autosave attempt is refused now that it's no longer pending review.
+    expect(await saveDraftEdit(id, owner.user.id, "too late")).toBe(false);
+  });
+});
+
+describe("planner conversation persistence", () => {
+  it("round-trips a saved conversation, and starts empty for a user who's never saved one", async () => {
+    const u = await createUser("planner-persist@example.com", "password123");
+    if (!u.ok) throw new Error("setup failed");
+
+    expect(await getPlannerConversation(u.user.id)).toEqual([]);
+
+    const turn1 = [{ role: "user" as const, text: "Write a landing page for my IT support business" }];
+    await savePlannerConversation(u.user.id, turn1);
+    expect(await getPlannerConversation(u.user.id)).toEqual(turn1);
+
+    // A later save replaces the row rather than accumulating a second one.
+    const turn2 = [...turn1, { role: "assistant" as const, text: "What's your target audience?" }];
+    await savePlannerConversation(u.user.id, turn2);
+    expect(await getPlannerConversation(u.user.id)).toEqual(turn2);
+  });
+
+  it("clears the saved conversation on request", async () => {
+    const u = await createUser("planner-clear@example.com", "password123");
+    if (!u.ok) throw new Error("setup failed");
+
+    await savePlannerConversation(u.user.id, [{ role: "user", text: "hello" }]);
+    expect(await getPlannerConversation(u.user.id)).toHaveLength(1);
+
+    await clearPlannerConversation(u.user.id);
+    expect(await getPlannerConversation(u.user.id)).toEqual([]);
+  });
+
+  it("scopes conversations per user", async () => {
+    const a = await createUser("planner-a@example.com", "password123");
+    const b = await createUser("planner-b@example.com", "password123");
+    if (!a.ok || !b.ok) throw new Error("setup failed");
+
+    await savePlannerConversation(a.user.id, [{ role: "user", text: "a's message" }]);
+    expect(await getPlannerConversation(b.user.id)).toEqual([]);
+    expect(await getPlannerConversation(a.user.id)).toEqual([{ role: "user", text: "a's message" }]);
   });
 });
 

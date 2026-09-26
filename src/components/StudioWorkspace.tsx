@@ -19,10 +19,13 @@ import type { PlannerMessage } from "@/app/studio/planner-state";
 export default function StudioWorkspace({
   wordPressConnected,
   wordPressSiteUrl,
+  initialPlannerMessages = [],
 }: {
   wordPressConnected: boolean;
   /** The connected WordPress site drafts will actually publish to — not the analyzed site. */
   wordPressSiteUrl: string | null;
+  /** The signed-in user's saved planner conversation, if any — resumed rather than lost on reload. */
+  initialPlannerMessages?: PlannerMessage[];
 }) {
   const [brief, setBrief] = useState<DraftBrief | null>(null);
   // Bumped with each new brief so the form remounts and picks up the new
@@ -31,6 +34,9 @@ export default function StudioWorkspace({
   const [briefVersion, setBriefVersion] = useState(0);
   const [briefError, setBriefError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // Bumped on "start over" to remount ContentPlanner with a clean slate —
+  // useActionState has no external reset, so a fresh mount is how we clear it.
+  const [plannerKey, setPlannerKey] = useState(0);
 
   function useConversation(messages: PlannerMessage[]) {
     setBriefError(null);
@@ -53,9 +59,12 @@ export default function StudioWorkspace({
       <div className="reveal mt-10" style={{ animationDelay: "120ms" }}>
         <StepLabel n={1} title="Plan" />
         <ContentPlanner
+          key={plannerKey}
+          initialMessages={plannerKey === 0 ? initialPlannerMessages : []}
           onUseBrief={useConversation}
           briefPending={isPending}
           briefError={briefError}
+          onStartOver={() => setPlannerKey((k) => k + 1)}
         />
       </div>
 

@@ -23,6 +23,17 @@ import type { FieldVitals } from "../vitals/types";
 import type { ScoreAudit as ScoreAuditData } from "../scoring/audit";
 
 /**
+ * Structurally identical to PlannerMessage (src/app/studio/planner-state.ts).
+ * Duplicated rather than imported: that module lives under src/app (plain
+ * useActionState state, not a lib concern), and schema.ts otherwise only
+ * depends on src/lib types.
+ */
+interface PlannerMessageData {
+  role: "user" | "assistant";
+  text: string;
+}
+
+/**
  * Every free-report run is logged here (the preview doubles as a lead funnel).
  * `email` is filled in later if the visitor opts into the follow-up.
  * `optimizations` is stored alongside the report (not just held in client
@@ -109,11 +120,42 @@ export const contentDrafts = pgTable("content_drafts", {
    * null means approved as-is or not yet approved.
    */
   humanFinal: text("human_final"),
+  /**
+   * An in-progress edit, autosaved while the draft is still `pending_review` —
+   * distinct from `humanFinal`, which is only ever set at the moment of
+   * approval and is the actual fine-tuning target. Without this, a reviewer
+   * who edited the markdown and navigated away before deciding lost the edit
+   * on reload with no warning, even though the UI said "your version is
+   * saved." Ignored once a decision exists (`humanFinal` or the original
+   * `markdown` takes over — see approvedMarkdown/currentDraftMarkdown).
+   */
+  editedMarkdown: text("edited_markdown"),
   gates: jsonb("gates").$type<GateReport>(),
   status: text("status").$type<DraftStatus>().notNull().default("pending_review"),
 });
 
 export type ContentDraftRow = typeof contentDrafts.$inferSelect;
+
+/**
+ * One resumable Content Studio planning conversation per user — the "Plan it
+ * out loud" chat used to live purely in client state, so refreshing the page
+ * or navigating away lost it entirely. Deliberately one row per user (not a
+ * history of many conversations): the planner is a single ongoing scratchpad
+ * that feeds the next brief, not a set of named threads to manage.
+ */
+export const plannerConversations = pgTable("planner_conversations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: "cascade" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  messages: jsonb("messages").$type<PlannerMessageData[]>().notNull(),
+});
+
+export type PlannerConversationRow = typeof plannerConversations.$inferSelect;
 
 /**
  * Registered users (email + scrypt password hash). `emailVerifiedAt` is

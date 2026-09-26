@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
-import { decideDraftAction, previewMarkdownAction } from "@/app/studio/actions";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { decideDraftAction, previewMarkdownAction, saveDraftEditAction } from "@/app/studio/actions";
 import { initialDecisionState, type DecisionState } from "@/app/studio/state";
 import type { ContentDraft, DraftStatus, GateResult } from "@/lib/content/types";
 import PublishBar, { type PublicationSnapshot } from "./PublishBar";
@@ -68,6 +68,26 @@ export default function DraftView({
     decisionState.status === "done" ? decisionState.decision : initialStatus;
   const isApproved = currentStatus === "approved";
   const edited = markdown.trim() !== draft.markdown.trim();
+
+  // Autosave the edit while it's still under review, so navigating away or
+  // refreshing before approving doesn't silently discard it — `draft.markdown`
+  // is already whatever was last saved (the original generation, or an
+  // earlier autosave from a previous visit), so this only fires on a real
+  // change, not on mount. Debounced so every keystroke doesn't hit the DB.
+  const [autosave, setAutosave] = useState<"idle" | "saving" | "saved">("idle");
+  const lastSavedRef = useRef(draft.markdown);
+  useEffect(() => {
+    if (!draftId || currentStatus !== "pending_review") return;
+    if (markdown === lastSavedRef.current) return;
+    setAutosave("saving");
+    const timer = setTimeout(() => {
+      saveDraftEditAction(draftId, markdown).then(() => {
+        lastSavedRef.current = markdown;
+        setAutosave("saved");
+      });
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [markdown, draftId, currentStatus]);
 
   async function copy() {
     try {
@@ -164,7 +184,11 @@ export default function DraftView({
         ) : (
           edited && (
             <p className="border-t border-line px-5 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-              Edited — your version is saved as the approved copy
+              {autosave === "saving"
+                ? "Edited — saving…"
+                : autosave === "saved"
+                  ? "Edited — saved. Approving will make this the published copy."
+                  : "Edited — approving will make this the published copy"}
             </p>
           )
         )}

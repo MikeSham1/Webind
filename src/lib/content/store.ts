@@ -17,6 +17,23 @@ export function approvedMarkdown(row: {
   return row.humanFinal ?? row.markdown ?? "";
 }
 
+/**
+ * The text to actually show when reopening a draft: the approved revision if
+ * a decision has already been made, otherwise the latest autosaved in-progress
+ * edit (falling back to the original generation if the reviewer hasn't edited
+ * anything yet). Reading `.markdown` directly here would silently discard an
+ * autosaved edit and show the reviewer their own stale first draft.
+ */
+export function currentDraftMarkdown(row: {
+  markdown: string | null;
+  humanFinal: string | null;
+  editedMarkdown: string | null;
+  status: DraftStatus;
+}): string {
+  if (row.status === "pending_review") return row.editedMarkdown ?? row.markdown ?? "";
+  return approvedMarkdown(row);
+}
+
 type Database = NonNullable<ReturnType<typeof getDb>>;
 
 /** Runs `fn` against the DB, or returns `fallback` when persistence is off or the query fails. Never throws. */
@@ -85,6 +102,36 @@ export async function setDraftStatus(
         ...(gates !== undefined ? { gates } : {}),
       })
       .where(and(eq(contentDrafts.id, id), eq(contentDrafts.userId, userId)))
+      .returning({ id: contentDrafts.id });
+    return updated.length > 0;
+  });
+}
+
+/**
+ * Autosave an in-progress edit to a draft's markdown, before the reviewer has
+ * approved or rejected it. Scoped to the owner and to `pending_review` — once
+ * a decision exists, the edit is either promoted to `humanFinal` (by
+ * decideDraftAction) or moot, so writing here after that would be silently
+ * discarded state serving no purpose. Never throws; returns false rather than
+ * surfacing a save failure to the reviewer mid-edit (a lost autosave isn't
+ * worth interrupting them over — the textarea still holds their text).
+ */
+export async function saveDraftEdit(
+  id: string,
+  userId: string,
+  markdown: string,
+): Promise<boolean> {
+  return withDb("saveDraftEdit", false, async (db) => {
+    const updated = await db
+      .update(contentDrafts)
+      .set({ editedMarkdown: markdown, updatedAt: new Date() })
+      .where(
+        and(
+          eq(contentDrafts.id, id),
+          eq(contentDrafts.userId, userId),
+          eq(contentDrafts.status, "pending_review"),
+        ),
+      )
       .returning({ id: contentDrafts.id });
     return updated.length > 0;
   });

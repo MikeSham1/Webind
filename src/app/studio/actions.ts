@@ -7,6 +7,7 @@ import {
   getDraftById,
   getDraftForUser,
   saveDraft,
+  saveDraftEdit,
   setAnyDraftStatus,
   setDraftStatus,
 } from "@/lib/content/store";
@@ -108,6 +109,20 @@ export async function createDraftAction(
  */
 export async function previewMarkdownAction(markdown: string, title: string): Promise<string> {
   return markdownToHtml(stripLeadingTitle(markdown, title));
+}
+
+/**
+ * Autosave the reviewer's in-progress edit before they've approved/rejected —
+ * called directly from the editor (not a form submission), the same pattern
+ * previewMarkdownAction uses. Owner-only, and only while still pending review;
+ * saveDraftEdit itself enforces both, so this just needs to be logged in.
+ * Silent on failure by design (see saveDraftEdit) — the caller's own textarea
+ * still holds the text either way.
+ */
+export async function saveDraftEditAction(draftId: string, markdown: string): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user || !draftId) return;
+  await saveDraftEdit(draftId, user.id, markdown);
 }
 
 /** Approve or reject a saved draft — the mandatory human step. */

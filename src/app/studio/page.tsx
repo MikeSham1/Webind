@@ -4,6 +4,7 @@ import SiteContextBar from "@/components/SiteContextBar";
 import SiteHeader from "@/components/SiteHeader";
 import { getCurrentUser } from "@/lib/auth";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
+import { getPlannerConversation } from "@/lib/content/planner-store";
 
 export const metadata: Metadata = {
   title: "Content Studio — WeBind Design",
@@ -13,7 +14,10 @@ export const dynamic = "force-dynamic";
 
 export default async function StudioPage() {
   const user = await getCurrentUser();
-  const wpConnection = user ? await getWordPressConnectionStatus(user.id) : null;
+  const [wpConnection, plannerMessages] = await Promise.all([
+    user ? getWordPressConnectionStatus(user.id) : Promise.resolve(null),
+    user ? getPlannerConversation(user.id) : Promise.resolve([]),
+  ]);
 
   return (
     <div className="flex min-h-full flex-col">
@@ -40,6 +44,7 @@ export default async function StudioPage() {
         <StudioWorkspace
           wordPressConnected={wpConnection !== null}
           wordPressSiteUrl={wpConnection?.siteUrl ?? null}
+          initialPlannerMessages={plannerMessages}
         />
       </main>
     </div>

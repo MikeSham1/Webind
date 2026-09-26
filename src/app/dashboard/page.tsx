@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { logoutAction } from "@/app/account/actions";
 import { getCurrentUser } from "@/lib/auth";
 import { listAllDrafts, listDraftsForUser } from "@/lib/content/store";
+import { getPlannerConversation } from "@/lib/content/planner-store";
 import { listAllReports, listReportsForUser } from "@/lib/leads";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
 import ResendVerificationButton from "@/components/ResendVerificationButton";
@@ -46,10 +47,11 @@ export default async function DashboardPage() {
   if (!user) redirect("/login");
   const isAdmin = user.isAdmin;
 
-  const [reports, drafts, wpConnection] = await Promise.all([
+  const [reports, drafts, wpConnection, plannerMessages] = await Promise.all([
     isAdmin ? listAllReports() : listReportsForUser(user.id),
     isAdmin ? listAllDrafts() : listDraftsForUser(user.id),
     getWordPressConnectionStatus(user.id),
+    getPlannerConversation(user.id),
   ]);
   const wordPressConnected = wpConnection !== null;
 
@@ -170,6 +172,7 @@ export default async function DashboardPage() {
           <StudioWorkspace
             wordPressConnected={wordPressConnected}
             wordPressSiteUrl={wpConnection?.siteUrl ?? null}
+            initialPlannerMessages={plannerMessages}
           />
         </div>
       </section>

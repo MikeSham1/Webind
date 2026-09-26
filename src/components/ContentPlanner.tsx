@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { planContentAction } from "@/app/studio/planner-actions";
-import { initialPlannerState, type PlannerMessage } from "@/app/studio/planner-state";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { clearPlannerConversationAction, planContentAction } from "@/app/studio/planner-actions";
+import type { PlannerMessage } from "@/app/studio/planner-state";
 import { useActionState } from "react";
 
 /**
@@ -25,17 +25,34 @@ export default function ContentPlanner({
   onUseBrief,
   briefPending = false,
   briefError = null,
+  initialMessages = [],
+  onStartOver,
 }: {
   /** Hand the conversation to the draft form. Omitted when the planner stands alone. */
   onUseBrief?: (messages: PlannerMessage[]) => void;
   briefPending?: boolean;
   briefError?: string | null;
+  /** A previously-saved conversation to resume, if the visitor has one. */
+  initialMessages?: PlannerMessage[];
+  /** Called after the saved conversation is cleared server-side, so the parent can remount this fresh. */
+  onStartOver?: () => void;
 } = {}) {
-  const [state, action, isPending] = useActionState(planContentAction, initialPlannerState);
+  const [state, action, isPending] = useActionState(planContentAction, {
+    status: "idle",
+    messages: initialMessages,
+  });
   const [message, setMessage] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const sentCount = useRef(0);
+  const sentCount = useRef(initialMessages.length);
+  const [isClearing, startClearing] = useTransition();
+
+  function startOver() {
+    startClearing(async () => {
+      await clearPlannerConversationAction();
+      onStartOver?.();
+    });
+  }
 
   const hasChat = state.messages.length > 0;
 
@@ -56,14 +73,26 @@ export default function ContentPlanner({
 
   return (
     <section className="overflow-hidden rounded-2xl border border-line bg-surface">
-      <header className="border-b border-line px-6 py-5 sm:px-8">
-        <h2 className="font-display text-xl font-semibold text-ink">
-          Plan it out loud
-        </h2>
-        <p className="mt-1 text-sm leading-relaxed text-muted">
-          Think through the page with AI first. It asks only what actually
-          sharpens the brief — then you turn that into a grounded draft below.
-        </p>
+      <header className="flex items-start justify-between gap-4 border-b border-line px-6 py-5 sm:px-8">
+        <div>
+          <h2 className="font-display text-xl font-semibold text-ink">
+            Plan it out loud
+          </h2>
+          <p className="mt-1 text-sm leading-relaxed text-muted">
+            Think through the page with AI first. It asks only what actually
+            sharpens the brief — then you turn that into a grounded draft below.
+          </p>
+        </div>
+        {hasChat && (
+          <button
+            type="button"
+            onClick={startOver}
+            disabled={isClearing}
+            className="shrink-0 font-mono text-[11px] uppercase tracking-[0.14em] text-muted hover:text-accent disabled:opacity-50"
+          >
+            {isClearing ? "Clearing…" : "Start over"}
+          </button>
+        )}
       </header>
 
       {/* Conversation */}

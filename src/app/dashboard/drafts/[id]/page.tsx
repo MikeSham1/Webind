@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import DraftView from "@/components/DraftView";
 import type { PublicationSnapshot } from "@/components/PublishBar";
 import { getCurrentUser } from "@/lib/auth";
-import { approvedMarkdown, getDraftById, getDraftForUser } from "@/lib/content/store";
+import { currentDraftMarkdown, getDraftById, getDraftForUser } from "@/lib/content/store";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
 import { buildPreviewUrl } from "@/lib/integrations/wordpress";
 import { getPublicationForDraft } from "@/lib/integrations/publications";
@@ -63,12 +63,13 @@ export default async function DraftDetailPage({
     : await getDraftForUser(id, user.id);
   if (!row) notFound();
 
-  // The approved revision (the human's edit, if they made one) once a
-  // decision exists; the original generation otherwise. Reloading this page
-  // must never show — or let someone publish from — the pre-edit original.
+  // The approved revision once a decision exists; otherwise the latest
+  // autosaved in-progress edit (or the original generation if there isn't
+  // one yet). Reloading this page must never show — or let someone publish
+  // from — a stale pre-edit original when a newer edit was autosaved.
   const draft: ContentDraft = {
     title: row.title ?? row.topic,
-    markdown: approvedMarkdown(row),
+    markdown: currentDraftMarkdown(row),
     gates: row.gates ?? EMPTY_GATES,
   };
 

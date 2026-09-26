@@ -8,6 +8,7 @@ import { getClientIp } from "@/lib/requestIp";
 import { logWarn } from "@/lib/log";
 import { plannerErrorFor } from "./planner-errors";
 import { latestReportForHost, listSites, resolveActiveSite } from "@/lib/sites/store";
+import { clearPlannerConversation, savePlannerConversation } from "@/lib/content/planner-store";
 import { transcriptText, type PlannerMessage, type PlannerState } from "./planner-state";
 
 const PLANNER_SYSTEM = [
@@ -110,13 +111,25 @@ export async function planContentAction(
       finishReason: result.finishReason,
       error: result.error,
     });
+    // The user's message still counts as part of the conversation even though
+    // the model failed to reply — save it so a retry doesn't also lose it.
+    if (user) await savePlannerConversation(user.id, messages);
     return { status: "error", error: plannerErrorFor(result.error), messages };
   }
 
   const reply = result.text.trim();
-  return {
-    status: "reply",
-    reply,
-    messages: [...messages, { role: "assistant", text: reply }],
-  };
+  const withReply = [...messages, { role: "assistant" as const, text: reply }];
+  if (user) await savePlannerConversation(user.id, withReply);
+  return { status: "reply", reply, messages: withReply };
+}
+
+/**
+ * "Start over" in the planner: clears the saved conversation so a fresh page
+ * load doesn't resurrect it. Anonymous visitors have nothing saved server-side
+ * (see planContentAction) — this is a no-op for them, matching the client's
+ * own reset of its local state either way.
+ */
+export async function clearPlannerConversationAction(): Promise<void> {
+  const user = await getCurrentUser();
+  if (user) await clearPlannerConversation(user.id);
 }
