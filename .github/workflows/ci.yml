@@ -97,3 +97,26 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build Docker image
         run: docker build -t webind:ci .
+
+  # Golden-path browser tests: signup, login, the anonymous free report, and
+  # nav consistency across authenticated pages — the layer unit/integration
+  # tests can't cover (an actual browser driving the actual rendered app).
+  # A separate job, deliberately not required by branch protection yet: it
+  # spins up its own ephemeral Postgres (embedded-postgres, a real Postgres
+  # binary) and a real `next dev` server (see e2e/global-setup.ts), which is
+  # heavier and slower than the other jobs and shouldn't block a merge on its
+  # own until it's proven stable in CI across a few real runs.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: E2E tests
+        run: npm run test:e2e

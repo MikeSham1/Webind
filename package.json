@@ -12,6 +12,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "tuning:synthetic": "npx --yes tsx scripts/tuning/build-synthetic-content-corpus.ts",
@@ -35,6 +36,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.4",
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -42,6 +44,7 @@
     "@types/sanitize-html": "^2.16.1",
     "@vitest/coverage-v8": "^4.1.10",
     "drizzle-kit": "^0.31.10",
+    "embedded-postgres": "^18.4.0-beta.17",
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
     "tailwindcss": "^4",

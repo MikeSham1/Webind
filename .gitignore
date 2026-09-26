@@ -13,6 +13,11 @@
 # testing
 /coverage
 
+# E2E: ephemeral Postgres data dir + Playwright's own output
+/e2e/.e2e-pgdata
+/playwright-report
+/test-results
+
 # next.js
 /.next/
 /out/
