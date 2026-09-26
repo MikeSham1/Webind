@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { listAuditLog } from "@/lib/audit";
+import SiteHeader from "@/components/SiteHeader";
 
 export const metadata: Metadata = {
   title: "Audit log — WeBind Design",
@@ -29,7 +30,9 @@ export default async function AuditLogPage() {
   const entries = await listAuditLog(200);
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 py-12">
+    <div className="flex min-h-full flex-col">
+      <SiteHeader />
+      <main className="mx-auto w-full max-w-5xl flex-1 px-6 pb-20">
       <Link
         href="/dashboard"
         className="font-mono text-xs uppercase tracking-[0.16em] text-muted hover:text-accent"
@@ -97,6 +100,7 @@ export default async function AuditLogPage() {
           </table>
         </div>
       )}
-    </main>
+      </main>
+    </div>
   );
 }

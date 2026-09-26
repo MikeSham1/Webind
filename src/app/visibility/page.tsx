@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
+import SiteHeader from "@/components/SiteHeader";
 import VisibilityForm from "@/components/VisibilityForm";
 
 export const metadata: Metadata = {
@@ -18,7 +19,9 @@ export default async function VisibilityPage() {
   if (!user) redirect("/login");
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-6 py-14">
+    <div className="flex min-h-full flex-col">
+      <SiteHeader />
+      <main className="mx-auto w-full max-w-3xl flex-1 px-6 pb-20">
       <div className="mb-10">
         <Link
           href="/dashboard"
@@ -42,6 +45,7 @@ export default async function VisibilityPage() {
         </p>
       </div>
       <VisibilityForm />
-    </main>
+      </main>
+    </div>
   );
 }

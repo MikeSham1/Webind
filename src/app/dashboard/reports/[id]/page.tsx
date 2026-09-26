@@ -7,6 +7,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getReportById, getReportForUser } from "@/lib/leads";
 import { getGitHubConnectionStatus } from "@/lib/integrations/githubConnections";
 import { getPrForReport } from "@/lib/integrations/codeFixes";
+import SiteHeader from "@/components/SiteHeader";
 
 export const metadata: Metadata = {
   title: "Report — WeBind Design",
@@ -41,7 +42,9 @@ export default async function ReportDetailPage({
     : [false, null] as const;
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-6 py-12">
+    <div className="flex min-h-full flex-col">
+      <SiteHeader />
+      <main className="mx-auto w-full max-w-3xl flex-1 px-6 pb-20">
       <Link
         href="/dashboard"
         className="font-mono text-xs uppercase tracking-[0.16em] text-muted hover:text-accent"
@@ -82,6 +85,7 @@ export default async function ReportDetailPage({
           </section>
         )}
       </div>
-    </main>
+      </main>
+    </div>
   );
 }

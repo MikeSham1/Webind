@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { listReportsForUserHost } from "@/lib/leads";
+import SiteHeader from "@/components/SiteHeader";
 import TrendChart from "@/components/TrendChart";
 
 export const metadata: Metadata = {
@@ -45,7 +46,9 @@ export default async function HostHistoryPage({
   );
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-6 py-12">
+    <div className="flex min-h-full flex-col">
+      <SiteHeader />
+      <main className="mx-auto w-full max-w-4xl flex-1 px-6 pb-20">
       <Link
         href="/dashboard"
         className="font-mono text-xs uppercase tracking-[0.16em] text-muted hover:text-accent"
@@ -121,6 +124,7 @@ export default async function HostHistoryPage({
           </table>
         </div>
       )}
-    </main>
+      </main>
+    </div>
   );
 }

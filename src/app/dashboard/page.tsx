@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { logoutAction } from "@/app/account/actions";
 import { getCurrentUser } from "@/lib/auth";
 import { listAllDrafts, listDraftsForUser } from "@/lib/content/store";
 import { getPlannerConversation } from "@/lib/content/planner-store";
@@ -9,6 +8,7 @@ import { listAllReports, listReportsForUser } from "@/lib/leads";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
 import ResendVerificationButton from "@/components/ResendVerificationButton";
 import SiteContextBar from "@/components/SiteContextBar";
+import SiteHeader from "@/components/SiteHeader";
 import SiteInsights from "@/components/SiteInsights";
 import StudioWorkspace from "@/components/StudioWorkspace";
 
@@ -56,79 +56,23 @@ export default async function DashboardPage() {
   const wordPressConnected = wpConnection !== null;
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 py-12">
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-6">
-        <div>
-          <div className="flex items-center gap-3">
-            <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted">
-              Dashboard
-            </p>
-            {isAdmin && (
-              <span className="rounded-full border border-accent/40 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">
-                Admin
-              </span>
-            )}
-          </div>
-          <h1 className="mt-1 font-display text-3xl font-semibold text-ink">
-            {isAdmin ? "Admin workspace" : "Your workspace"}
-          </h1>
-          <p className="mt-1 text-sm text-muted">{user.email}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-4">
-          <Link
-            href="/"
-            className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
-          >
-            New report
-          </Link>
-          <Link
-            href="/visibility"
-            className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
-          >
-            Keyword Visibility
-          </Link>
-          <Link
-            href="/benchmark"
-            className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
-          >
-            Benchmark
-          </Link>
-          <Link
-            href="/studio"
-            className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
-          >
-            Content Studio
-          </Link>
-          <Link
-            href="/pricing"
-            className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
-          >
-            Pricing
-          </Link>
-          <Link
-            href="/dashboard/settings"
-            className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
-          >
-            Settings
-          </Link>
-          {isAdmin && (
-            <Link
-              href="/dashboard/audit"
-              className="whitespace-nowrap font-sans text-sm font-medium text-muted hover:text-accent"
-            >
-              Audit log
-            </Link>
-          )}
-          <form action={logoutAction}>
-            <button
-              type="submit"
-              className="whitespace-nowrap rounded-full border border-line-strong px-4 py-1.5 font-sans text-sm font-medium text-ink hover:border-bad hover:text-bad"
-            >
-              Log out
-            </button>
-          </form>
-        </div>
-      </header>
+    <div className="flex min-h-full flex-col">
+      <SiteHeader />
+      <main className="mx-auto w-full max-w-5xl flex-1 px-6 pb-12">
+      <div className="flex flex-wrap items-center gap-3 border-b border-line pb-6">
+        <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted">
+          Dashboard
+        </p>
+        {isAdmin && (
+          <span className="rounded-full border border-accent/40 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">
+            Admin
+          </span>
+        )}
+      </div>
+      <h1 className="mt-1 font-display text-3xl font-semibold text-ink">
+        {isAdmin ? "Admin workspace" : "Your workspace"}
+      </h1>
+      <p className="mt-1 text-sm text-muted">{user.email}</p>
 
       {!user.emailVerifiedAt && (
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-warn/40 bg-surface px-5 py-4">
@@ -278,7 +222,8 @@ export default async function DashboardPage() {
           </div>
         )}
       </section>
-    </main>
+      </main>
+    </div>
   );
 }
 

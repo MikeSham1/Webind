@@ -5,6 +5,7 @@ import WordPressConnectionForm from "@/components/WordPressConnectionForm";
 import GitHubConnectionForm from "@/components/GitHubConnectionForm";
 import DeleteAccountForm from "@/components/DeleteAccountForm";
 import BillingSection from "@/components/BillingSection";
+import SiteHeader from "@/components/SiteHeader";
 import { AddSiteForm } from "@/components/SiteSwitcher";
 import { getCurrentUser, listSessions } from "@/lib/auth";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
@@ -41,7 +42,9 @@ export default async function SettingsPage() {
   const siteLimit = plan?.limits.sites ?? 1;
 
   return (
-    <main className="mx-auto w-full max-w-2xl px-6 py-12">
+    <div className="flex min-h-full flex-col">
+      <SiteHeader />
+      <main className="mx-auto w-full max-w-2xl flex-1 px-6 pb-20">
       <Link
         href="/dashboard"
         className="font-mono text-xs uppercase tracking-[0.16em] text-muted hover:text-accent"
@@ -222,6 +225,7 @@ export default async function SettingsPage() {
           </div>
         </section>
       </div>
-    </main>
+      </main>
+    </div>
   );
 }

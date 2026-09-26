@@ -7,6 +7,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { currentDraftMarkdown, getDraftById, getDraftForUser } from "@/lib/content/store";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
 import { buildPreviewUrl } from "@/lib/integrations/wordpress";
+import SiteHeader from "@/components/SiteHeader";
 import { getPublicationForDraft } from "@/lib/integrations/publications";
 import type { ContentDraft, GateReport } from "@/lib/content/types";
 import type { PublicationRow } from "@/lib/db/schema";
@@ -82,7 +83,9 @@ export default async function DraftDetailPage({
   ]);
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-6 py-12">
+    <div className="flex min-h-full flex-col">
+      <SiteHeader />
+      <main className="mx-auto w-full max-w-3xl flex-1 px-6 pb-20">
       <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/dashboard"
@@ -107,6 +110,7 @@ export default async function DraftDetailPage({
         initialPublication={toSnapshot(publication, connection?.siteUrl ?? null)}
         wordPressSiteUrl={connection?.siteUrl ?? null}
       />
-    </main>
+      </main>
+    </div>
   );
 }

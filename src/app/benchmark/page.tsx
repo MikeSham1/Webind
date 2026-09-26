@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { isSerperConfigured } from "@/lib/benchmark/serper";
 import BenchmarkForm from "@/components/BenchmarkForm";
+import SiteHeader from "@/components/SiteHeader";
 
 export const metadata: Metadata = {
   title: "Competitive Benchmark — WeBind Design",
@@ -21,7 +22,9 @@ export default async function BenchmarkPage() {
   const configured = isSerperConfigured();
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-6 py-14">
+    <div className="flex min-h-full flex-col">
+      <SiteHeader />
+      <main className="mx-auto w-full max-w-3xl flex-1 px-6 pb-20">
       <div className="mb-10">
         <Link
           href="/dashboard"
@@ -50,6 +53,7 @@ export default async function BenchmarkPage() {
         )}
       </div>
       <BenchmarkForm />
-    </main>
+      </main>
+    </div>
   );
 }
