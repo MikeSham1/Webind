@@ -25,10 +25,19 @@ vi.mock("next/headers", () => ({
 const wp = vi.hoisted(() => ({
   createPage: vi.fn(),
   setPageStatus: vi.fn(),
+  // Defaults to "still there" so every existing test's already-happy path is
+  // unaffected by the reconciliation check — only tests that explicitly want
+  // to exercise "the page is gone" override this to notFound: true.
+  getPageStatus: vi.fn(async (): Promise<RemotePageStatus> => ({ ok: true, status: "draft", link: null })),
 }));
 vi.mock("@/lib/integrations/wordpress", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/integrations/wordpress")>();
-  return { ...actual, createPage: wp.createPage, setPageStatus: wp.setPageStatus };
+  return {
+    ...actual,
+    createPage: wp.createPage,
+    setPageStatus: wp.setPageStatus,
+    getPageStatus: wp.getPageStatus,
+  };
 });
 
 import { createUser, createSession } from "@/lib/auth";
@@ -41,6 +50,7 @@ import {
   publishDraftAction,
   confirmGoLiveAction,
 } from "./actions";
+import type { RemotePageStatus } from "@/lib/integrations/wordpress";
 
 let userId: string;
 
@@ -213,5 +223,102 @@ describe("go-live re-checks approval", () => {
     const goLive = await confirmGoLiveAction({ status: "idle" }, form({ draftId }));
     expect(goLive.status).toBe("error");
     expect(wp.setPageStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe("reconciliation: the cached publication record can drift from what's actually on WordPress", () => {
+  it("republishes fresh instead of handing back a dead link, when the WordPress draft was deleted externally", async () => {
+    const draftId = await newApprovedDraft();
+
+    wp.createPage.mockResolvedValueOnce({
+      ok: true,
+      postId: 5,
+      viewUrl: "https://acme.example/x/",
+      editUrl: "https://acme.example/wp-admin/post.php?post=5&action=edit",
+      previewUrl: "https://acme.example/?page_id=5&preview=true",
+    });
+    const first = await publishDraftAction({ status: "idle" }, form({ draftId }));
+    expect(first.status).toBe("wp_draft");
+
+    // Someone deletes the page directly on WordPress. A second publish
+    // attempt should discover that (not just trust the cached "wp_draft" row)
+    // and recreate the page, rather than returning the now-dead link forever.
+    wp.getPageStatus.mockResolvedValueOnce({ ok: false, notFound: true });
+    wp.createPage.mockResolvedValueOnce({
+      ok: true,
+      postId: 6,
+      viewUrl: "https://acme.example/x-again/",
+      editUrl: "https://acme.example/wp-admin/post.php?post=6&action=edit",
+      previewUrl: "https://acme.example/?page_id=6&preview=true",
+    });
+
+    const retry = await publishDraftAction({ status: "idle" }, form({ draftId }));
+    expect(retry.status).toBe("wp_draft");
+    if (retry.status === "wp_draft") {
+      expect(retry.editUrl).toContain("post=6");
+    }
+    expect(wp.createPage).toHaveBeenCalledTimes(2);
+
+    const row = await getDraftForUser(draftId, userId);
+    expect(row?.status).toBe("approved"); // the draft's own approval is untouched by this
+  });
+
+  it("does not discard a cached wp_draft on a transient status-check failure", async () => {
+    const draftId = await newApprovedDraft();
+
+    wp.createPage.mockResolvedValueOnce({
+      ok: true,
+      postId: 7,
+      viewUrl: "https://acme.example/x/",
+      editUrl: "https://acme.example/wp-admin/post.php?post=7&action=edit",
+      previewUrl: "https://acme.example/?page_id=7&preview=true",
+    });
+    const first = await publishDraftAction({ status: "idle" }, form({ draftId }));
+    expect(first.status).toBe("wp_draft");
+
+    // A network blip checking WordPress, NOT a confirmed 404 — must not be
+    // treated as "the page is gone."
+    wp.getPageStatus.mockResolvedValueOnce({ ok: false, notFound: false, error: "timeout" });
+
+    const retry = await publishDraftAction({ status: "idle" }, form({ draftId }));
+    expect(retry.status).toBe("wp_draft");
+    if (retry.status === "wp_draft") {
+      expect(retry.editUrl).toContain("post=7"); // the original, cached page — not recreated
+    }
+    expect(wp.createPage).toHaveBeenCalledTimes(1); // no second create
+  });
+
+  it("refuses to go live and reports the real error, when the WordPress draft was deleted externally", async () => {
+    const draftId = await newApprovedDraft();
+
+    wp.createPage.mockResolvedValueOnce({
+      ok: true,
+      postId: 8,
+      viewUrl: "https://acme.example/x/",
+      editUrl: "https://acme.example/wp-admin/post.php?post=8&action=edit",
+      previewUrl: "https://acme.example/?page_id=8&preview=true",
+    });
+    const created = await publishDraftAction({ status: "idle" }, form({ draftId }));
+    expect(created.status).toBe("wp_draft");
+
+    wp.getPageStatus.mockResolvedValueOnce({ ok: false, notFound: true });
+    const goLive = await confirmGoLiveAction({ status: "idle" }, form({ draftId }));
+    expect(goLive.status).toBe("error");
+    if (goLive.status === "error") {
+      expect(goLive.error).toMatch(/no longer exists/i);
+    }
+    expect(wp.setPageStatus).not.toHaveBeenCalled();
+
+    // The stale record is cleared, so a fresh publish attempt isn't stuck
+    // forever behind the old "wp_draft" claim.
+    wp.createPage.mockResolvedValueOnce({
+      ok: true,
+      postId: 9,
+      viewUrl: "https://acme.example/x-again/",
+      editUrl: "https://acme.example/wp-admin/post.php?post=9&action=edit",
+      previewUrl: "https://acme.example/?page_id=9&preview=true",
+    });
+    const republish = await publishDraftAction({ status: "idle" }, form({ draftId }));
+    expect(republish.status).toBe("wp_draft");
   });
 });

@@ -26,6 +26,7 @@ import { markdownToHtml, stripLeadingTitle } from "@/lib/integrations/markdown";
 import {
   buildPreviewUrl,
   createPage,
+  getPageStatus,
   setPageStatus,
   wordPressPostTypeFor,
 } from "@/lib/integrations/wordpress";
@@ -281,17 +282,62 @@ export async function publishDraftAction(
         error: `This draft was already published to a different WordPress site (${row.wpSiteUrl}) than the one currently connected (${creds.siteUrl}). Reconnect that site to manage it, or start a fresh draft.`,
       };
     }
-    if (row.status === "published" && row.wpViewUrl && row.wpEditUrl) {
-      return { status: "published", viewUrl: row.wpViewUrl, editUrl: row.wpEditUrl };
+
+    // Reconciliation: the cached row only reflects what WeBind last did, not
+    // what's actually on WordPress right now — a page can be deleted or
+    // trashed directly there at any time. Without this check, a draft whose
+    // WordPress page was removed externally would be stuck forever: this
+    // branch would keep handing back a dead link, and beginPublish would
+    // keep refusing a fresh attempt because the row still claims something's
+    // already live. Verify before trusting it, and if it's genuinely gone,
+    // clear the stale record and fall through to publish fresh below.
+    let stale = false;
+    if (row.wpPostId) {
+      const remote = await getPageStatus(creds, row.wpPostId, {
+        postType: row.wpPostType ?? "page",
+      });
+      if (!remote.ok && remote.notFound) {
+        stale = true;
+        await recordPublishFailed(
+          draftId,
+          "The WordPress page no longer exists — it may have been deleted directly on WordPress.",
+        );
+        await recordAudit({
+          actorUserId: user.id,
+          action: "wordpress.reconcile",
+          destination: creds.siteUrl,
+          beforeState: { status: row.status, postId: row.wpPostId },
+          afterState: { status: "failed" },
+          result: "success",
+        });
+      }
+      // Any other outcome (still there, or a transient check failure) falls
+      // through to the trusted-cache behavior below, unchanged from before.
     }
-    if (row.status === "wp_draft" && row.wpEditUrl && row.wpPostId) {
-      return {
-        status: "wp_draft",
-        previewUrl: buildPreviewUrl(creds.siteUrl, row.wpPostId),
-        editUrl: row.wpEditUrl,
-      };
+
+    if (!stale) {
+      if (row.status === "published" && row.wpViewUrl && row.wpEditUrl) {
+        return { status: "published", viewUrl: row.wpViewUrl, editUrl: row.wpEditUrl };
+      }
+      if (row.status === "wp_draft" && row.wpEditUrl && row.wpPostId) {
+        return {
+          status: "wp_draft",
+          previewUrl: buildPreviewUrl(creds.siteUrl, row.wpPostId),
+          editUrl: row.wpEditUrl,
+        };
+      }
+      // Any other combination is unexpected; fall through and attempt fresh.
+    } else {
+      // Reclaim the slot now that the stale record is cleared, then fall
+      // through to create a fresh page below — same as a first-time publish.
+      const reclaim = await beginPublish(draftId, draft.userId);
+      if (!reclaim.ok) {
+        return {
+          status: "error",
+          error: "That WordPress page no longer exists, and re-claiming the publish slot failed — try again.",
+        };
+      }
     }
-    // Any other combination is unexpected; fall through and attempt fresh.
   }
 
   const title = draft.title || draft.topic;
@@ -380,6 +426,34 @@ export async function confirmGoLiveAction(
     return {
       status: "error",
       error: `This draft's WordPress post lives on ${publication.wpSiteUrl}, not the currently connected ${creds.siteUrl}. Reconnect the original site before going live.`,
+    };
+  }
+
+  // Reconciliation: the WordPress draft this row points to can be deleted or
+  // trashed directly on WordPress between its creation and this confirmation
+  // — verify it's still there before trying to flip it live. Without this,
+  // setPageStatus would just fail with a generic WordPress error, and the row
+  // would stay stuck in `wp_draft` forever with no path back to publishing
+  // (publishDraftAction's already_active check would keep refusing a retry).
+  const remote = await getPageStatus(creds, publication.wpPostId, {
+    postType: publication.wpPostType ?? "page",
+  });
+  if (!remote.ok && remote.notFound) {
+    await recordPublishFailed(
+      draftId,
+      "The WordPress draft no longer exists — it may have been deleted directly on WordPress.",
+    );
+    await recordAudit({
+      actorUserId: user.id,
+      action: "wordpress.reconcile",
+      destination: creds.siteUrl,
+      beforeState: { status: publication.status, postId: publication.wpPostId },
+      afterState: { status: "failed" },
+      result: "success",
+    });
+    return {
+      status: "error",
+      error: "That WordPress draft no longer exists — publish this draft again to recreate it.",
     };
   }
 

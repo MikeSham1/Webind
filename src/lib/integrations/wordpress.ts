@@ -32,7 +32,7 @@ export interface WordPressCredentials {
 
 export type WordPressResult<T> =
   | ({ ok: true } & T)
-  | { ok: false; error: string };
+  | { ok: false; error: string; status?: number };
 
 export interface WordPressCallOptions {
   /** Test-only injection point — mirrors CrawlOptions.isUrlAllowed. Defaults to the real SSRF guard. */
@@ -220,6 +220,7 @@ async function call(
     const message = typeof record.message === "string" ? record.message : null;
     return {
       ok: false,
+      status: res.status,
       error:
         res.status === 401
           ? "WordPress rejected that username or Application Password."
@@ -348,4 +349,40 @@ export async function setPageStatus(
     editUrl: editUrl(creds.siteUrl, postId),
     previewUrl: buildPreviewUrl(creds.siteUrl, postId),
   };
+}
+
+export type RemotePageStatus =
+  | { ok: true; status: string; link: string | null }
+  | { ok: false; notFound: true }
+  | { ok: false; notFound: false; error: string };
+
+/**
+ * Look up a page/post's CURRENT state directly from WordPress, rather than
+ * trusting a locally cached publication record — the record only reflects
+ * what WeBind last did, not what's actually there now. A page can be deleted,
+ * trashed, or have its status changed directly in WordPress at any time,
+ * entirely outside this app. `?context=edit` matters: the default "view"
+ * context only ever returns published content, so a page that was published
+ * and later unpublished would look identical to "doesn't exist" without it.
+ *
+ * `notFound: true` is its own branch (not folded into the generic error) so a
+ * caller can tell "there's genuinely nothing there anymore" — the one case
+ * worth reconciling local state over — apart from every other failure (a
+ * network blip, bad credentials), which should never be treated as proof the
+ * page is gone.
+ */
+export async function getPageStatus(
+  creds: WordPressCredentials,
+  postId: number,
+  opts: WordPressCallOptions & { postType?: WordPressPostType } = {},
+): Promise<RemotePageStatus> {
+  const { postType = "page", ...callOpts } = opts;
+  const result = await call(creds, `${restCollection(postType)}/${postId}?context=edit`, {}, callOpts);
+  if (!result.ok) {
+    if (result.status === 404) return { ok: false, notFound: true };
+    return { ok: false, notFound: false, error: result.error };
+  }
+  const status = typeof result.body.status === "string" ? result.body.status : "unknown";
+  const link = typeof result.body.link === "string" ? result.body.link : null;
+  return { ok: true, status, link };
 }

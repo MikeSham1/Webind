@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createPage, setPageStatus, testConnection } from "./wordpress";
+import { createPage, getPageStatus, setPageStatus, testConnection } from "./wordpress";
 
 // The fixture server is loopback, which the real SSRF guard refuses on sight —
 // same shape as crawl.test.ts's `offline` fixture for the crawler.
@@ -49,6 +49,13 @@ beforeAll(async () => {
       });
       return;
     }
+
+    if (req.url === "/wp-json/wp/v2/pages/42?context=edit" && req.method === "GET") {
+      send(200, { id: 42, link: `${siteUrl}/managed-it/`, status: "draft" });
+      return;
+    }
+    // No route registered for postId 999 — falls through to the generic 404
+    // below, standing in for "WordPress genuinely has nothing at this id."
 
     // Redirect-behavior fixtures, selected by a path prefix on the "site URL"
     // used in the test (see the describe block below).
@@ -203,5 +210,26 @@ describe("setPageStatus", () => {
     const result = await setPageStatus(creds(), 42, "publish", "<p>Updated</p>", offline);
     expect(result.ok).toBe(true);
     expect(lastPagePayload).toEqual({ status: "publish", content: "<p>Updated</p>" });
+  });
+});
+
+describe("getPageStatus", () => {
+  it("reports the page's current status when it still exists", async () => {
+    const result = await getPageStatus(creds(), 42, offline);
+    expect(result).toEqual({ ok: true, status: "draft", link: `${siteUrl}/managed-it/` });
+  });
+
+  it("reports notFound — not a generic error — for a page that's genuinely gone", async () => {
+    const result = await getPageStatus(creds(), 999, offline);
+    expect(result).toEqual({ ok: false, notFound: true });
+  });
+
+  it("keeps every other failure distinct from notFound (e.g. bad credentials)", async () => {
+    const badCreds = { ...creds(), appPassword: "wrong" };
+    const result = await getPageStatus(badCreds, 42, offline);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.notFound).toBe(false);
+    }
   });
 });
