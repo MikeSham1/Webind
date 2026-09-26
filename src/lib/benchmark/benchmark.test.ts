@@ -221,4 +221,86 @@ describe("runBenchmark", () => {
     expect(report.aiPercentile!.n).toBe(1);
     expect(report.note).toMatch(/1 of 2/);
   });
+
+  it("resumes from a checkpoint without re-searching or re-crawling completed work", async () => {
+    const search = vi.fn(async () => ({
+      ok: true as const,
+      results: [
+        { position: 2, link: "https://r1.com/", title: "R1" },
+        { position: 3, link: "https://r2.com/", title: "R2" },
+      ],
+    }));
+    const crawled: string[] = [];
+    const crawl = vi.fn(async (url: string) => {
+      crawled.push(url);
+      return { __domain: domainOf(url) } as unknown as CrawledPage;
+    });
+    const score = (page: CrawledPage): ReportResult => {
+      const domain = (page as unknown as { __domain: string }).__domain;
+      const total = domain === "target.com" ? 90 : 50;
+      return { ai: { total }, traditional: { total } } as ReportResult;
+    };
+
+    // Simulate a prior run that already fetched the SERP, scored the target,
+    // and scored r1 — only r2 is left.
+    const resume = {
+      cohort: [
+        { url: "https://r1.com/", domain: "r1.com", position: 2, cohort: "top" as const },
+        { url: "https://r2.com/", domain: "r2.com", position: 3, cohort: "top" as const },
+      ],
+      target: { ai: 90, traditional: 90 },
+      competitors: [
+        {
+          url: "https://r1.com/",
+          domain: "r1.com",
+          position: 2,
+          cohort: "top" as const,
+          ai: 50,
+          traditional: 50,
+          ok: true,
+        },
+      ],
+    };
+
+    const progressLog: unknown[] = [];
+    const report = await runBenchmark(
+      { url: "https://target.com/", query: "best crm" },
+      { search, crawl, score },
+      resume,
+      (p) => { progressLog.push(structuredClone(p)); },
+    );
+
+    // Neither the SERP nor the target/r1 crawls happened again.
+    expect(search).not.toHaveBeenCalled();
+    expect(crawled).toEqual(["https://r2.com/"]);
+    expect(report.competitors).toHaveLength(2);
+    expect(report.competitors.find((c) => c.domain === "r1.com")?.ai).toBe(50);
+    expect(report.competitors.find((c) => c.domain === "r2.com")?.ai).toBe(50);
+    expect(report.note).toMatch(/2 of 2/);
+    // One checkpoint, for the single new unit of work (r2).
+    expect(progressLog).toHaveLength(1);
+  });
+
+  it("checkpoints after the SERP call and the target score, even before any rival is scored", async () => {
+    const progressLog: Array<{ cohort: unknown; target: unknown }> = [];
+    await runBenchmark(
+      { url: "https://target.com/", query: "best crm" },
+      {
+        search: async () => ({
+          ok: true,
+          results: [{ position: 2, link: "https://r1.com/", title: "R1" }],
+        }),
+        crawl: async (url: string) => ({ __domain: domainOf(url) }) as unknown as CrawledPage,
+        score: () => ({ ai: { total: 70 }, traditional: { total: 70 } }) as ReportResult,
+      },
+      undefined,
+      (p) => { progressLog.push({ cohort: p.cohort, target: p.target }); },
+    );
+
+    // First checkpoint: cohort built, target not yet scored.
+    expect(progressLog[0].cohort).not.toBeNull();
+    expect(progressLog[0].target).toBeNull();
+    // Second checkpoint: target scored.
+    expect(progressLog[1].target).toEqual({ ai: 70, traditional: 70 });
+  });
 });

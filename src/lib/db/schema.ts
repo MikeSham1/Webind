@@ -21,6 +21,7 @@ import type { PageSnapshot as PageSnapshotData } from "../fixgen/snapshot";
 import type { FixCandidate as FixCandidateData } from "../fixgen/types";
 import type { FieldVitals } from "../vitals/types";
 import type { ScoreAudit as ScoreAuditData } from "../scoring/audit";
+import type { BenchmarkProgress as BenchmarkProgressData } from "../benchmark/benchmark";
 
 /**
  * Structurally identical to PlannerMessage (src/app/studio/planner-state.ts).
@@ -614,3 +615,27 @@ export const sites = pgTable(
   (t) => [uniqueIndex("sites_user_host_idx").on(t.userId, t.host)],
 );
 export type SiteRow = typeof sites.$inferSelect;
+
+/**
+ * Progress toward a competitive benchmark — the heaviest operation in the app
+ * (a SERP call plus up to a dozen live crawls, easily minutes long). Without
+ * this, a timeout or a closed tab partway through threw away everything
+ * already scored, and retrying re-crawled the same rivals from scratch. A
+ * `running` row's `progress` is updated after each unit of work completes; if
+ * the process dies mid-run before it's marked `done`/`failed`, the row is left
+ * exactly where it last checkpointed, and the next matching request resumes
+ * from there instead of starting over. See BenchmarkProgress in benchmark.ts.
+ */
+export const benchmarkRuns = pgTable("benchmark_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  url: text("url").notNull(),
+  query: text("query").notNull(),
+  status: text("status").$type<"running" | "done" | "failed">().notNull().default("running"),
+  progress: jsonb("progress").$type<BenchmarkProgressData>().notNull(),
+});
+export type BenchmarkRunRow = typeof benchmarkRuns.$inferSelect;

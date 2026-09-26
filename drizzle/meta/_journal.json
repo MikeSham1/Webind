@@ -162,6 +162,13 @@
       "when": 1790411113559,
       "tag": "0022_watery_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790412607968,
+      "tag": "0023_friendly_ego",
+      "breakpoints": true
     }
   ]
 }

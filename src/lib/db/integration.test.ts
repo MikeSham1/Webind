@@ -85,6 +85,11 @@ import {
   getPlannerConversation,
   savePlannerConversation,
 } from "@/lib/content/planner-store";
+import {
+  finishBenchmarkRun,
+  saveBenchmarkProgress,
+  startOrResumeBenchmarkRun,
+} from "@/lib/benchmark/store";
 import { seedAccounts } from "./seed";
 import type { ReportResult } from "@/lib/scoring/types";
 import {
@@ -469,6 +474,80 @@ describe("planner conversation persistence", () => {
     await savePlannerConversation(a.user.id, [{ role: "user", text: "a's message" }]);
     expect(await getPlannerConversation(b.user.id)).toEqual([]);
     expect(await getPlannerConversation(a.user.id)).toEqual([{ role: "user", text: "a's message" }]);
+  });
+});
+
+describe("resumable benchmark runs", () => {
+  it("starts fresh with empty progress when nothing's running yet", async () => {
+    const u = await createUser("benchmark-fresh@example.com", "password123");
+    if (!u.ok) throw new Error("setup failed");
+
+    const { id, progress } = await startOrResumeBenchmarkRun(
+      u.user.id,
+      "https://target.example",
+      "best crm",
+    );
+    expect(id).toBeTruthy();
+    expect(progress).toEqual({ cohort: null, target: null, competitors: [] });
+  });
+
+  it("resumes the same running row for the same user + url + query, and stops offering it once finished", async () => {
+    const u = await createUser("benchmark-resume@example.com", "password123");
+    if (!u.ok) throw new Error("setup failed");
+
+    const first = await startOrResumeBenchmarkRun(u.user.id, "https://target.example", "best crm");
+    const checkpoint = {
+      cohort: [{ url: "https://r1.example", domain: "r1.example", position: 1, cohort: "top" as const }],
+      target: { ai: 80, traditional: 70 },
+      competitors: [],
+    };
+    await saveBenchmarkProgress(first.id, checkpoint);
+
+    // A second call with identical inputs picks up exactly where the first left off.
+    const second = await startOrResumeBenchmarkRun(u.user.id, "https://target.example", "best crm");
+    expect(second.id).toBe(first.id);
+    expect(second.progress).toEqual(checkpoint);
+
+    // Once finished, that same running row is no longer offered — a fresh
+    // request starts a brand-new run.
+    await finishBenchmarkRun(first.id, "done");
+    const third = await startOrResumeBenchmarkRun(u.user.id, "https://target.example", "best crm");
+    expect(third.id).not.toBe(first.id);
+    expect(third.progress).toEqual({ cohort: null, target: null, competitors: [] });
+  });
+
+  it("never resumes another user's run, or a different query for the same user", async () => {
+    const owner = await createUser("benchmark-owner@example.com", "password123");
+    const other = await createUser("benchmark-other@example.com", "password123");
+    if (!owner.ok || !other.ok) throw new Error("setup failed");
+
+    const run = await startOrResumeBenchmarkRun(owner.user.id, "https://target.example", "best crm");
+    await saveBenchmarkProgress(run.id, {
+      cohort: [],
+      target: { ai: 1, traditional: 1 },
+      competitors: [],
+    });
+
+    const otherUser = await startOrResumeBenchmarkRun(other.user.id, "https://target.example", "best crm");
+    expect(otherUser.id).not.toBe(run.id);
+
+    const differentQuery = await startOrResumeBenchmarkRun(
+      owner.user.id,
+      "https://target.example",
+      "a totally different query",
+    );
+    expect(differentQuery.id).not.toBe(run.id);
+  });
+
+  it("a run that errors out cleanly is marked failed, not left resumable", async () => {
+    const u = await createUser("benchmark-failed@example.com", "password123");
+    if (!u.ok) throw new Error("setup failed");
+
+    const run = await startOrResumeBenchmarkRun(u.user.id, "https://target.example", "best crm");
+    await finishBenchmarkRun(run.id, "failed");
+
+    const next = await startOrResumeBenchmarkRun(u.user.id, "https://target.example", "best crm");
+    expect(next.id).not.toBe(run.id);
   });
 });
 
