@@ -104,9 +104,10 @@ export default function PrivacyPage() {
         <strong className="font-semibold text-ink">Google Vertex AI</strong>,
         only if a tuned model endpoint is separately configured for the
         content writer;{" "}
-        <strong className="font-semibold text-ink">Anthropic</strong> (report
-        narration, and Claude-based citation/visibility checks — only when an
-        Anthropic key is configured);{" "}
+        <strong className="font-semibold text-ink">Anthropic</strong>{" "}
+        (Claude-based citation checks and the Claude option in Keyword
+        Visibility probes — only when an Anthropic key is configured; report
+        narration always uses Gemini, never Claude);{" "}
         <strong className="font-semibold text-ink">Google PageSpeed
         Insights</strong>, sent the page URL to fetch real-user Core Web
         Vitals; <strong className="font-semibold text-ink">Serper</strong>,
