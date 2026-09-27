@@ -29,6 +29,17 @@ async function login(page: Page, email: string, password: string): Promise<void>
   await page.getByRole("button", { name: "Log in" }).click();
 }
 
+/**
+ * SiteHeader renders two <nav> landmarks (desktop + a mobile disclosure menu,
+ * distinguished by aria-label) so every link/button inside them — including
+ * "Log out" — exists twice in the DOM. These tests run at Playwright's
+ * default desktop viewport, so scope to the visible ("Primary") one rather
+ * than matching page-wide and hitting a strict-mode violation.
+ */
+function primaryNav(page: Page) {
+  return page.getByRole("navigation", { name: "Primary" });
+}
+
 test.describe("anonymous visitor", () => {
   test("can run a free report and see AI/Traditional scores", async ({ page }) => {
     await page.goto("/");
@@ -53,7 +64,7 @@ test.describe("signup", () => {
     await expect(page).toHaveURL(/\/studio$/);
     await expect(page.getByRole("heading", { name: "What should we write today?" })).toBeVisible();
     // The shared nav should reflect the new signed-in session immediately.
-    await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
+    await expect(primaryNav(page).getByRole("button", { name: "Log out" })).toBeVisible();
   });
 
   test("rejects a duplicate email with the account intact", async ({ page }) => {
@@ -63,7 +74,7 @@ test.describe("signup", () => {
     await expect(page).toHaveURL(/\/studio$/);
 
     // Log out, then attempt the same email again with a different password.
-    await page.getByRole("button", { name: "Log out" }).click();
+    await primaryNav(page).getByRole("button", { name: "Log out" }).click();
     await signup(page, email, "differentpassword1");
 
     await expect(page).toHaveURL(/\/signup/);
@@ -99,7 +110,7 @@ test.describe("consistent navigation", () => {
     // Settings used to be a dead end (only a "← Dashboard" link back out) —
     // the shared nav should now be here too, with a one-click path anywhere.
     await page.goto("/dashboard/settings");
-    const nav = page.getByRole("navigation");
+    const nav = primaryNav(page);
     await expect(nav.getByRole("link", { name: "Dashboard" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Keyword Visibility" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Benchmark" })).toBeVisible();
