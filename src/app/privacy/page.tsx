@@ -85,6 +85,15 @@ export default function PrivacyPage() {
         improve the writer model — never a rejected or unreviewed one.
       </P>
 
+      <H2>Fix Generator</H2>
+      <P>
+        When you accept a generated fix (with or without editing it), the page
+        content it was grounded in, the generated candidate, and your edited
+        final (if you changed it) may be used to improve the fix-generation
+        model — the same accepted-only rule as Content Studio drafts. A
+        rejected or skipped candidate is never used this way.
+      </P>
+
       <H2>Keyword Visibility</H2>
       <P>
         A visibility check sends your keywords to the configured AI
