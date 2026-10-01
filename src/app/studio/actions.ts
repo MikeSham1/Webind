@@ -6,6 +6,7 @@ import {
   approvedMarkdown,
   getDraftById,
   getDraftForUser,
+  revertDraftToPendingReview,
   saveDraft,
   saveDraftEdit,
   setAnyDraftStatus,
@@ -195,6 +196,40 @@ export async function decideDraftAction(
         status: "error",
         error: "Couldn't save your decision — the draft may not be yours.",
       };
+}
+
+/**
+ * "Revise and resubmit": send an approved or rejected draft back to
+ * pending_review so it can be edited and re-decided, instead of the decision
+ * UI silently re-appearing as if nothing had ever been decided. A draft that
+ * was approved AND already published refuses here — rolling back the live
+ * publication first is the explicit, visible step that should precede
+ * touching the content behind it, not an implicit side effect of revising.
+ */
+export async function reviseDraftAction(
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const draftId = String(formData.get("draftId") ?? "");
+  if (!draftId) return { ok: false, error: "Missing draft." };
+
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Log in to revise this draft." };
+
+  const existing = await getDraftForUser(draftId, user.id);
+  if (!existing) return { ok: false, error: "Couldn't find that draft." };
+
+  if (existing.status === "approved") {
+    const publication = await getPublicationForDraft(draftId);
+    if (publication && (publication.status === "wp_draft" || publication.status === "published")) {
+      return {
+        ok: false,
+        error: "This draft is already published — roll it back before revising it.",
+      };
+    }
+  }
+
+  const ok = await revertDraftToPendingReview(draftId, user.id);
+  return ok ? { ok: true } : { ok: false, error: "Couldn't revise this draft." };
 }
 
 /**

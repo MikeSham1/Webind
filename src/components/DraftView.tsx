@@ -1,7 +1,12 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
-import { decideDraftAction, previewMarkdownAction, saveDraftEditAction } from "@/app/studio/actions";
+import {
+  decideDraftAction,
+  previewMarkdownAction,
+  reviseDraftAction,
+  saveDraftEditAction,
+} from "@/app/studio/actions";
 import { initialDecisionState, type DecisionState } from "@/app/studio/state";
 import type { ContentDraft, DraftStatus, GateResult } from "@/lib/content/types";
 import PublishBar, { type PublicationSnapshot } from "./PublishBar";
@@ -68,6 +73,30 @@ export default function DraftView({
     decisionState.status === "done" ? decisionState.decision : initialStatus;
   const isApproved = currentStatus === "approved";
   const edited = markdown.trim() !== draft.markdown.trim();
+
+  // A decided draft can be sent back for another look — but not once it's
+  // actually live or sitting as a WordPress draft, since re-editing then would
+  // silently diverge from what WordPress has (roll it back first instead).
+  const isPublished = initialPublication !== null && initialPublication.status !== "rolled_back";
+  const canRevise =
+    currentStatus === "rejected" || (currentStatus === "approved" && !isPublished);
+  const [isRevising, startRevise] = useTransition();
+  const [reviseError, setReviseError] = useState<string | null>(null);
+
+  function revise() {
+    if (!draftId) return;
+    setReviseError(null);
+    startRevise(async () => {
+      const formData = new FormData();
+      formData.set("draftId", draftId);
+      const result = await reviseDraftAction(formData);
+      if (result.ok) {
+        window.location.reload();
+      } else {
+        setReviseError(result.error);
+      }
+    });
+  }
 
   // Autosave the edit while it's still under review, so navigating away or
   // refreshing before approving doesn't silently discard it — `draft.markdown`
@@ -201,6 +230,11 @@ export default function DraftView({
         state={decisionState}
         formAction={decisionFormAction}
         isPending={isDeciding}
+        currentStatus={currentStatus}
+        canRevise={canRevise}
+        onRevise={revise}
+        isRevising={isRevising}
+        reviseError={reviseError}
       />
 
       {draftId && currentStatus === "approved" && (
@@ -222,6 +256,11 @@ function DecisionBar({
   state,
   formAction,
   isPending,
+  currentStatus,
+  canRevise,
+  onRevise,
+  isRevising,
+  reviseError,
 }: {
   draftId: string | null;
   blocked: boolean;
@@ -229,6 +268,11 @@ function DecisionBar({
   state: DecisionState;
   formAction: (formData: FormData) => void;
   isPending: boolean;
+  currentStatus: DraftStatus;
+  canRevise: boolean;
+  onRevise: () => void;
+  isRevising: boolean;
+  reviseError: string | null;
 }) {
   if (!draftId) {
     return (
@@ -240,20 +284,37 @@ function DecisionBar({
     );
   }
 
-  if (state.status === "done") {
+  if (currentStatus === "approved" || currentStatus === "rejected") {
     return (
-      <p
-        role="status"
-        className={`rounded-xl border px-4 py-3 text-sm font-medium ${
-          state.decision === "approved"
-            ? "border-good/40 text-good"
-            : "border-bad/40 text-bad"
-        }`}
-      >
-        {state.decision === "approved"
-          ? "Approved. This content is marked ready to use."
-          : "Rejected. This draft won't be used."}
-      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <p
+          role="status"
+          className={`rounded-xl border px-4 py-3 text-sm font-medium ${
+            currentStatus === "approved"
+              ? "border-good/40 text-good"
+              : "border-bad/40 text-bad"
+          }`}
+        >
+          {currentStatus === "approved"
+            ? "Approved. This content is marked ready to use."
+            : "Rejected. This draft won't be used."}
+        </p>
+        {canRevise && (
+          <button
+            type="button"
+            onClick={onRevise}
+            disabled={isRevising}
+            className="inline-flex h-11 items-center justify-center rounded-full border border-line-strong px-6 font-sans text-[15px] font-medium text-ink transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isRevising ? "Reopening…" : "Revise and resubmit"}
+          </button>
+        )}
+        {reviseError && (
+          <span role="alert" className="text-sm text-bad">
+            {reviseError}
+          </span>
+        )}
+      </div>
     );
   }
 

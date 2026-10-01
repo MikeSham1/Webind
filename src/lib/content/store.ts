@@ -108,6 +108,40 @@ export async function setDraftStatus(
 }
 
 /**
+ * Send a decided (approved or rejected) draft back to `pending_review` so it
+ * can be edited and re-decided — "revise and resubmit," not a silent re-vote
+ * on stale UI. Refuses for a draft that was never actually decided (nothing
+ * to revise) or whose approval and `humanFinal` need to stay intact
+ * (`setAnyDraftStatus`'s admin path doesn't call this; only the owner revises
+ * their own draft). Carries the last decided text forward as the working
+ * edit rather than snapping back to the model's original generation — a
+ * rejected-then-revised draft should continue from what the reviewer was
+ * actually looking at, not lose that context.
+ */
+export async function revertDraftToPendingReview(id: string, userId: string): Promise<boolean> {
+  return withDb("revertDraftToPendingReview", false, async (db) => {
+    const [row] = await db
+      .select()
+      .from(contentDrafts)
+      .where(and(eq(contentDrafts.id, id), eq(contentDrafts.userId, userId)))
+      .limit(1);
+    if (!row || (row.status !== "approved" && row.status !== "rejected")) return false;
+
+    const updated = await db
+      .update(contentDrafts)
+      .set({
+        status: "pending_review",
+        editedMarkdown: row.humanFinal ?? row.editedMarkdown,
+        humanFinal: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(contentDrafts.id, id))
+      .returning({ id: contentDrafts.id });
+    return updated.length > 0;
+  });
+}
+
+/**
  * Autosave an in-progress edit to a draft's markdown, before the reviewer has
  * approved or rejected it. Scoped to the owner and to `pending_review` — once
  * a decision exists, the edit is either promoted to `humanFinal` (by

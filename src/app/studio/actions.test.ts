@@ -43,12 +43,13 @@ vi.mock("@/lib/integrations/wordpress", async (importOriginal) => {
 import { createUser, createSession } from "@/lib/auth";
 import { saveWordPressConnection } from "@/lib/integrations/connections";
 import { generateDraft } from "@/lib/content/generate";
-import { saveDraft, getDraftForUser } from "@/lib/content/store";
+import { saveDraft, saveDraftEdit, getDraftForUser } from "@/lib/content/store";
 import type { ContentInputs } from "@/lib/content/types";
 import {
   decideDraftAction,
   publishDraftAction,
   confirmGoLiveAction,
+  reviseDraftAction,
 } from "./actions";
 import type { RemotePageStatus } from "@/lib/integrations/wordpress";
 
@@ -320,5 +321,67 @@ describe("reconciliation: the cached publication record can drift from what's ac
     });
     const republish = await publishDraftAction({ status: "idle" }, form({ draftId }));
     expect(republish.status).toBe("wp_draft");
+  });
+});
+
+describe("revising a decided draft", () => {
+  it("sends a rejected draft back to pending_review, keeping the reviewer's last edit", async () => {
+    const draft = await generateDraft(inputs);
+    const draftId = await saveDraft(inputs, draft, userId);
+    if (!draftId) throw new Error("setup failed");
+
+    // Simulates DraftView's autosave, which runs continuously while a draft
+    // is pending_review — independent of the reject action itself, which
+    // (unlike approve) never writes the submitted text anywhere.
+    const editedText = "# Managed IT Support\n\nEDITED BEFORE REJECTING.";
+    await saveDraftEdit(draftId, userId, editedText);
+
+    const decision = await decideDraftAction(
+      { status: "idle" },
+      form({ draftId, decision: "reject", markdown: editedText }),
+    );
+    expect(decision.status).toBe("done");
+
+    const result = await reviseDraftAction(form({ draftId }));
+    expect(result.ok).toBe(true);
+
+    const row = await getDraftForUser(draftId, userId);
+    expect(row?.status).toBe("pending_review");
+    expect(row?.editedMarkdown).toContain("EDITED BEFORE REJECTING");
+    expect(row?.humanFinal).toBeNull();
+  });
+
+  it("sends an approved-but-unpublished draft back to pending_review", async () => {
+    const draftId = await newApprovedDraft();
+
+    const result = await reviseDraftAction(form({ draftId }));
+    expect(result.ok).toBe(true);
+
+    const row = await getDraftForUser(draftId, userId);
+    expect(row?.status).toBe("pending_review");
+    expect(wp.createPage).not.toHaveBeenCalled();
+  });
+
+  it("refuses to revise an approved draft that's already published, until it's rolled back", async () => {
+    const draftId = await newApprovedDraft();
+
+    wp.createPage.mockResolvedValueOnce({
+      ok: true,
+      postId: 10,
+      viewUrl: "https://acme.example/x/",
+      editUrl: "https://acme.example/wp-admin/post.php?post=10&action=edit",
+      previewUrl: "https://acme.example/?page_id=10&preview=true",
+    });
+    const created = await publishDraftAction({ status: "idle" }, form({ draftId }));
+    expect(created.status).toBe("wp_draft");
+
+    const result = await reviseDraftAction(form({ draftId }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/already published/i);
+    }
+
+    const row = await getDraftForUser(draftId, userId);
+    expect(row?.status).toBe("approved"); // untouched
   });
 });
