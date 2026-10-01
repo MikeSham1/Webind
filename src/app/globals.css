@@ -18,17 +18,21 @@
   --muted: #5b665c;
   --line: #d3dcd1;
   --line-strong: #b9c6b6;
-  --accent: #ff5a1f;
-  --accent-hover: #e64d15;
+  /* Darkened from the original #ff5a1f/#e64d15/#9a6a0a: those measured
+     3.12:1 (white text on --accent), 2.76:1 (--accent text on --paper), and
+     4.18:1 (--warn on --paper) — all short of WCAG AA's 4.5:1 for normal
+     text, on exactly the pairings used everywhere (button labels, links,
+     warning copy). These hit >=4.5:1 in both directions; --good/--bad were
+     already compliant. Graphical-only uses (meter bars, the large numeral)
+     only need 3:1 and were never the problem. */
+  --accent: #bd4317;
+  --accent-hover: #a23a13;
   --accent-ink: #ffffff;
-  --accent-soft: rgba(255, 90, 31, 0.1);
-  /* Darkened for WCAG AA: small colored text (e.g. the grade badge) sits on
-     the pale --paper; these hit >=4.5:1 there. Graphical uses (meter bars,
-     large numeral) only need 3:1. */
+  --accent-soft: rgba(189, 67, 23, 0.1);
   --good: #1c7a4f;
-  --warn: #9a6a0a;
+  --warn: #8b5f09;
   --bad: #c23a2b;
-  --glow: rgba(255, 90, 31, 0.08);
+  --glow: rgba(189, 67, 23, 0.08);
 }
 
 @media (prefers-color-scheme: dark) {

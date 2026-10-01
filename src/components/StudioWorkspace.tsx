@@ -50,7 +50,10 @@ export default function StudioWorkspace({
       setBriefVersion((v) => v + 1);
       // Send them to the form they just filled, rather than leaving the change
       // to happen silently below the fold.
-      document.getElementById("draft-step")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      document
+        .getElementById("draft-step")
+        ?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
     });
   }
 

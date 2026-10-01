@@ -49,7 +49,7 @@ export default function BenchmarkForm() {
         className="space-y-5 rounded-2xl border border-line bg-surface p-6 sm:p-8"
       >
         <Field label="Your site" hint="Enter the domain without https:// or a path.">
-          <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-line-strong bg-paper px-3">
+          <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-line-strong bg-paper px-3 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent-soft">
             <span className="font-mono text-sm text-muted" aria-hidden="true">
               https://
             </span>

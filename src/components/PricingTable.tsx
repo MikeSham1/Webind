@@ -58,7 +58,11 @@ export default function PricingTable({
   const returningCardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    returningCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    returningCardRef.current?.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "center",
+    });
   }, []);
 
   async function subscribe(plan: Plan) {

@@ -123,7 +123,7 @@ export default function CompareForm() {
               <p className="mb-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
                 {f.label}
               </p>
-              <div className="scan-frame flex items-center gap-2 border border-line bg-surface px-4 py-3">
+              <div className="scan-frame flex items-center gap-2 border border-line bg-surface px-4 py-3 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent-soft">
                 <span className="hidden font-mono text-sm text-muted sm:inline" aria-hidden="true">
                   https://
                 </span>

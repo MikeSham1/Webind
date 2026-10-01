@@ -98,6 +98,10 @@ export default function ContentPlanner({
       {/* Conversation */}
       <div
         ref={scrollRef}
+        role="log"
+        aria-live="polite"
+        aria-atomic="false"
+        aria-label="Conversation"
         className="max-h-[26rem] min-h-[13rem] overflow-y-auto px-6 py-6 sm:px-8"
       >
         {hasChat ? (

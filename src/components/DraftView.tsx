@@ -174,7 +174,7 @@ export default function DraftView({
             readOnly={isApproved}
             spellCheck={false}
             aria-label={isApproved ? "Draft markdown (locked — already approved)" : "Draft markdown (editable)"}
-            className={`block max-h-[28rem] min-h-[16rem] w-full resize-y overflow-auto bg-paper p-5 font-mono text-[13px] leading-relaxed text-ink focus:outline-none ${isApproved ? "cursor-default opacity-80" : ""}`}
+            className={`block max-h-[28rem] min-h-[16rem] w-full resize-y overflow-auto bg-paper p-5 font-mono text-[13px] leading-relaxed text-ink focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent ${isApproved ? "cursor-default opacity-80" : ""}`}
           />
         )}
         {isApproved ? (
