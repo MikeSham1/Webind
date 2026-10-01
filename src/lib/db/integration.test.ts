@@ -443,27 +443,27 @@ describe("planner conversation persistence", () => {
     const u = await createUser("planner-persist@example.com", "password123");
     if (!u.ok) throw new Error("setup failed");
 
-    expect(await getPlannerConversation(u.user.id)).toEqual([]);
+    expect(await getPlannerConversation(u.user.id, null)).toEqual([]);
 
     const turn1 = [{ role: "user" as const, text: "Write a landing page for my IT support business" }];
-    await savePlannerConversation(u.user.id, turn1);
-    expect(await getPlannerConversation(u.user.id)).toEqual(turn1);
+    await savePlannerConversation(u.user.id, null, turn1);
+    expect(await getPlannerConversation(u.user.id, null)).toEqual(turn1);
 
     // A later save replaces the row rather than accumulating a second one.
     const turn2 = [...turn1, { role: "assistant" as const, text: "What's your target audience?" }];
-    await savePlannerConversation(u.user.id, turn2);
-    expect(await getPlannerConversation(u.user.id)).toEqual(turn2);
+    await savePlannerConversation(u.user.id, null, turn2);
+    expect(await getPlannerConversation(u.user.id, null)).toEqual(turn2);
   });
 
   it("clears the saved conversation on request", async () => {
     const u = await createUser("planner-clear@example.com", "password123");
     if (!u.ok) throw new Error("setup failed");
 
-    await savePlannerConversation(u.user.id, [{ role: "user", text: "hello" }]);
-    expect(await getPlannerConversation(u.user.id)).toHaveLength(1);
+    await savePlannerConversation(u.user.id, null, [{ role: "user", text: "hello" }]);
+    expect(await getPlannerConversation(u.user.id, null)).toHaveLength(1);
 
-    await clearPlannerConversation(u.user.id);
-    expect(await getPlannerConversation(u.user.id)).toEqual([]);
+    await clearPlannerConversation(u.user.id, null);
+    expect(await getPlannerConversation(u.user.id, null)).toEqual([]);
   });
 
   it("scopes conversations per user", async () => {
@@ -471,9 +471,51 @@ describe("planner conversation persistence", () => {
     const b = await createUser("planner-b@example.com", "password123");
     if (!a.ok || !b.ok) throw new Error("setup failed");
 
-    await savePlannerConversation(a.user.id, [{ role: "user", text: "a's message" }]);
-    expect(await getPlannerConversation(b.user.id)).toEqual([]);
-    expect(await getPlannerConversation(a.user.id)).toEqual([{ role: "user", text: "a's message" }]);
+    await savePlannerConversation(a.user.id, null, [{ role: "user", text: "a's message" }]);
+    expect(await getPlannerConversation(b.user.id, null)).toEqual([]);
+    expect(await getPlannerConversation(a.user.id, null)).toEqual([{ role: "user", text: "a's message" }]);
+  });
+
+  it("scopes conversations per site, not just per user — switching sites switches the conversation", async () => {
+    const u = await createUser("planner-sites@example.com", "password123");
+    if (!u.ok) throw new Error("setup failed");
+    // Free's 1-site cap would silently drop the second touchSite below; this
+    // test is about per-site conversation scoping, not plan limits.
+    await upsertSubscription({ userId: u.user.id, plan: "growth", status: "active" });
+    await touchSite(u.user.id, "site-a.example");
+    await touchSite(u.user.id, "site-b.example");
+    const [siteA, siteB] = (await listSites(u.user.id)).sort((x, y) => x.host.localeCompare(y.host));
+
+    await savePlannerConversation(u.user.id, siteA.id, [{ role: "user", text: "about site A" }]);
+    await savePlannerConversation(u.user.id, siteB.id, [{ role: "user", text: "about site B" }]);
+
+    expect(await getPlannerConversation(u.user.id, siteA.id)).toEqual([
+      { role: "user", text: "about site A" },
+    ]);
+    expect(await getPlannerConversation(u.user.id, siteB.id)).toEqual([
+      { role: "user", text: "about site B" },
+    ]);
+    // Clearing one site's conversation doesn't touch the other's.
+    await clearPlannerConversation(u.user.id, siteA.id);
+    expect(await getPlannerConversation(u.user.id, siteA.id)).toEqual([]);
+    expect(await getPlannerConversation(u.user.id, siteB.id)).toEqual([
+      { role: "user", text: "about site B" },
+    ]);
+  });
+
+  it("doesn't let a site-less scratchpad accumulate duplicate rows across repeated saves", async () => {
+    // Regression guard for the NULL-uniqueness gap called out in the schema
+    // comment: without the application-level select-then-branch, two saves
+    // with siteId=null could both insert instead of the second updating.
+    const u = await createUser("planner-nosite-dedup@example.com", "password123");
+    if (!u.ok) throw new Error("setup failed");
+
+    await savePlannerConversation(u.user.id, null, [{ role: "user", text: "first" }]);
+    await savePlannerConversation(u.user.id, null, [{ role: "user", text: "second" }]);
+    // If a duplicate row had been inserted, getPlannerConversation's LIMIT 1
+    // could non-deterministically return either row — asserting the exact
+    // latest content (not just "some row exists") catches that.
+    expect(await getPlannerConversation(u.user.id, null)).toEqual([{ role: "user", text: "second" }]);
   });
 });
 

@@ -28,10 +28,7 @@ const PLANNER_SYSTEM = [
  * other one" is resolvable. Returns null when we genuinely don't know, so the
  * model is never told a site that isn't theirs.
  */
-async function buildSiteContext(userId: string): Promise<string | null> {
-  const active = await resolveActiveSite(userId);
-  if (!active) return null;
-
+async function buildSiteContext(userId: string, active: { id: string; host: string }): Promise<string> {
   const lines = [
     `The user's website is ${active.host}. When they say "my site", "the site",`,
     `or "the page" without naming a domain, they mean ${active.host} — do not ask`,
@@ -78,8 +75,19 @@ export async function planContentAction(
 
   // Which website is this conversation about? Nobody should have to paste a URL
   // into every message, so resolve it from the user's known sites (discovered
-  // from their own reports) and hand it to the model as context.
-  const siteContext = user ? await buildSiteContext(user.id) : null;
+  // from their own reports) and hand it to the model as context. Also the
+  // scope key for saving this conversation — see the siteId comment on the
+  // planner_conversations schema for why the conversation itself is
+  // per-site, not just per-user.
+  let siteContext: string | null = null;
+  let siteId: string | null = null;
+  if (user) {
+    const activeSite = await resolveActiveSite(user.id);
+    if (activeSite) {
+      siteContext = await buildSiteContext(user.id, activeSite);
+      siteId = activeSite.id;
+    }
+  }
 
   const messages: PlannerMessage[] = [...prior, { role: "user", text: message }];
   const result = await generate(
@@ -113,13 +121,13 @@ export async function planContentAction(
     });
     // The user's message still counts as part of the conversation even though
     // the model failed to reply — save it so a retry doesn't also lose it.
-    if (user) await savePlannerConversation(user.id, messages);
+    if (user) await savePlannerConversation(user.id, siteId, messages);
     return { status: "error", error: plannerErrorFor(result.error), messages };
   }
 
   const reply = result.text.trim();
   const withReply = [...messages, { role: "assistant" as const, text: reply }];
-  if (user) await savePlannerConversation(user.id, withReply);
+  if (user) await savePlannerConversation(user.id, siteId, withReply);
   return { status: "reply", reply, messages: withReply };
 }
 
@@ -131,5 +139,7 @@ export async function planContentAction(
  */
 export async function clearPlannerConversationAction(): Promise<void> {
   const user = await getCurrentUser();
-  if (user) await clearPlannerConversation(user.id);
+  if (!user) return;
+  const activeSite = await resolveActiveSite(user.id);
+  await clearPlannerConversation(user.id, activeSite?.id ?? null);
 }

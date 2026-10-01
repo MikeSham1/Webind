@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { listAllDrafts, listDraftsForUser } from "@/lib/content/store";
 import { getPlannerConversation } from "@/lib/content/planner-store";
+import { resolveActiveSite } from "@/lib/sites/store";
 import { listAllReports, listReportsForUser } from "@/lib/leads";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
 import ResendVerificationButton from "@/components/ResendVerificationButton";
@@ -47,11 +48,15 @@ export default async function DashboardPage() {
   if (!user) redirect("/login");
   const isAdmin = user.isAdmin;
 
+  // The embedded studio's planner conversation is scoped per-site — resolve
+  // it once up front so the dashboard and /studio always agree on which
+  // conversation "the planner" currently means.
+  const activeSite = await resolveActiveSite(user.id);
   const [reports, drafts, wpConnection, plannerMessages] = await Promise.all([
     isAdmin ? listAllReports() : listReportsForUser(user.id),
     isAdmin ? listAllDrafts() : listDraftsForUser(user.id),
     getWordPressConnectionStatus(user.id),
-    getPlannerConversation(user.id),
+    getPlannerConversation(user.id, activeSite?.id ?? null),
   ]);
   const wordPressConnected = wpConnection !== null;
 

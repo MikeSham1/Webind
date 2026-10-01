@@ -169,6 +169,13 @@
       "when": 1790412607968,
       "tag": "0023_friendly_ego",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790842863681,
+      "tag": "0024_bright_meggan",
+      "breakpoints": true
     }
   ]
 }

@@ -4,6 +4,7 @@ import SiteContextBar from "@/components/SiteContextBar";
 import SiteHeader from "@/components/SiteHeader";
 import { getCurrentUser } from "@/lib/auth";
 import { getWordPressConnectionStatus } from "@/lib/integrations/connections";
+import { resolveActiveSite } from "@/lib/sites/store";
 import { getPlannerConversation } from "@/lib/content/planner-store";
 
 export const metadata: Metadata = {
@@ -14,9 +15,14 @@ export const dynamic = "force-dynamic";
 
 export default async function StudioPage() {
   const user = await getCurrentUser();
+  // Resolved once and reused for both calls below — the planner conversation
+  // is scoped per-site (see planner-store.ts), so loading it needs to know
+  // which site the user is currently on, same as the WordPress connection
+  // doesn't but the chat history does.
+  const activeSite = user ? await resolveActiveSite(user.id) : null;
   const [wpConnection, plannerMessages] = await Promise.all([
     user ? getWordPressConnectionStatus(user.id) : Promise.resolve(null),
-    user ? getPlannerConversation(user.id) : Promise.resolve([]),
+    user ? getPlannerConversation(user.id, activeSite?.id ?? null) : Promise.resolve([]),
   ]);
 
   return (

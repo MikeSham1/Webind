@@ -148,8 +148,22 @@ export const plannerConversations = pgTable("planner_conversations", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")
     .notNull()
-    .unique()
     .references(() => users.id, { onDelete: "cascade" }),
+  /**
+   * The site this conversation is about, or null for a user who hasn't
+   * resolved an active site yet. One conversation per (user, site) — switching
+   * sites switches which conversation you're resuming, since each site's
+   * conversation was generated with that site's name/scores as context (see
+   * buildSiteContext in planner-actions.ts); showing site B's discovery chat
+   * while the planner is actually talking about site A would be actively
+   * misleading. No DB-level uniqueness here (unlike most one-row-per-key
+   * tables): Postgres doesn't treat two NULL site_ids as equal for a unique
+   * constraint, which would let a site-less user accumulate duplicate rows.
+   * The store enforces "at most one per (user, site)" in application code
+   * instead — the same select-then-branch pattern sites/store.ts's touchSite
+   * uses.
+   */
+  siteId: uuid("site_id").references(() => sites.id, { onDelete: "cascade" }),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
