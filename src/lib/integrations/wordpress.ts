@@ -231,15 +231,44 @@ async function call(
   return { ok: true, status: res.status, body: record };
 }
 
-/** Verify the credentials work at all, and surface whose account they are. */
+/**
+ * Which content types this connected account can actually create. WordPress's
+ * built-in Author role can publish Posts but has no capability to touch Pages
+ * at all — and every non-blog page type (landing/product/about/FAQ) in this
+ * app routes to Pages (see wordPressPostTypeFor). Without checking this at
+ * connect time, that mismatch only surfaced as an opaque WordPress error the
+ * first time someone tried to publish one of those page types.
+ */
+export interface WordPressCapabilities {
+  canEditPosts: boolean;
+  canEditPages: boolean;
+}
+
+/**
+ * Verify the credentials work at all, surface whose account they are, and
+ * check what it's actually capable of publishing. `context=edit` is what
+ * makes WordPress include the `capabilities` map in the response — the
+ * default (view) context omits it entirely.
+ */
 export async function testConnection(
   creds: WordPressCredentials,
   opts: WordPressCallOptions = {},
-): Promise<WordPressResult<{ name: string }>> {
-  const result = await call(creds, "/users/me", {}, opts);
+): Promise<WordPressResult<{ name: string; capabilities: WordPressCapabilities }>> {
+  const result = await call(creds, "/users/me?context=edit", {}, opts);
   if (!result.ok) return result;
   const name = typeof result.body.name === "string" ? result.body.name : creds.username;
-  return { ok: true, name };
+  const caps =
+    result.body.capabilities && typeof result.body.capabilities === "object"
+      ? (result.body.capabilities as Record<string, unknown>)
+      : {};
+  return {
+    ok: true,
+    name,
+    capabilities: {
+      canEditPosts: Boolean(caps.edit_posts || caps.publish_posts),
+      canEditPages: Boolean(caps.edit_pages || caps.publish_pages),
+    },
+  };
 }
 
 export interface PublishedPage {

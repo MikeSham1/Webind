@@ -66,8 +66,18 @@ export async function connectWordPressAction(
     };
   }
 
+  // Most page types (landing/product/about/FAQ) publish as WordPress Pages —
+  // only Blog posts route to Posts. An Author-level account can do the
+  // latter but has no capability to touch Pages at all, which otherwise only
+  // ever surfaced as an opaque error the first time someone tried to publish.
+  const capabilityWarning = !verified.capabilities.canEditPages
+    ? verified.capabilities.canEditPosts
+      ? "This account can publish Blog posts, but can't create Pages — most page types (Landing, Product, About, FAQ) need an Editor or above."
+      : "This account doesn't appear able to create Posts or Pages here — check its WordPress role (Editor or above is recommended)."
+    : undefined;
+
   revalidatePath("/dashboard/settings");
-  return { status: "connected", siteUrl, username };
+  return { status: "connected", siteUrl, username, capabilityWarning };
 }
 
 export async function disconnectWordPressAction(): Promise<void> {

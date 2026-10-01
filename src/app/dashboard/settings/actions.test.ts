@@ -48,7 +48,11 @@ describe("connectWordPressAction", () => {
   });
 
   it("accepts an https:// site", async () => {
-    mocks.testWordPressConnection.mockResolvedValue({ ok: true, name: "Editor" });
+    mocks.testWordPressConnection.mockResolvedValue({
+      ok: true,
+      name: "Editor",
+      capabilities: { canEditPosts: true, canEditPages: true },
+    });
     const { connectWordPressAction } = await import("./actions");
     const result = await connectWordPressAction(
       { status: "idle" },
@@ -56,5 +60,25 @@ describe("connectWordPressAction", () => {
     );
     expect(result.status).toBe("connected");
     expect(mocks.saveWordPressConnection).toHaveBeenCalled();
+    if (result.status === "connected") {
+      expect(result.capabilityWarning).toBeUndefined();
+    }
+  });
+
+  it("warns when the account can post but can't create pages", async () => {
+    mocks.testWordPressConnection.mockResolvedValue({
+      ok: true,
+      name: "Author",
+      capabilities: { canEditPosts: true, canEditPages: false },
+    });
+    const { connectWordPressAction } = await import("./actions");
+    const result = await connectWordPressAction(
+      { status: "idle" },
+      form({ siteUrl: "https://acme.example", username: "author", appPassword: "abcd efgh ijkl mnop" }),
+    );
+    expect(result.status).toBe("connected");
+    if (result.status === "connected") {
+      expect(result.capabilityWarning).toMatch(/can't create pages/i);
+    }
   });
 });

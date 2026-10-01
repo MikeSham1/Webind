@@ -35,6 +35,11 @@ export default function WordPressConnectionForm({
           <span className="font-semibold">{connected.username}</span> at{" "}
           <span className="font-semibold">{connected.siteUrl}</span>
         </p>
+        {state.status === "connected" && state.capabilityWarning && (
+          <p className="mt-3 rounded-lg border border-warn/40 bg-surface px-3 py-2 text-sm text-warn">
+            {state.capabilityWarning}
+          </p>
+        )}
         <form action={disconnectWordPressAction} className="mt-5">
           <button
             type="submit"

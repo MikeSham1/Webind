@@ -25,8 +25,20 @@ beforeAll(async () => {
       return;
     }
 
-    if (req.url === "/wp-json/wp/v2/users/me" && req.method === "GET") {
-      send(200, { id: 1, name: "Site Editor" });
+    if (req.url === "/wp-json/wp/v2/users/me?context=edit" && req.method === "GET") {
+      send(200, {
+        id: 1,
+        name: "Site Editor",
+        capabilities: { edit_posts: true, edit_pages: true, publish_posts: true, publish_pages: true },
+      });
+      return;
+    }
+    if (req.url === "/author-account/wp-json/wp/v2/users/me?context=edit" && req.method === "GET") {
+      send(200, {
+        id: 2,
+        name: "Site Author",
+        capabilities: { edit_posts: true, publish_posts: true, edit_pages: false, publish_pages: false },
+      });
       return;
     }
 
@@ -59,17 +71,17 @@ beforeAll(async () => {
 
     // Redirect-behavior fixtures, selected by a path prefix on the "site URL"
     // used in the test (see the describe block below).
-    if (req.url === "/redirect-same-origin/wp-json/wp/v2/users/me" && req.method === "GET") {
-      res.writeHead(301, { location: `${siteUrl}/wp-json/wp/v2/users/me` });
+    if (req.url === "/redirect-same-origin/wp-json/wp/v2/users/me?context=edit" && req.method === "GET") {
+      res.writeHead(301, { location: `${siteUrl}/wp-json/wp/v2/users/me?context=edit` });
       res.end();
       return;
     }
-    if (req.url === "/redirect-cross-origin/wp-json/wp/v2/users/me" && req.method === "GET") {
+    if (req.url === "/redirect-cross-origin/wp-json/wp/v2/users/me?context=edit" && req.method === "GET") {
       // Port 9 (discard) has nothing listening — if we ever actually attempted
       // this connection the test would see a generic "couldn't reach" error
       // instead of the specific same-origin refusal, so this doubles as proof
       // we never tried.
-      res.writeHead(301, { location: "http://127.0.0.1:9/wp-json/wp/v2/users/me" });
+      res.writeHead(301, { location: "http://127.0.0.1:9/wp-json/wp/v2/users/me?context=edit" });
       res.end();
       return;
     }
@@ -78,7 +90,7 @@ beforeAll(async () => {
       res.end();
       return;
     }
-    if (req.url === "/huge-response/wp-json/wp/v2/users/me" && req.method === "GET") {
+    if (req.url === "/huge-response/wp-json/wp/v2/users/me?context=edit" && req.method === "GET") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(Buffer.alloc(5 * 1024 * 1024 + 1024, 0x61));
       return;
@@ -105,9 +117,27 @@ describe("SSRF guard", () => {
 });
 
 describe("testConnection", () => {
-  it("succeeds with valid Application Password credentials", async () => {
+  it("succeeds with valid Application Password credentials, and reports capabilities", async () => {
     const result = await testConnection(creds(), offline);
-    expect(result).toEqual({ ok: true, name: "Site Editor" });
+    expect(result).toEqual({
+      ok: true,
+      name: "Site Editor",
+      capabilities: { canEditPosts: true, canEditPages: true },
+    });
+  });
+
+  it("flags an Author-level account that can post but can't create Pages", async () => {
+    // Reuses the same fixture auth — a second route keyed off a distinct path
+    // prefix, same pattern as the redirect fixtures below.
+    const result = await testConnection(
+      { ...creds(), siteUrl: `${siteUrl}/author-account` },
+      offline,
+    );
+    expect(result).toEqual({
+      ok: true,
+      name: "Site Author",
+      capabilities: { canEditPosts: true, canEditPages: false },
+    });
   });
 
   it("fails with a clear message on bad credentials", async () => {
@@ -165,7 +195,11 @@ describe("redirect handling", () => {
       { ...creds(), siteUrl: `${siteUrl}/redirect-same-origin` },
       offline,
     );
-    expect(result).toEqual({ ok: true, name: "Site Editor" });
+    expect(result).toEqual({
+      ok: true,
+      name: "Site Editor",
+      capabilities: { canEditPosts: true, canEditPages: true },
+    });
   });
 
   it("refuses a cross-origin redirect without ever contacting it", async () => {
