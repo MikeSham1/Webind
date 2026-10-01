@@ -66,11 +66,14 @@ export async function runVisibilityCheck(
   // Persist the measured AI-surfacing outcome as ground-truth training data for
   // the readiness model. Best-effort — never blocks or breaks the user's check.
   await saveVisibilityOutcome(result.report, user.id);
-  // Meter the probes actually run (post dedup/cap), against the monthly quota.
-  // The slice above used a stale quota.remaining, so re-check atomically here
-  // too — a concurrent request from the same user can't jointly overshoot the
-  // cap even though both read the same "remaining" a moment earlier.
-  await reserveUsage(user.id, "visibility_probe", result.report.keywords.length);
+  // Meter only keywords that actually got a usable result (score !== null —
+  // at least one engine returned a definite verdict). A keyword where every
+  // configured engine failed or returned "unknown" produced nothing the
+  // customer can use, and used to still burn their quota — the slice above
+  // used a stale quota.remaining, so re-check atomically here too, against
+  // just the billable count.
+  const billable = result.report.keywords.filter((k) => k.score !== null).length;
+  await reserveUsage(user.id, "visibility_probe", billable);
 
   return { status: "success", report: result.report };
 }
