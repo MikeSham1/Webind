@@ -60,3 +60,6 @@ scripts/model/real-dataset.jsonl
 # Fix Generator SFT export is derived from customer reviews — never commit it.
 scripts/model/sft-dataset.jsonl
 scripts/model/sft-provenance.jsonl
+
+# Built C/C++ tooling binaries (see tools/dupscan)
+tools/dupscan/dupscan

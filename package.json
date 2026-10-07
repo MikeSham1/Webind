@@ -16,7 +16,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "tuning:synthetic": "npx --yes tsx scripts/tuning/build-synthetic-content-corpus.ts",
-    "tuning:submit": "bash scripts/tuning/submit-vertex-sft.sh"
+    "tuning:submit": "bash scripts/tuning/submit-vertex-sft.sh",
+    "dupscan": "make -s -C tools/dupscan && tools/dupscan/dupscan"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.113.0",
