@@ -63,3 +63,6 @@ scripts/model/sft-provenance.jsonl
 
 # Built C/C++ tooling binaries (see tools/dupscan)
 tools/dupscan/dupscan
+
+# Built CLI bundles (npm run crawl)
+/.cli/
