@@ -272,4 +272,20 @@ describe("discoverSitemapUrls", () => {
     expect(out.truncated).toBe(true);
     expect(fetchedSecond).toBe(false);
   });
+
+  it("doesn't count an HTML page served at a sitemap path as a sitemap", async () => {
+    const out = await discoverSitemapUrls("https://acme.com/", {
+      isUrlAllowed: async () => true,
+      fetchImpl: (async (url: string) => {
+        if (url.endsWith("/sitemap.xml")) {
+          return new Response('<?xml version="1.0"?><urlset><url><loc>https://acme.com/a</loc></url></urlset>', { status: 200 });
+        }
+        if (url.endsWith("/robots.txt")) return new Response("", { status: 404 });
+        // A catch-all server: every other path gets the homepage.
+        return new Response("<!doctype html><html><body>Home</body></html>", { status: 200 });
+      }) as typeof fetch,
+    });
+    expect(out.sitemaps).toEqual(["https://acme.com/sitemap.xml"]);
+    expect(out.urls).toEqual(["https://acme.com/a"]);
+  });
 });

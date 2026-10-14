@@ -216,6 +216,13 @@ export function formatSite(s: SiteReport): string {
     `  sitemaps: ${s.sitemaps.length}   via links: ${s.linkDiscovered}   ` +
       `skipped by robots.txt: ${s.blockedByRobots}` +
       (s.crawlDelay !== null ? `   crawl-delay: ${s.crawlDelay}s` : ""),
+    ...(s.brokenPages > 0 ? [`  broken pages (HTTP errors): ${s.brokenPages}`] : []),
+    ...(s.sitemapHostMismatches > 0
+      ? [
+          `  sitemap lists ${s.sitemapHostMismatches} URL(s) on the wrong host ` +
+            `(should be ${new URL(s.origin).hostname}); scanned them there instead`,
+        ]
+      : []),
     `  average  AI ${score(s.averageAi)}   Traditional ${score(s.averageTraditional)}`,
     "",
     "   AI  Trad  Page",

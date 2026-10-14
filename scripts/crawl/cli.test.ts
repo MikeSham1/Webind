@@ -49,6 +49,8 @@ describe("crawl CLI output", () => {
       commonFixes: [{ fix: "Add schema", count: 2 }],
       truncated: false,
       linkDiscovered: 2,
+      sitemapHostMismatches: 3,
+      brokenPages: 1,
       blockedByRobots: 1,
       crawlDelay: 5,
     };
@@ -59,5 +61,7 @@ describe("crawl CLI output", () => {
     expect(out).toContain("/x  FAILED: timeout");
     expect(out).toContain("×2  Add schema");
     expect(out).toContain("Structured data: none found");
+    expect(out).toContain("broken pages (HTTP errors): 1");
+    expect(out).toContain("sitemap lists 3 URL(s) on the wrong host (should be acme.com)");
   });
 });

@@ -167,6 +167,9 @@ export async function discoverSitemapUrls(
     attempts += 1;
     const xml = await fetchText(sitemapUrl, doFetch, timeoutMs, isUrlAllowed);
     if (!xml) continue;
+    // Many servers answer any unknown path with their homepage (200, HTML), so
+    // a 200 at /sitemap_index.xml proves nothing. Only a real sitemap counts.
+    if (!/<(?:urlset|sitemapindex)[\s>]/i.test(xml)) continue;
     fetchedSitemaps.push(sitemapUrl);
 
     const parsed = parseSitemap(xml);

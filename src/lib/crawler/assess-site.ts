@@ -1,7 +1,12 @@
-import { crawl, crawlerUserAgent, type OriginProbeCache } from "./crawl";
+import {
+  crawl,
+  crawlerUserAgent,
+  resolveRedirectChain,
+  type OriginProbeCache,
+} from "./crawl";
 import { discoverSitemapUrls } from "./sitemap";
-import { normalizeUrl } from "./ssrf";
-import { isFollowableLink, pageKey, siteHost } from "./links";
+import { isPublicUrl, normalizeUrl } from "./ssrf";
+import { isFollowableLink, isLowValuePath, pageKey, siteHost } from "./links";
 import { extractPageData, type PageData } from "./extract-data";
 import { crawlDelayFor, isPathAllowed, parseRobotsGroups, productToken } from "./robots";
 import { buildReport } from "../scoring/report";
@@ -15,8 +20,10 @@ import type { CrawledPage } from "../scoring/types";
  *
  * When the sitemap lists fewer pages than the cap (or there is no sitemap),
  * the remaining budget is filled by following internal links from pages
- * already crawled, breadth-first. Those links come out of crawls we ran
- * anyway, so link following costs no extra fetches beyond the pages it adds.
+ * already crawled, best-first (see compareQueued): with a small page budget,
+ * the order decides which pages get scored at all. Those links come out of
+ * crawls we ran anyway, so link following costs no extra fetches beyond the
+ * pages it adds.
  *
  * Polite by construction: any page the site's robots.txt disallows for our
  * crawler is skipped (sitemap-listed or not), a `Crawl-delay` drops the scan
@@ -43,6 +50,8 @@ export interface PageAssessment {
   topFixes: string[];
   /** Present when the crawl failed. */
   error?: string;
+  /** The HTTP status the page answered with, when it loaded at all. */
+  httpStatus?: number;
   /** Structured data the page publishes (null when the crawl failed). */
   data: PageData | null;
 }
@@ -66,6 +75,15 @@ export interface SiteReport {
   truncated: boolean;
   /** How many of `pages` were found by following links rather than a sitemap. */
   linkDiscovered: number;
+  /**
+   * Sitemap URLs on the www/bare twin of the site's real host (e.g. the
+   * sitemap lists acme.com/x but the site lives on www.acme.com). They're
+   * crawled at the real host; the count is reported because it's a sitemap bug
+   * worth fixing: those listed URLs often 404 or redirect.
+   */
+  sitemapHostMismatches: number;
+  /** Pages that answered with an HTTP error (4xx/5xx), e.g. broken links. */
+  brokenPages: number;
   /** Pages we found but did not crawl because robots.txt disallows them for us. */
   blockedByRobots: number;
   /** The robots.txt `Crawl-delay` (seconds) we honored, or null when none. */
@@ -87,6 +105,11 @@ export interface AssessSiteOptions {
   followLinks?: boolean;
   /** Injectable sleep, so tests don't wait out a Crawl-delay. */
   sleepImpl?: (ms: number) => Promise<void>;
+  /**
+   * Injectable redirect resolution for the entered URL, so tests stay offline.
+   * Defaults to crawl.ts's SSRF-checked, hop-by-hop resolver.
+   */
+  resolveImpl?: (url: string) => Promise<string>;
 }
 
 /** Longest `Crawl-delay` we wait out between requests (seconds). */
@@ -96,6 +119,23 @@ const MAX_CRAWL_DELAY_S = 10;
  * the page budget rather than holding a server action open for minutes.
  */
 const MAX_DELAY_BUDGET_S = 60;
+
+/**
+ * Most discovered-but-unvisited links held at once. Each crawled page reports
+ * up to 500 internal links; this bounds memory on a link-farm site while
+ * leaving far more candidates than any scan's page budget.
+ */
+const MAX_PENDING = 5_000;
+
+/** A page waiting to be crawled. */
+interface QueuedPage {
+  url: string;
+  source: PageSource;
+  /** Clicks from where the scan started (sitemap pages and the entry are 0). */
+  depth: number;
+  /** Discovery order, the final tie-breaker, so ordering is deterministic. */
+  order: number;
+}
 
 /** How many weakest pages and common fixes to surface. */
 const TOP_N = 5;
@@ -110,8 +150,20 @@ export async function assessSite(
   const doCrawl = opts.crawlImpl ?? crawl;
   const discover = opts.discoverImpl ?? discoverSitemapUrls;
 
-  const normalized = normalizeUrl(siteUrl) ?? siteUrl;
+  // Find where the site actually lives before reading its robots.txt and
+  // sitemap. A bare domain that redirects to www (or to https, or another
+  // host) often serves neither file itself, so looking them up on the typed
+  // address found "no robots.txt" and silently ignored the real rules.
+  const typed = normalizeUrl(siteUrl) ?? siteUrl;
+  const resolve =
+    opts.resolveImpl ??
+    ((url: string) =>
+      resolveRedirectChain(url, (u) => isPublicUrl(u), crawlerUserAgent(), opts.fetchImpl ?? fetch));
+  const normalized = await resolve(typed).catch(() => typed);
   const origin = originOf(normalized);
+  if (normalized !== typed) {
+    logInfo("assess_site.redirected", { from: typed, to: normalized });
+  }
 
   const discovery = await discover(normalized, {
     maxUrls: maxPages,
@@ -142,11 +194,33 @@ export async function assessSite(
 
   // A site with no reachable sitemap still deserves an answer: start from the
   // URL the user actually gave us.
+  // A sitemap listing the bare domain when the site lives on www (or the
+  // reverse) points at URLs that often 404. Crawl the page where it really
+  // lives, and report the mismatch rather than scoring an error page.
+  let sitemapHostMismatches = 0;
+  const onSiteHost = (url: string): string => {
+    try {
+      const u = new URL(url);
+      const real = new URL(origin);
+      if (u.hostname !== real.hostname && siteHost(u.hostname) === siteHost(real.hostname)) {
+        sitemapHostMismatches++;
+        u.protocol = real.protocol;
+        u.hostname = real.hostname;
+        return u.toString();
+      }
+    } catch {
+      // Unparseable: leave it for the crawl to reject.
+    }
+    return url;
+  };
   const candidates: { url: string; source: PageSource }[] =
     discovery.urls.length > 0
-      ? discovery.urls.map((url) => ({ url, source: "sitemap" }))
+      ? discovery.urls.map((url) => ({ url: onSiteHost(url), source: "sitemap" }))
       : [{ url: normalized, source: "entry" }];
-  const seeds = candidates.filter((c) => robotsAllow(c.url));
+  let order = 0;
+  const seeds: QueuedPage[] = candidates
+    .filter((c) => robotsAllow(c.url))
+    .map((c) => ({ ...c, depth: 0, order: order++ }));
   let blockedByRobots = candidates.length - seeds.length;
 
   logInfo("assess_site.start", {
@@ -163,13 +237,36 @@ export async function assessSite(
   }
   const followLinks = (opts.followLinks ?? true) && host !== null;
 
-  // Breadth-first: every crawled page may enqueue the unseen same-site pages it
-  // links to, until the budget is spent. `seen` covers queued URLs and the
-  // post-redirect URLs we actually landed on, so nothing is crawled twice.
+  // Best-first: every crawled page may enqueue the unseen same-site pages it
+  // links to, and whenever a crawl slot frees up the most valuable waiting
+  // page goes next, until the budget is spent. `seen` covers queued URLs and
+  // the post-redirect URLs we actually landed on, so nothing is crawled twice.
   const seen = new Set(candidates.map((s) => pageKey(s.url)));
+  // How many crawled pages link to each URL. A page linked from nearly every
+  // page is in the site's navigation: one of its most important pages.
+  const inLinks = new Map<string, number>();
+  const lowValue = new Map<string, boolean>();
+  const isLow = (url: string) => {
+    let v = lowValue.get(url);
+    if (v === undefined) lowValue.set(url, (v = isLowValuePath(url)));
+    return v;
+  };
+  /**
+   * Sitemap pages first (the owner listed them on purpose), then real pages
+   * before utility/archive ones, then fewest clicks from the start, then the
+   * most linked-to. Evaluated when a slot frees up, so in-link counts reflect
+   * every page crawled so far.
+   */
+  const compareQueued = (a: QueuedPage, b: QueuedPage): number =>
+    Number(a.source === "link") - Number(b.source === "link") ||
+    Number(isLow(a.url)) - Number(isLow(b.url)) ||
+    a.depth - b.depth ||
+    (inLinks.get(pageKey(b.url)) ?? 0) - (inLinks.get(pageKey(a.url)) ?? 0) ||
+    a.order - b.order;
+
   const originProbeCache: OriginProbeCache = new Map();
   let lastStart = 0;
-  const pages = await crawlQueue(seeds, maxPages, concurrency, async (item, enqueue) => {
+  const pages = await crawlQueue(seeds, maxPages, concurrency, compareQueued, async (item, enqueue) => {
     if (crawlDelay !== null && lastStart > 0) {
       const wait = lastStart + crawlDelay * 1000 - Date.now();
       if (wait > 0) await sleep(wait);
@@ -184,13 +281,14 @@ export async function assessSite(
         for (const link of crawled.internalLinks ?? []) {
           if (!isFollowableLink(link, host!)) continue;
           const key = pageKey(link);
+          inLinks.set(key, (inLinks.get(key) ?? 0) + 1);
           if (seen.has(key)) continue;
           seen.add(key);
           if (!robotsAllow(link)) {
             blockedByRobots++;
             continue;
           }
-          enqueue({ url: link, source: "link" });
+          enqueue({ url: link, source: "link", depth: item.depth + 1, order: order++ });
         }
       }
     }
@@ -225,6 +323,8 @@ export async function assessSite(
     commonFixes: rankCommonFixes(scored),
     truncated: discovery.truncated,
     linkDiscovered,
+    sitemapHostMismatches,
+    brokenPages: pages.filter((p) => p.httpStatus !== undefined && p.httpStatus >= 400).length,
     blockedByRobots,
     crawlDelay,
   };
@@ -240,6 +340,25 @@ async function assessOne(
 ): Promise<{ assessment: PageAssessment; crawled: CrawledPage | null }> {
   try {
     const page = await doCrawl(url);
+    if (page.statusCode >= 400) {
+      // An error page isn't the page: scoring it would drag the site average
+      // down with a "thin content" verdict on a 404. Report it as broken, but
+      // still hand it back so links on it (a 404 page's nav) are followed.
+      return {
+        assessment: {
+          url,
+          source,
+          ok: false,
+          ai: null,
+          traditional: null,
+          topFixes: [],
+          error: `HTTP ${page.statusCode}`,
+          httpStatus: page.statusCode,
+          data: null,
+        },
+        crawled: page,
+      };
+    }
     const report = buildReport(page);
     return {
       assessment: {
@@ -249,6 +368,7 @@ async function assessOne(
         ai: report.ai.total,
         traditional: report.traditional.total,
         topFixes: report.prioritizedFixes.slice(0, 3),
+        httpStatus: page.statusCode,
         data: extractPageData(page),
       },
       crawled: page,
@@ -301,35 +421,50 @@ function originOf(url: string): string {
 }
 
 /**
- * Run `fn` over a growing work queue with at most `limit` in flight at once,
- * stopping once `budget` items have been taken. `fn` may `enqueue` more work
- * (links found on a page); those run after everything already queued, giving
- * breadth-first order. Results come back in the order items were queued.
- * Keeps concurrency at or below the crawler's own pool so we never overflow
- * its queue into a busy error.
+ * Run `fn` over a growing pool of work with at most `limit` in flight at once,
+ * starting at most `budget` items in total. `fn` may `enqueue` more (links
+ * found on a page). Whenever a slot frees up, the best waiting item by
+ * `compare` starts next: a priority queue, re-ranked at pick time so the
+ * order can use what earlier pages revealed. Results come back in start
+ * order. Keeps concurrency at or below the crawler's own pool so we never
+ * overflow its queue into a busy error.
+ *
+ * Picking is a linear scan of the pending pool. With at most MAX_PENDING
+ * waiting and a budget of tens of pages, that's microseconds per pick next
+ * to seconds per crawl, and it lets priorities change after enqueueing,
+ * which a heap would need re-sifting for.
  */
 async function crawlQueue<T, R>(
   initial: T[],
   budget: number,
   limit: number,
+  compare: (a: T, b: T) => number,
   fn: (item: T, enqueue: (item: T) => void) => Promise<R>,
 ): Promise<R[]> {
-  const queue = initial.slice(0, budget);
+  const pending = [...initial];
   const results: R[] = [];
   const enqueue = (item: T) => {
-    if (queue.length < budget) queue.push(item);
+    if (pending.length < MAX_PENDING) pending.push(item);
   };
-  let next = 0;
+  let started = 0;
   let active = 0;
 
-  // A worker idles out when the queue is drained, but a page still in flight
+  const takeBest = (): T => {
+    let best = 0;
+    for (let i = 1; i < pending.length; i++) {
+      if (compare(pending[i], pending[best]) < 0) best = i;
+    }
+    return pending.splice(best, 1)[0];
+  };
+
+  // A worker idles out when nothing is pending, but a page still in flight
   // can enqueue more. So whenever a page finishes, top the pool back up.
   return new Promise<R[]>((resolve, reject) => {
     const pump = () => {
-      while (active < limit && next < queue.length) {
-        const i = next++;
+      while (active < limit && started < budget && pending.length > 0) {
+        const i = started++;
         active++;
-        fn(queue[i], enqueue).then(
+        fn(takeBest(), enqueue).then(
           (r) => {
             results[i] = r;
             active--;
@@ -338,7 +473,7 @@ async function crawlQueue<T, R>(
           reject,
         );
       }
-      if (active === 0 && next >= queue.length) resolve(results);
+      if (active === 0 && (started >= budget || pending.length === 0)) resolve(results);
     };
     pump();
   });

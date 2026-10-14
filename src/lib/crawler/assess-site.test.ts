@@ -1,8 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
-import { assessSite } from "./assess-site";
+import { assessSite as assessSiteRaw, type AssessSiteOptions } from "./assess-site";
 import { makePage } from "../scoring/test-fixtures";
 import type { CrawledPage } from "../scoring/types";
 import type { discoverSitemapUrls } from "./sitemap";
+
+/** assessSite with redirect resolution stubbed out, so no test touches the network. */
+function assessSite(url: string, opts: AssessSiteOptions = {}) {
+  return assessSiteRaw(url, { resolveImpl: async (u) => u, ...opts });
+}
 
 /** A discovery stub returning a fixed URL list. */
 function fakeDiscover(
@@ -269,5 +274,126 @@ describe("assessSite", () => {
     });
     expect(caches.size).toBe(1);
     expect([...caches][0]).toBeInstanceOf(Map);
+  });
+
+  it("reads robots.txt and the sitemap where the entered address redirects to", async () => {
+    const discoverImpl = vi.fn(async () => ({
+      sitemaps: ["https://www.acme.com/sitemap.xml"],
+      urls: ["https://www.acme.com/", "https://www.acme.com/private"],
+      truncated: false,
+      robotsTxt: "User-agent: *\nDisallow: /private\n",
+    })) as unknown as typeof discoverSitemapUrls;
+    const report = await assessSite("acme.com", {
+      resolveImpl: async () => "https://www.acme.com/",
+      discoverImpl,
+      crawlImpl: fakeCrawl({}),
+    });
+
+    // Discovery ran against the www host the bare domain redirects to...
+    expect(vi.mocked(discoverImpl).mock.calls[0][0]).toBe("https://www.acme.com/");
+    expect(report.origin).toBe("https://www.acme.com");
+    // ...so its robots.txt rules were actually applied.
+    expect(report.pages.map((p) => p.url)).toEqual(["https://www.acme.com/"]);
+    expect(report.blockedByRobots).toBe(1);
+  });
+
+  it("falls back to the entered address when redirect resolution fails", async () => {
+    const report = await assessSite("https://acme.com/", {
+      resolveImpl: async () => {
+        throw new Error("network down");
+      },
+      discoverImpl: fakeDiscover([]),
+      crawlImpl: fakeCrawl({}),
+    });
+    expect(report.origin).toBe("https://acme.com");
+    expect(report.pages).toHaveLength(1);
+  });
+
+  it("reports error pages as broken, keeps them out of averages, and follows their links", async () => {
+    const report = await assessSite("https://acme.com/", {
+      discoverImpl: fakeDiscover(["https://acme.com/", "https://acme.com/gone"]),
+      crawlImpl: fakeCrawl({
+        "https://acme.com/": {},
+        "https://acme.com/gone": { statusCode: 404, internalLinks: ["https://acme.com/found"] },
+        "https://acme.com/found": {},
+      }),
+    });
+    const gone = report.pages.find((p) => p.url.endsWith("/gone"))!;
+    expect(gone).toMatchObject({ ok: false, error: "HTTP 404", httpStatus: 404, ai: null });
+    expect(report.brokenPages).toBe(1);
+    // Only the two real pages are averaged; the 404's nav link was followed.
+    expect(report.pages.map((p) => p.url)).toContain("https://acme.com/found");
+    expect(report.weakestPages.every((p) => p.ok)).toBe(true);
+  });
+
+  it("scans sitemap URLs listed on the bare domain at the site's real www host", async () => {
+    const crawlImpl = fakeCrawl({});
+    const report = await assessSite("acme.com", {
+      resolveImpl: async () => "https://www.acme.com/",
+      discoverImpl: fakeDiscover(["https://acme.com/", "http://acme.com/about", "https://www.acme.com/team"]),
+      crawlImpl,
+    });
+    expect(report.pages.map((p) => p.url)).toEqual([
+      "https://www.acme.com/",
+      "https://www.acme.com/about",
+      "https://www.acme.com/team",
+    ]);
+    expect(report.sitemapHostMismatches).toBe(2);
+  });
+
+  it("crawls real pages before cart, login, tag and pagination pages", async () => {
+    const report = await assessSite("https://acme.com/", {
+      discoverImpl: fakeDiscover([]),
+      crawlImpl: fakeCrawl({
+        "https://acme.com/": {
+          // Utility links listed first, as headers and footers often do.
+          internalLinks: [
+            "https://acme.com/cart",
+            "https://acme.com/login",
+            "https://acme.com/tag/sale",
+            "https://acme.com/blog/page/7",
+            "https://acme.com/products",
+            "https://acme.com/about",
+          ],
+        },
+      }),
+      maxPages: 3,
+    });
+    expect(report.pages.map((p) => p.url)).toEqual([
+      "https://acme.com/",
+      "https://acme.com/products",
+      "https://acme.com/about",
+    ]);
+  });
+
+  it("prefers pages that more crawled pages link to", async () => {
+    const report = await assessSite("https://acme.com/", {
+      discoverImpl: fakeDiscover([]),
+      crawlImpl: fakeCrawl({
+        "https://acme.com/": {
+          internalLinks: ["https://acme.com/a", "https://acme.com/b", "https://acme.com/c"],
+        },
+        // /a also links to /c, so /c (2 in-links) jumps ahead of /b (1).
+        "https://acme.com/a": { internalLinks: ["https://acme.com/c"] },
+      }),
+      concurrency: 1,
+      maxPages: 4,
+    });
+    expect(report.pages.map((p) => p.url)).toEqual([
+      "https://acme.com/",
+      "https://acme.com/a",
+      "https://acme.com/c",
+      "https://acme.com/b",
+    ]);
+  });
+
+  it("still crawls utility pages once nothing better is left", async () => {
+    const report = await assessSite("https://acme.com/", {
+      discoverImpl: fakeDiscover([]),
+      crawlImpl: fakeCrawl({
+        "https://acme.com/": { internalLinks: ["https://acme.com/cart"] },
+      }),
+    });
+    expect(report.pages.map((p) => p.url)).toEqual(["https://acme.com/", "https://acme.com/cart"]);
   });
 });

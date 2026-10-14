@@ -62,6 +62,15 @@ const MAX_INTERNAL_LINKS = 500;
 const MAX_OG_TAGS = 40;
 const MAX_OG_VALUE_CHARS = 1_000;
 
+/**
+ * Resource types never downloaded. Scoring reads the DOM, text and layout:
+ * image counts and alt text come from the <img> tags, and Core Web Vitals
+ * come from PageSpeed field data, not this crawl. Skipping the bytes makes
+ * `load` fire far sooner on media-heavy pages and spares the site bandwidth.
+ * Stylesheets still load: on-screen text depends on CSS visibility.
+ */
+const SKIPPED_RESOURCE_TYPES = new Set(["image", "media", "font"]);
+
 /** Redirect hops we'll follow ourselves before giving up. */
 const MAX_REDIRECT_HOPS = 10;
 
@@ -244,7 +253,7 @@ async function crawlInContext(
  * 3xx status and a readable `Location` header, which is what makes this
  * possible (verified empirically, not assumed).
  */
-async function resolveRedirectChain(
+export async function resolveRedirectChain(
   startUrl: string,
   allowed: (url: string) => Promise<boolean>,
   userAgent: string,
@@ -345,9 +354,10 @@ function memoizedGuard(
 }
 
 /**
- * The single egress point for every request the crawler makes. It does two
- * things at that choke point: refuses disallowed hosts, and stamps the
- * crawler's identity onto the requests it does allow.
+ * The single egress point for every request the crawler makes. It does three
+ * things at that choke point: skips media the scorer never reads (see
+ * SKIPPED_RESOURCE_TYPES), refuses disallowed hosts, and stamps the crawler's
+ * identity onto the requests it does allow.
  *
  * Vetting an internal host here means one is never contacted for an image,
  * script, or the robots.txt/llms.txt side-fetches. This does NOT cover
@@ -363,6 +373,10 @@ async function installUrlGuard(
 ): Promise<void> {
   const userAgent = crawlerUserAgent();
   await context.route("**/*", async (route) => {
+    if (SKIPPED_RESOURCE_TYPES.has(route.request().resourceType())) {
+      await route.abort("blockedbyclient");
+      return;
+    }
     if (!(await allowed(route.request().url()))) {
       await route.abort("blockedbyclient");
       return;

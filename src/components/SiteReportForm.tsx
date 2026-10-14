@@ -100,6 +100,22 @@ function SiteResults({ report }: { report: SiteReport }) {
             `, plus ${report.linkDiscovered} found by following links`}
           {report.truncated && " (sitemap truncated to the page cap)"}.
         </p>
+        {report.brokenPages > 0 && (
+          <p className="mt-1 text-sm text-bad">
+            {report.brokenPages} page{report.brokenPages === 1 ? "" : "s"} returned an
+            error (like a 404) and {report.brokenPages === 1 ? "isn't" : "aren't"} counted
+            in the averages. Fix or remove the links that point to{" "}
+            {report.brokenPages === 1 ? "it" : "them"}.
+          </p>
+        )}
+        {report.sitemapHostMismatches > 0 && (
+          <p className="mt-1 text-sm text-warn">
+            Your sitemap lists {report.sitemapHostMismatches} URL
+            {report.sitemapHostMismatches === 1 ? "" : "s"} on the wrong address. The
+            site lives at {new URL(report.origin).hostname}, so update the sitemap to use
+            it. (We scanned those pages at the right address.)
+          </p>
+        )}
         {(report.blockedByRobots > 0 || report.crawlDelay !== null) && (
           <p className="mt-1 text-xs text-muted">
             We follow this site&apos;s robots.txt

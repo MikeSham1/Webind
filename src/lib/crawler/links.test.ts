@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isFollowableLink, pageKey, siteHost } from "./links";
+import { isFollowableLink, isLowValuePath, pageKey, siteHost } from "./links";
 
 describe("siteHost", () => {
   it("lowercases and strips a leading www.", () => {
@@ -44,5 +44,19 @@ describe("isFollowableLink", () => {
     expect(isFollowableLink("https://acme.com/shop?sort=price", "acme.com")).toBe(false);
     expect(isFollowableLink("mailto:hi@acme.com", "acme.com")).toBe(false);
     expect(isFollowableLink("not a url", "acme.com")).toBe(false);
+  });
+});
+
+describe("isLowValuePath", () => {
+  it("flags utility, archive and pagination pages", () => {
+    for (const path of ["/cart", "/checkout/", "/account.html", "/my-account/orders", "/wp-login.php", "/tag/sale", "/author/jane/", "/feed", "/blog/page/3", "/search"]) {
+      expect(isLowValuePath(`https://acme.com${path}`), path).toBe(true);
+    }
+  });
+
+  it("leaves real pages alone, including ones that merely contain those words", () => {
+    for (const path of ["/", "/products", "/about.html", "/blog/how-to-tag-photos", "/cartography", "/accountants", "/pages/faq"]) {
+      expect(isLowValuePath(`https://acme.com${path}`), path).toBe(false);
+    }
   });
 });

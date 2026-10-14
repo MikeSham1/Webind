@@ -61,3 +61,22 @@ export function isFollowableLink(url: string, host: string): boolean {
   const ext = /\.([a-z0-9]+)$/i.exec(u.pathname)?.[1]?.toLowerCase();
   return !(ext && NON_PAGE_EXTENSIONS.has(ext));
 }
+
+/**
+ * Utility and archive pages: worth crawling only once the real pages are
+ * done. Carts, logins and account areas say nothing about a site's content;
+ * tag/author archives, feeds and deep pagination mostly repeat pages the scan
+ * reaches anyway. Demoted by the site scan, never excluded.
+ */
+const LOW_VALUE_SEGMENT =
+  /(?:^|\/)(?:cart|basket|checkout|login|log-in|signin|sign-in|logout|log-out|register|signup|sign-up|account|my-account|wp-admin|wp-login\.php|admin|search|tag|tags|author|feed|rss|cdn-cgi)(?:\/|\.html?|$)/i;
+const PAGINATION = /\/page\/\d+\/?$/i;
+
+export function isLowValuePath(url: string): boolean {
+  try {
+    const { pathname } = new URL(url);
+    return LOW_VALUE_SEGMENT.test(pathname) || PAGINATION.test(pathname);
+  } catch {
+    return false;
+  }
+}
