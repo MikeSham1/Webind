@@ -5,6 +5,7 @@ import { getReportForUser } from "@/lib/leads";
 import { crawl } from "@/lib/crawler/crawl";
 import { CrawlerBusyError } from "@/lib/crawler/browser";
 import { BlockedUrlError, normalizeUrl } from "@/lib/crawler/ssrf";
+import { selfScanGateCookie } from "@/lib/gate";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import { getQuota, reserveUsage } from "@/lib/billing/usage";
 import { buildSnapshot } from "@/lib/fixgen/snapshot";
@@ -71,7 +72,8 @@ export async function generateFixAction(
 
   let page;
   try {
-    page = await crawl(url);
+    const gateCookie = await selfScanGateCookie(url);
+    page = await crawl(url, { cookies: gateCookie ? [gateCookie] : undefined });
   } catch (err) {
     if (err instanceof BlockedUrlError || err instanceof CrawlerBusyError) {
       return { status: "error", error: err.message };

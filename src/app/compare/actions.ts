@@ -5,6 +5,7 @@ import { CrawlerBusyError } from "@/lib/crawler/browser";
 import { BlockedUrlError } from "@/lib/crawler/ssrf";
 import { parseDomainInput } from "@/lib/domainInput";
 import { buildReport } from "@/lib/scoring/report";
+import { selfScanGateCookie } from "@/lib/gate";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import { getClientIp } from "@/lib/requestIp";
 import type { CompareSide, CompareState } from "./compare-state";
@@ -12,7 +13,8 @@ import type { CompareSide, CompareState } from "./compare-state";
 /** Crawl + score one side. Never throws — same error shape as runReport. */
 async function runSide(url: string): Promise<CompareSide> {
   try {
-    const page = await crawl(url);
+    const gateCookie = await selfScanGateCookie(url);
+    const page = await crawl(url, { cookies: gateCookie ? [gateCookie] : undefined });
     const report = buildReport(page);
     return { status: "ok", report };
   } catch (err) {

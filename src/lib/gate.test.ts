@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { GATE_COOKIE, gateToken, isPublicLaunch, safeEqual, sitePassword } from "./gate";
+import {
+  GATE_COOKIE,
+  gateToken,
+  isPublicLaunch,
+  safeEqual,
+  selfScanGateCookie,
+  sitePassword,
+} from "./gate";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -58,5 +65,54 @@ describe("isPublicLaunch", () => {
 describe("GATE_COOKIE", () => {
   it("is a stable cookie name", () => {
     expect(GATE_COOKIE).toBe("wb_gate");
+  });
+});
+
+describe("selfScanGateCookie", () => {
+  function setup() {
+    vi.stubEnv("SITE_PASSWORD", "Mshamoyan2026");
+    vi.stubEnv("SITE_PUBLIC", "");
+    vi.stubEnv("APP_BASE_URL", "https://webinddesign.com");
+  }
+
+  it("returns the gate cookie for a URL on the configured origin", async () => {
+    setup();
+    const cookie = await selfScanGateCookie("https://webinddesign.com/pricing");
+    expect(cookie).toEqual({
+      name: GATE_COOKIE,
+      value: await gateToken("Mshamoyan2026"),
+      url: "https://webinddesign.com",
+    });
+  });
+
+  it("returns null for a different origin", async () => {
+    setup();
+    expect(await selfScanGateCookie("https://example.com/")).toBeNull();
+  });
+
+  it("returns null when APP_BASE_URL is unset — never falls back to request headers", async () => {
+    vi.stubEnv("SITE_PASSWORD", "Mshamoyan2026");
+    vi.stubEnv("SITE_PUBLIC", "");
+    vi.stubEnv("APP_BASE_URL", "");
+    expect(await selfScanGateCookie("https://webinddesign.com/")).toBeNull();
+  });
+
+  it("returns null when no password is configured", async () => {
+    vi.stubEnv("SITE_PASSWORD", "");
+    vi.stubEnv("SITE_PUBLIC", "");
+    vi.stubEnv("APP_BASE_URL", "https://webinddesign.com");
+    expect(await selfScanGateCookie("https://webinddesign.com/")).toBeNull();
+  });
+
+  it("returns null once the site is publicly launched (no gate to bypass)", async () => {
+    vi.stubEnv("SITE_PASSWORD", "Mshamoyan2026");
+    vi.stubEnv("SITE_PUBLIC", "true");
+    vi.stubEnv("APP_BASE_URL", "https://webinddesign.com");
+    expect(await selfScanGateCookie("https://webinddesign.com/")).toBeNull();
+  });
+
+  it("returns null for an unparseable target URL", async () => {
+    setup();
+    expect(await selfScanGateCookie("not a url")).toBeNull();
   });
 });

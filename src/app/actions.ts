@@ -2,6 +2,7 @@
 
 import { cookies } from "next/headers";
 import { crawl } from "@/lib/crawler/crawl";
+import { selfScanGateCookie } from "@/lib/gate";
 import { CrawlerBusyError } from "@/lib/crawler/browser";
 import { BlockedUrlError } from "@/lib/crawler/ssrf";
 import { parsePageInput } from "@/lib/domainInput";
@@ -79,8 +80,9 @@ export async function runReport(
     // Core Web Vitals come from a separate API (PSI/CrUX), independent of the
     // crawl, so fetch them alongside it — best-effort, null when unconfigured or
     // the URL has no field data. It never blocks or fails the report.
+    const gateCookie = await selfScanGateCookie(url);
     const [page, user, vitals] = await Promise.all([
-      crawl(url),
+      crawl(url, { cookies: gateCookie ? [gateCookie] : undefined }),
       getCurrentUser(),
       fetchFieldVitals(url),
     ]);

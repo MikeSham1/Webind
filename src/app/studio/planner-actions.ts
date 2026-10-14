@@ -20,6 +20,7 @@ const PLANNER_SYSTEM = [
   "If the brief is already sufficient, say so clearly and summarize the writing direction in a compact brief instead of inventing more questions.",
   "Never invent business facts, statistics, customer results, credentials, prices, dates, or citations.",
   "Be conversational and concise.",
+  "No markdown — the reply renders as plain chat text, so write emphasis in plain words instead of *asterisks* or **bold**.",
 ].join("\n");
 
 /**

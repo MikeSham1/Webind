@@ -26,8 +26,9 @@ OpenAI/ChatGPT, Perplexity, and the SERPAPI-backed Google visibility/citation
 slots remain explicit stubs: if their keys are set before their adapters are
 implemented, they fail safe to an `unknown` result rather than fabricating one.
 
-The Content Studio planner and untuned writer fallback are pinned to Gemini 3.7
-Flash through `GEMINI_API_KEY`. A future supervised-tuned writer is a separate
+The Content Studio planner and untuned writer fallback are pinned to Gemini 3.6
+Flash through `GEMINI_API_KEY` (3.7 Flash currently 503s on the Developer API;
+see `src/lib/ai/gemini.ts`). A future supervised-tuned writer is a separate
 Vertex AI transport and cannot be activated by changing that API key or generic
 Gemini model override; see `.env.example` and `docs/tuning/synthetic-content-sft.md`.
 

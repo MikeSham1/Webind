@@ -3,6 +3,7 @@ import { discoverSitemapUrls } from "./sitemap";
 import { normalizeUrl } from "./ssrf";
 import { buildReport } from "../scoring/report";
 import { logInfo } from "../log";
+import { selfScanGateCookie } from "../gate";
 
 /**
  * Site-wide assessment: discover a site's sitemap, score every page it lists,
@@ -118,7 +119,8 @@ async function assessOne(
   doCrawl: typeof crawl,
 ): Promise<PageAssessment> {
   try {
-    const page = await doCrawl(url);
+    const gateCookie = await selfScanGateCookie(url);
+    const page = await doCrawl(url, { cookies: gateCookie ? [gateCookie] : undefined });
     const report = buildReport(page);
     return {
       url,

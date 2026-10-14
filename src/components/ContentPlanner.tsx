@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { clearPlannerConversationAction, planContentAction } from "@/app/studio/planner-actions";
 import type { PlannerMessage } from "@/app/studio/planner-state";
 import { useActionState } from "react";
@@ -264,11 +264,34 @@ function AssistantTurn({ text }: { text: string }) {
           WeBind AI<span className="sr-only"> says:</span>
         </p>
         <div className="whitespace-pre-wrap rounded-2xl rounded-tl-sm border border-line bg-paper px-4 py-3 text-sm leading-relaxed text-ink">
-          {text}
+          {renderInlineMarkdown(text)}
         </div>
       </div>
     </div>
   );
+}
+
+/**
+ * Render `**bold**`/`*italic*` emphasis as real elements instead of literal
+ * asterisks. The planner's system prompt already asks the model for plain
+ * text (see PLANNER_SYSTEM in planner-actions.ts), but that's a request, not
+ * a guarantee — this is the display-side backstop. Deliberately narrow (no
+ * headings/lists/links/HTML): this is short conversational chat text, not
+ * published content, so it never needs dangerouslySetInnerHTML or a real
+ * markdown parser.
+ */
+function renderInlineMarkdown(text: string): ReactNode[] {
+  return text
+    .split(/(\*\*[^*\n]+?\*\*|\*[^*\n]+?\*)/g)
+    .map((part, i) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return <strong key={i}>{part.slice(2, -2)}</strong>;
+      }
+      if (part.startsWith("*") && part.endsWith("*")) {
+        return <em key={i}>{part.slice(1, -1)}</em>;
+      }
+      return part;
+    });
 }
 
 function UserTurn({ text }: { text: string }) {
