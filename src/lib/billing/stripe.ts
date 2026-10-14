@@ -100,9 +100,14 @@ export async function createBillingPortalSession(input: {
   const stripe = getStripe();
   if (!stripe) return { ok: false, error: "Billing isn't configured yet." };
   try {
+    // A portal configuration made through the API (scripts/billing/setup-stripe.ts)
+    // isn't the account default, so name it; without the env var, Stripe uses
+    // the default one saved in the dashboard.
+    const configuration = process.env.STRIPE_PORTAL_CONFIGURATION?.trim() || undefined;
     const session = await stripe.billingPortal.sessions.create({
       customer: input.customerId,
       return_url: input.returnUrl,
+      ...(configuration ? { configuration } : {}),
     });
     return session.url
       ? { ok: true, url: session.url }

@@ -66,3 +66,6 @@ tools/dupscan/dupscan
 
 # Built CLI bundles (npm run crawl)
 /.cli/
+
+# Local development database (npm run db:local)
+/.local-pgdata/

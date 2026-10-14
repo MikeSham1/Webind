@@ -15,10 +15,12 @@
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:local": "node scripts/dev/local-db.mjs",
     "tuning:synthetic": "npx --yes tsx scripts/tuning/build-synthetic-content-corpus.ts",
     "tuning:submit": "bash scripts/tuning/submit-vertex-sft.sh",
     "dupscan": "make -s -C tools/dupscan && tools/dupscan/dupscan",
-    "crawl": "esbuild scripts/crawl/cli.ts --bundle --platform=node --format=esm --packages=external --outfile=.cli/crawl.mjs --log-level=warning && node .cli/crawl.mjs"
+    "crawl": "esbuild scripts/crawl/cli.ts --bundle --platform=node --format=esm --packages=external --outfile=.cli/crawl.mjs --log-level=warning && node .cli/crawl.mjs",
+    "billing:setup": "npx --yes tsx scripts/billing/setup-stripe.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.113.0",
