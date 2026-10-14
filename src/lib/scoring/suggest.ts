@@ -68,6 +68,9 @@ export async function generateSuggestions(
       thinkingLevel: "low",
       maxOutputTokens: 1500,
       purpose: "generate_suggestions",
+      // Same report in → same answer out: reuse it for a day rather than pay
+      // again when an unchanged page is re-run.
+      cacheTtlMs: 24 * 60 * 60 * 1000,
     },
     { provider },
   );

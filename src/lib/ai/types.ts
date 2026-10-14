@@ -32,6 +32,14 @@ export interface GenerateRequest {
   thinkingLevel?: "minimal" | "low" | "medium" | "high";
   /** Short label for observability (ai_call.ok/error), e.g. "fix_generate". */
   purpose: string;
+  /**
+   * Opt in to reusing an identical earlier request's answer for this long (ms)
+   * instead of paying for a new one. Only for tasks where the same input
+   * should give the same answer (narrating a report), never for sampling
+   * tasks (visibility probes) or grounded ones, whose answers are meant to
+   * change. See `generate()` in ./generator.
+   */
+  cacheTtlMs?: number;
 }
 
 export interface GenerateResult {
@@ -56,6 +64,8 @@ export interface GenerateResult {
   fallback: boolean;
   /** Provider stop reason when available (e.g. "MAX_TOKENS"), for diagnosis. */
   finishReason?: string;
+  /** True when served from the response cache: no tokens were spent. */
+  cached?: boolean;
   error?: string;
 }
 

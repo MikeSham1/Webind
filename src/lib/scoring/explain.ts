@@ -48,6 +48,9 @@ export async function explainReportDetailed(
       // Narrating a handful of numbers needs no deep reasoning — keep it fast.
       thinkingLevel: "low",
       purpose: "explain_report",
+      // Same report in → same answer out: reuse it for a day rather than pay
+      // again when an unchanged page is re-run.
+      cacheTtlMs: 24 * 60 * 60 * 1000,
     },
     { provider },
   );
