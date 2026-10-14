@@ -13,6 +13,7 @@ import type {
 import { crawlSlotStats, getBrowser, withCrawlSlot } from "./browser";
 import { BlockedUrlError, assertPublicUrl, isPublicUrl } from "./ssrf";
 import { logInfo, logWarn } from "../log";
+import { parseRobotsGroups, robotsBlocksBot } from "./robots";
 
 /**
  * The crawlers we resolve robots.txt access for, each tagged with its purpose.
@@ -55,6 +56,11 @@ const AUX_TIMEOUT_MS = 10_000;
 
 /** Cap on stored outbound links, so a link-farm page can't balloon the payload. */
 const MAX_OUTBOUND_LINKS = 500;
+/** Same cap for the internal links kept for site-scan link following. */
+const MAX_INTERNAL_LINKS = 500;
+/** Open Graph tags kept per page, and the longest value kept for each. */
+const MAX_OG_TAGS = 40;
+const MAX_OG_VALUE_CHARS = 1_000;
 
 /** Redirect hops we'll follow ourselves before giving up. */
 const MAX_REDIRECT_HOPS = 10;
@@ -117,7 +123,19 @@ export interface CrawlOptions {
    * a stub so redirect resolution never touches the network either.
    */
   fetchImpl?: typeof fetch;
+  /**
+   * Shares the per-origin robots.txt and llms.txt probes across crawls. A site
+   * scan passes one map for the whole run, so a 12-page scan asks the site for
+   * those files once instead of once per page.
+   */
+  originProbeCache?: OriginProbeCache;
 }
+
+/** Per-origin results that don't change from page to page within one run. */
+export type OriginProbeCache = Map<
+  string,
+  Promise<{ crawlerAccess: CrawlerAccess; hasLlmsTxt: boolean }>
+>;
 
 /**
  * Crawl a live URL with headless chromium and produce a {@link CrawledPage}.
@@ -134,7 +152,7 @@ export async function crawl(url: string, opts: CrawlOptions = {}): Promise<Crawl
   // An injected context means a test harness already owns admission control and
   // browser lifecycle; only the real path takes a slot on the shared browser.
   if (opts.context) {
-    return crawlInContext(url, opts.context, isUrlAllowed, fetchImpl);
+    return crawlInContext(url, opts.context, isUrlAllowed, fetchImpl, opts.originProbeCache);
   }
 
   // Fail fast with a precise message before spending a browser slot.
@@ -156,7 +174,13 @@ export async function crawl(url: string, opts: CrawlOptions = {}): Promise<Crawl
     // reissue requests outside that path. Per Playwright's guidance.
     const context = await browser.newContext({ serviceWorkers: "block" });
     try {
-      const page = await crawlInContext(url, context, isUrlAllowed, fetchImpl);
+      const page = await crawlInContext(
+        url,
+        context,
+        isUrlAllowed,
+        fetchImpl,
+        opts.originProbeCache,
+      );
       logInfo("crawl.ok", {
         waitMs,
         durationMs: Date.now() - startedAt,
@@ -182,6 +206,7 @@ async function crawlInContext(
   context: BrowserContext,
   isUrlAllowed: (url: string) => Promise<boolean>,
   fetchImpl: typeof fetch,
+  originProbeCache?: OriginProbeCache,
 ): Promise<CrawledPage> {
   // Subresources are memoized per origin (cheap, and the SSRF verdict depends
   // only on the host). The navigation chain is deliberately NOT memoized: it is
@@ -191,7 +216,7 @@ async function crawlInContext(
 
   const page = await context.newPage();
   try {
-    return await extractPage(url, context, page, isUrlAllowed, fetchImpl);
+    return await extractPage(url, context, page, isUrlAllowed, fetchImpl, originProbeCache);
   } finally {
     // Close the main page so pages don't accumulate on a reused injected context.
     await page.close();
@@ -389,6 +414,7 @@ async function extractPage(
   page: Page,
   allowed: (url: string) => Promise<boolean>,
   fetchImpl: typeof fetch,
+  originProbeCache?: OriginProbeCache,
 ): Promise<CrawledPage> {
   // Resolve any redirect chain ourselves first, so Chromium is only ever asked
   // to navigate to an already-validated destination (see resolveRedirectChain).
@@ -432,7 +458,7 @@ async function extractPage(
   const title = rawTitle && rawTitle.trim() ? rawTitle : null;
 
   const dom = await page.evaluate(
-    ({ maxLinks }) => {
+    ({ maxLinks, maxInternalLinks, maxOgTags, maxOgValueChars }) => {
       const metaContent = (selector: string): string | null => {
         const el = document.querySelector(selector);
         const content = el?.getAttribute("content")?.trim();
@@ -454,6 +480,7 @@ async function extractPage(
       // whether the page links to an about/contact/team page (a trust signal).
       const here = new URL(location.href);
       const outbound: string[] = [];
+      const internal: string[] = [];
       let internalLinkCount = 0;
       let hasAboutOrContactLink = false;
       const trustPath = /(?:^|\/)(about|contact|team|our-story|company)(?:[/?#]|$)/i;
@@ -471,6 +498,10 @@ async function extractPage(
         }
         if (resolved.hostname === here.hostname) {
           internalLinkCount++;
+          if (internal.length < maxInternalLinks) {
+            resolved.hash = "";
+            internal.push(resolved.toString());
+          }
           if (!hasAboutOrContactLink && trustPath.test(resolved.pathname)) {
             hasAboutOrContactLink = true;
           }
@@ -493,6 +524,17 @@ async function extractPage(
         if ((img.getAttribute("alt") ?? "").trim()) imagesWithAlt++;
       }
 
+      // Open Graph values (first occurrence wins), for the data export.
+      const openGraph: Record<string, string> = {};
+      for (const m of Array.from(document.querySelectorAll('meta[property^="og:"]'))) {
+        if (Object.keys(openGraph).length >= maxOgTags) break;
+        const key = (m.getAttribute("property") ?? "").slice(3).trim();
+        const value = (m.getAttribute("content") ?? "").trim();
+        if (key && value && !(key in openGraph)) {
+          openGraph[key] = value.slice(0, maxOgValueChars);
+        }
+      }
+
       // Machine-readable dates, most trustworthy source first.
       const metaDates = [
         metaContent('meta[property="article:modified_time"]'),
@@ -511,6 +553,7 @@ async function extractPage(
         headings,
         jsonLd,
         outbound,
+        internal,
         metaDates,
         timeDates,
         internalLinkCount,
@@ -526,15 +569,57 @@ async function extractPage(
         hasViewportMeta: !!document.querySelector('meta[name="viewport"]'),
         hasCanonical: !!document.querySelector('link[rel="canonical"]'),
         hasOpenGraph: !!document.querySelector('meta[property^="og:"]'),
+        openGraph,
+        contentWordCount: (() => {
+          // Every word in the page's content, including text a visitor must
+          // click to reveal (FAQ accordions, tabs, "read more"). Search engines
+          // index that text, so counting only on-screen text (innerText) made
+          // accordion pages look thin. Text nodes are counted one at a time so
+          // adjacent elements never fuse into one word.
+          const skip = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "SVG", "CANVAS", "IFRAME"]);
+          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+            acceptNode(node) {
+              for (let el = node.parentElement; el; el = el.parentElement) {
+                if (skip.has(el.tagName.toUpperCase())) return NodeFilter.FILTER_REJECT;
+              }
+              return NodeFilter.FILTER_ACCEPT;
+            },
+          });
+          let words = 0;
+          for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            words += (n.nodeValue ?? "").split(/\s+/).filter(Boolean).length;
+          }
+          return words;
+        })(),
+        canonicalHref: (() => {
+          const href = document.querySelector('link[rel="canonical"]')?.getAttribute("href");
+          if (!href) return null;
+          try {
+            return new URL(href, location.href).toString();
+          } catch {
+            return null;
+          }
+        })(),
         htmlLang: document.documentElement.getAttribute("lang"),
       };
     },
-    { maxLinks: MAX_OUTBOUND_LINKS },
+    {
+      maxLinks: MAX_OUTBOUND_LINKS,
+      maxInternalLinks: MAX_INTERNAL_LINKS,
+      maxOgTags: MAX_OG_TAGS,
+      maxOgValueChars: MAX_OG_VALUE_CHARS,
+    },
   );
 
   const jsonLdBlocks = parseJsonLd(dom.jsonLd);
   const outboundLinks = Array.from(new Set(dom.outbound));
-  const wordCount = renderedText.split(/\s+/).filter(Boolean).length;
+  const internalLinks = Array.from(new Set(dom.internal));
+  // The larger of the full-content count (includes collapsed sections) and the
+  // on-screen count, so a page whose body we couldn't walk never scores lower.
+  const wordCount = Math.max(
+    dom.contentWordCount,
+    renderedText.split(/\s+/).filter(Boolean).length,
+  );
 
   const { lastModified, lastModifiedSource } = pickLastModified({
     "json-ld": collectJsonLdDates(jsonLdBlocks),
@@ -554,9 +639,16 @@ async function extractPage(
   // by assertNavigationAllowed above.
   const finalUrl = page.url();
   const origin = new URL(finalUrl).origin;
-  const crawlerAccess = await checkCrawlerAccess(context, origin);
+  let probes = originProbeCache?.get(origin);
+  if (!probes) {
+    probes = (async () => ({
+      crawlerAccess: await checkCrawlerAccess(context, origin),
+      hasLlmsTxt: await checkHasLlmsTxt(context, origin),
+    }))();
+    originProbeCache?.set(origin, probes);
+  }
+  const { crawlerAccess, hasLlmsTxt } = await probes;
   const robotsAllowsAiBots = aiSearchCrawlersAllowed(crawlerAccess);
-  const hasLlmsTxt = await checkHasLlmsTxt(context, origin);
 
   return {
     url: finalUrl,
@@ -570,6 +662,7 @@ async function extractPage(
     headings: dom.headings,
     jsonLdBlocks,
     outboundLinks,
+    internalLinks,
     wordCount,
     hasServerRenderedContent,
     robotsAllowsAiBots,
@@ -590,6 +683,8 @@ async function extractPage(
     hasViewportMeta: dom.hasViewportMeta,
     hasCanonical: dom.hasCanonical,
     hasOpenGraph: dom.hasOpenGraph,
+    openGraph: dom.openGraph,
+    canonicalUrl: dom.canonicalHref,
     htmlLang: dom.htmlLang,
   };
 }
@@ -777,11 +872,10 @@ async function checkCrawlerAccess(
   if (resource.status !== 200 || looksLikeHtml(resource)) return uniform("allowed");
 
   const groups = parseRobotsGroups(resource.body);
-  const wildcard = groups.filter((g) => g.agents.includes("*"));
   return Object.fromEntries(
     CRAWLERS.map((c) => [
       c.key,
-      robotsBlocksBot(groups, wildcard, c.ua) ? "blocked" : "allowed",
+      robotsBlocksBot(groups, c.ua) ? "blocked" : "allowed",
     ]),
   ) as unknown as CrawlerAccess;
 }
@@ -799,89 +893,4 @@ async function checkHasLlmsTxt(
   if (resource.status !== 200) return false;
   if (looksLikeHtml(resource)) return false;
   return resource.body.trim().length > 0;
-}
-
-interface RobotsGroup {
-  agents: string[];
-  disallows: string[];
-  allows: string[];
-  hasRules: boolean;
-}
-
-/** Parse robots.txt into user-agent groups (agents lowercased). */
-function parseRobotsGroups(robotsTxt: string): RobotsGroup[] {
-  const groups: RobotsGroup[] = [];
-  let current: RobotsGroup | null = null;
-
-  const startGroup = (): RobotsGroup => {
-    const group: RobotsGroup = {
-      agents: [],
-      disallows: [],
-      allows: [],
-      hasRules: false,
-    };
-    groups.push(group);
-    return group;
-  };
-
-  for (const rawLine of robotsTxt.split(/\r?\n/)) {
-    const line = rawLine.replace(/#.*$/, "").trim();
-    if (!line) continue;
-    const colon = line.indexOf(":");
-    if (colon === -1) continue;
-    const field = line.slice(0, colon).trim().toLowerCase();
-    const value = line.slice(colon + 1).trim();
-
-    if (field === "user-agent") {
-      // A user-agent line after rules starts a fresh group.
-      if (!current || current.hasRules) current = startGroup();
-      current.agents.push(value.toLowerCase());
-    } else if (field === "disallow") {
-      if (!current) current = startGroup();
-      current.hasRules = true;
-      current.disallows.push(value);
-    } else if (field === "allow") {
-      if (!current) current = startGroup();
-      current.hasRules = true;
-      current.allows.push(value);
-    }
-  }
-
-  return groups;
-}
-
-/**
- * Paths that close off the whole site. `Disallow: /*` is as common in the wild
- * as `Disallow: /` and means the same thing, so matching only the bare slash
- * read a fully-blocked site as wide open.
- */
-const ROOT_PATHS = new Set(["/", "/*"]);
-
-/**
- * True when a group shuts out the entire site. An explicit `Allow:` of the root
- * within the same group re-opens what the `Disallow` closed, which is how sites
- * express "block everything except…" — treating that as a full block was a
- * false positive.
- */
-function groupBlocksRoot(group: RobotsGroup): boolean {
-  if (!group.disallows.some((d) => ROOT_PATHS.has(d))) return false;
-  return !group.allows.some((a) => ROOT_PATHS.has(a));
-}
-
-/**
- * Per RFC 9309, a crawler is evaluated against ITS OWN most-specific group: a
- * group naming that bot if one exists, otherwise the `*` wildcard group. Bots
- * are independent — naming GPTBot does not change how ClaudeBot is judged, so
- * `User-agent: * Disallow: /` plus an `Allow` for GPTBot alone blocks every
- * other bot but not GPTBot.
- */
-function robotsBlocksBot(
-  groups: RobotsGroup[],
-  wildcard: RobotsGroup[],
-  ua: string,
-): boolean {
-  const b = ua.toLowerCase();
-  const named = groups.filter((g) => g.agents.includes(b));
-  const effective = named.length > 0 ? named : wildcard;
-  return effective.some(groupBlocksRoot);
 }

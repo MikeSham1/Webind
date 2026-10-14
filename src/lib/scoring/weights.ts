@@ -30,7 +30,10 @@
  * such dataset — ground-truth "does an AI actually cite this page" labels at
  * scale — exists for us to calibrate against yet).
  */
-export const SCORING_MODEL_VERSION = "2026.5";
+// 2026.6: word count includes collapsed content (accordions, tabs) the way
+// search engines index it, not just on-screen text, so accordion-heavy pages
+// (FAQs) are no longer marked thin. Weights unchanged.
+export const SCORING_MODEL_VERSION = "2026.6";
 
 export const AI_WEIGHTS = {
   eeat: 0.2,

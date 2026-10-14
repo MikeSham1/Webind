@@ -72,6 +72,12 @@ export interface CrawledPage {
   // --- On-page technical & trust ---------------------------------------------
   /** Links to pages on the same host (topical-cluster signal). */
   internalLinkCount: number;
+  /**
+   * Same-host http(s) page URLs this page links to, fragment-stripped, deduped
+   * and capped. Feeds the site scan's link-following discovery. Optional so
+   * pages stored before it existed still satisfy the type.
+   */
+  internalLinks?: string[];
   /** Whether the page links to an about/contact/team page (a trust signal). */
   hasAboutOrContactLink: boolean;
   /** Total <img> elements and how many carry non-empty alt text. */
@@ -85,6 +91,13 @@ export interface CrawledPage {
   hasOpenGraph: boolean;
   /** The <html lang> attribute, or null. */
   htmlLang: string | null;
+
+  // --- Raw values for structured-data export (optional: older stored pages
+  // predate them) ---------------------------------------------------------------
+  /** Open Graph tags, `og:` prefix removed: { title, image, type, ... }. */
+  openGraph?: Record<string, string>;
+  /** The absolute <link rel="canonical"> href, or null when there is none. */
+  canonicalUrl?: string | null;
 }
 
 export interface SignalScore {

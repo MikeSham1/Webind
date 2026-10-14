@@ -1,4 +1,5 @@
 import { isPublicUrl, normalizeUrl } from "./ssrf";
+import { crawlerUserAgent } from "./crawl";
 
 /**
  * Sitemap discovery.
@@ -27,6 +28,11 @@ export interface SitemapDiscovery {
   urls: string[];
   /** True when more page URLs existed than `maxUrls` allowed. */
   truncated: boolean;
+  /**
+   * The site's robots.txt body, fetched during discovery anyway, so the site
+   * scan can honor it without a second request. Null/absent when unavailable.
+   */
+  robotsTxt?: string | null;
 }
 
 export interface DiscoverOptions {
@@ -188,7 +194,7 @@ export async function discoverSitemapUrls(
     if (truncated) break;
   }
 
-  return { sitemaps: fetchedSitemaps, urls: pageUrls, truncated };
+  return { sitemaps: fetchedSitemaps, urls: pageUrls, truncated, robotsTxt: robots };
 }
 
 // --- helpers ---------------------------------------------------------------
@@ -222,7 +228,12 @@ async function fetchText(
       const resp = await doFetch(current, {
         signal: controller.signal,
         redirect: "manual",
-        headers: { accept: "application/xml,text/xml,text/plain,*/*" },
+        // Identify ourselves, as the page crawler does, so site operators can
+        // recognize (and allow or deny) these requests too.
+        headers: {
+          accept: "application/xml,text/xml,text/plain,*/*",
+          "user-agent": crawlerUserAgent(),
+        },
       });
 
       const isRedirect =

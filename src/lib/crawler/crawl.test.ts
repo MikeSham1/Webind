@@ -151,6 +151,9 @@ describe("crawl", () => {
       expect(page.blockquoteCount).toBe(1);
       expect(page.paragraphCount).toBeGreaterThanOrEqual(2);
       expect(page.internalLinkCount).toBe(1); // /about (mailto + externals excluded)
+      expect(page.internalLinks).toEqual(["http://acme.test/about"]);
+      expect(page.openGraph).toEqual({ title: "Acme Widgets" });
+      expect(page.canonicalUrl).toBe("http://acme.test/");
       expect(page.hasAboutOrContactLink).toBe(true);
       expect(page.imageCount).toBe(1);
       expect(page.imagesWithAlt).toBe(1);
@@ -201,6 +204,27 @@ describe("crawl", () => {
     try {
       const page = await crawl("http://acme.test/", { context, ...offline });
       expect(page.hasServerRenderedContent).toBe(false);
+    } finally {
+      await context.close();
+    }
+  }, 30000);
+
+  it("counts collapsed accordion text in wordCount, but not scripts or styles", async () => {
+    const answer = "Orders ship within three business days from our warehouse. ".repeat(10);
+    const html = `<!doctype html><html><head><title>FAQ</title>
+      <style>.answer { display: none; } .x { content: "style words here"; }</style></head>
+      <body>
+        <h1>FAQ</h1><p>Visible intro line.</p>
+        <div class="answer">${answer}</div>
+        <script>var notCounted = "script words should never count";</script>
+      </body></html>`;
+    const context = await routedContext(allowRobots("User-agent: *\nDisallow:\n"), html);
+    try {
+      const page = await crawl("http://acme.test/", { context, ...offline });
+      // "FAQ" (1) + intro (3) + 10 × 9 hidden answer words.
+      expect(page.wordCount).toBe(94);
+      // On-screen text is unchanged: the collapsed answer stays out of it.
+      expect(page.renderedText).not.toContain("warehouse");
     } finally {
       await context.close();
     }

@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Site scan — WeBind",
   description:
-    "Assess every page in a site's sitemap: AI Readiness and Traditional Authority across the whole site, with the fixes that recur most.",
+    "Assess the pages in a site's sitemap, or found by following its links: AI Readiness and Traditional Authority across the whole site, with the fixes that recur most.",
 };
 
 export default function SiteReportPage() {
@@ -23,12 +23,13 @@ export default function SiteReportPage() {
             Whole-site scan
           </p>
           <h1 className="mt-2 font-display text-4xl font-semibold text-ink">
-            Score every page in your sitemap
+            Score every page on your site
           </h1>
           <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-muted">
-            Enter your domain. WeBind finds your sitemap, scores each page for AI
-            Readiness and Traditional Authority, and surfaces the issues that show
-            up across the whole site — so you fix the pattern, not one page.
+            Enter your domain. WeBind finds your sitemap (and follows internal
+            links for pages it misses), scores each page for AI Readiness and
+            Traditional Authority, and surfaces the issues that show up across
+            the whole site — so you fix the pattern, not one page.
           </p>
         </div>
 

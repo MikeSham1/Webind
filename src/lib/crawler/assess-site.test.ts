@@ -8,11 +8,13 @@ import type { discoverSitemapUrls } from "./sitemap";
 function fakeDiscover(
   urls: string[],
   truncated = false,
+  robotsTxt: string | null = null,
 ): typeof discoverSitemapUrls {
   return vi.fn(async () => ({
     sitemaps: ["https://acme.com/sitemap.xml"],
     urls,
     truncated,
+    robotsTxt,
   }));
 }
 
@@ -113,5 +115,159 @@ describe("assessSite", () => {
     expect(report.pages).toHaveLength(1);
     expect(report.pages[0].url).toBe("https://acme.com/");
     expect(crawlImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("follows internal links to fill the budget when there is no sitemap", async () => {
+    const crawlImpl = fakeCrawl({
+      "https://acme.com/": {
+        internalLinks: [
+          "https://acme.com/about",
+          "https://www.acme.com/pricing/",
+          "https://acme.com/", // self-link
+          "https://acme.com/brochure.pdf", // file, not a page
+          "https://acme.com/shop?sort=price", // faceted variant
+          "https://other.com/", // off-site
+        ],
+      },
+      "https://acme.com/about": {
+        // Duplicates of already-queued pages must not be crawled again.
+        internalLinks: ["https://acme.com/pricing", "https://acme.com/team"],
+      },
+    });
+    const report = await assessSite("https://acme.com/", {
+      discoverImpl: fakeDiscover([]),
+      crawlImpl,
+    });
+
+    expect(report.pages.map((p) => [p.url, p.source])).toEqual([
+      ["https://acme.com/", "entry"],
+      ["https://acme.com/about", "link"],
+      ["https://www.acme.com/pricing/", "link"],
+      ["https://acme.com/team", "link"],
+    ]);
+    expect(report.linkDiscovered).toBe(3);
+    expect(crawlImpl).toHaveBeenCalledTimes(4);
+  });
+
+  it("tops up a short sitemap with linked pages, sitemap pages first", async () => {
+    const report = await assessSite("acme.com", {
+      discoverImpl: fakeDiscover(["https://acme.com/", "https://acme.com/blog"]),
+      crawlImpl: fakeCrawl({
+        "https://acme.com/": { internalLinks: ["https://acme.com/blog/", "https://acme.com/a"] },
+        "https://acme.com/blog": { internalLinks: ["https://acme.com/b", "https://acme.com/c"] },
+      }),
+      maxPages: 4,
+    });
+
+    expect(report.pages.map((p) => p.url)).toEqual([
+      "https://acme.com/",
+      "https://acme.com/blog",
+      "https://acme.com/a",
+      "https://acme.com/b",
+    ]);
+    expect(report.pages.slice(0, 2).every((p) => p.source === "sitemap")).toBe(true);
+    expect(report.linkDiscovered).toBe(2);
+  });
+
+  it("does not re-crawl the page a link redirected to", async () => {
+    // /old redirects to /new, and the landed page links to itself plus /x.
+    const crawlImpl = vi.fn(async (url: string) =>
+      url === "https://acme.com/old"
+        ? makePage({
+            url: "https://acme.com/new",
+            internalLinks: ["https://acme.com/new", "https://acme.com/x"],
+          })
+        : makePage({ url, internalLinks: url === "https://acme.com/" ? ["https://acme.com/old"] : [] }),
+    ) as unknown as typeof import("./crawl").crawl;
+    const report = await assessSite("https://acme.com/", {
+      discoverImpl: fakeDiscover([]),
+      crawlImpl,
+    });
+    expect(report.pages.map((p) => p.url)).toEqual([
+      "https://acme.com/",
+      "https://acme.com/old",
+      "https://acme.com/x",
+    ]);
+  });
+
+  it("stays on the sitemap pages when link following is off", async () => {
+    const crawlImpl = fakeCrawl({
+      "https://acme.com/": { internalLinks: ["https://acme.com/about"] },
+    });
+    const report = await assessSite("https://acme.com/", {
+      discoverImpl: fakeDiscover([]),
+      crawlImpl,
+      followLinks: false,
+    });
+    expect(report.pages).toHaveLength(1);
+    expect(report.linkDiscovered).toBe(0);
+  });
+
+  it("skips sitemap pages and links that robots.txt disallows for us", async () => {
+    const robots = "User-agent: *\nDisallow: /private\n";
+    const crawlImpl = fakeCrawl({
+      "https://acme.com/": {
+        internalLinks: ["https://acme.com/private/two", "https://acme.com/about"],
+      },
+    });
+    const report = await assessSite("acme.com", {
+      discoverImpl: fakeDiscover(
+        ["https://acme.com/", "https://acme.com/private/one"],
+        false,
+        robots,
+      ),
+      crawlImpl,
+    });
+
+    expect(report.pages.map((p) => p.url)).toEqual([
+      "https://acme.com/",
+      "https://acme.com/about",
+    ]);
+    expect(report.blockedByRobots).toBe(2);
+    expect(crawlImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("honors Crawl-delay: one request at a time, spaced, with a bounded budget", async () => {
+    const sleeps: number[] = [];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const crawlImpl = vi.fn(async (url: string) => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await Promise.resolve();
+      inFlight--;
+      return makePage({ url, internalLinks: [] });
+    }) as unknown as typeof import("./crawl").crawl;
+    const urls = Array.from({ length: 12 }, (_, i) => `https://acme.com/p${i}`);
+
+    const report = await assessSite("acme.com", {
+      discoverImpl: fakeDiscover(urls, false, "User-agent: *\nCrawl-delay: 20\n"),
+      crawlImpl,
+      maxPages: 12,
+      sleepImpl: async (ms) => {
+        sleeps.push(ms);
+      },
+    });
+
+    // 20s is capped to 10s, and 60s of waiting allows 1 + 6 pages.
+    expect(report.crawlDelay).toBe(10);
+    expect(report.pages).toHaveLength(7);
+    expect(maxInFlight).toBe(1);
+    expect(sleeps).toHaveLength(6);
+    expect(sleeps.every((ms) => ms > 9000 && ms <= 10000)).toBe(true);
+  });
+
+  it("shares one origin-probe cache across every crawl in a scan", async () => {
+    const caches = new Set<unknown>();
+    const crawlImpl = vi.fn(async (url: string, opts?: { originProbeCache?: unknown }) => {
+      caches.add(opts?.originProbeCache);
+      return makePage({ url, internalLinks: [] });
+    }) as unknown as typeof import("./crawl").crawl;
+    await assessSite("acme.com", {
+      discoverImpl: fakeDiscover(["https://acme.com/a", "https://acme.com/b"]),
+      crawlImpl,
+    });
+    expect(caches.size).toBe(1);
+    expect([...caches][0]).toBeInstanceOf(Map);
   });
 });

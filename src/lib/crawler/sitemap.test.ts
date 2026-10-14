@@ -131,7 +131,7 @@ describe("discoverSitemapUrls", () => {
   it("returns empty (never throws) when nothing is reachable", async () => {
     const fetchImpl = fakeFetch({}); // everything 404s
     const out = await discoverSitemapUrls("acme.com", { fetchImpl, isUrlAllowed: allowAll });
-    expect(out).toEqual({ sitemaps: [], urls: [], truncated: false });
+    expect(out).toEqual({ sitemaps: [], urls: [], truncated: false, robotsTxt: null });
   });
 
   it("rejects an internal/invalid site without fetching", async () => {
@@ -205,7 +205,7 @@ describe("discoverSitemapUrls", () => {
       fetchImpl,
       isUrlAllowed: async () => false,
     });
-    expect(out).toEqual({ sitemaps: [], urls: [], truncated: false });
+    expect(out).toEqual({ sitemaps: [], urls: [], truncated: false, robotsTxt: null });
   });
 
   it("bounds fetch ATTEMPTS by maxSitemaps even when every child sitemap fails", async () => {
