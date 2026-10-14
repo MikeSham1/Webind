@@ -6,6 +6,7 @@ import {
   disconnectGitHubAction,
 } from "@/app/dashboard/settings/actions";
 import { initialGitHubConnectionState } from "@/app/dashboard/settings/state";
+import PasswordInput from "@/components/PasswordInput";
 
 const inputClass =
   "mt-1.5 w-full rounded-lg border border-line-strong bg-paper px-3 py-2.5 font-sans text-[15px] text-ink placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
@@ -65,7 +66,7 @@ export default function GitHubConnectionForm({
         <span className="font-sans text-sm font-medium text-ink">
           Personal Access Token
         </span>
-        <input name="token" type="password" required className={inputClass} />
+        <PasswordInput name="token" autoComplete="off" required />
         <span className="mt-1.5 block text-xs leading-relaxed text-muted">
           A fine-grained token (Settings → Developer settings → Personal
           access tokens) scoped to just this repo, with Contents and Pull

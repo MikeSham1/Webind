@@ -6,6 +6,7 @@ import {
   disconnectWordPressAction,
 } from "@/app/dashboard/settings/actions";
 import { initialWordPressConnectionState } from "@/app/dashboard/settings/state";
+import PasswordInput from "@/components/PasswordInput";
 
 const inputClass =
   "mt-1.5 w-full rounded-lg border border-line-strong bg-paper px-3 py-2.5 font-sans text-[15px] text-ink placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
@@ -76,7 +77,7 @@ export default function WordPressConnectionForm({
         <span className="font-sans text-sm font-medium text-ink">
           Application Password
         </span>
-        <input name="appPassword" type="password" required className={inputClass} />
+        <PasswordInput name="appPassword" autoComplete="off" required />
         <span className="mt-1.5 block text-xs leading-relaxed text-muted">
           In your WordPress admin: Users → Profile → Application Passwords.
           This isn&apos;t your account password, and you can revoke it there

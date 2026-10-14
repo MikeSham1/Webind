@@ -4,9 +4,7 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { resetPasswordAction } from "@/app/account/actions";
 import { initialResetPasswordState } from "@/app/account/state";
-
-const inputClass =
-  "mt-1.5 w-full rounded-lg border border-line-strong bg-paper px-3 py-2.5 font-sans text-[15px] text-ink placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
+import PasswordInput from "@/components/PasswordInput";
 
 export default function ResetPasswordForm({ token }: { token: string }) {
   const [state, formAction, isPending] = useActionState(
@@ -59,13 +57,11 @@ export default function ResetPasswordForm({ token }: { token: string }) {
           <input type="hidden" name="token" value={token} />
           <label className="block">
             <span className="font-sans text-sm font-medium text-ink">New password</span>
-            <input
+            <PasswordInput
               name="password"
-              type="password"
               autoComplete="new-password"
               required
               minLength={8}
-              className={inputClass}
             />
             <span className="mt-1 block text-xs text-muted">At least 8 characters.</span>
           </label>

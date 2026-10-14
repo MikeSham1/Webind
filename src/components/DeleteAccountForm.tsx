@@ -3,9 +3,7 @@
 import { useState, useActionState } from "react";
 import { deleteAccountAction } from "@/app/account/actions";
 import { initialDeleteAccountState } from "@/app/account/state";
-
-const inputClass =
-  "mt-1.5 w-full rounded-lg border border-line-strong bg-paper px-3 py-2.5 font-sans text-[15px] text-ink placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
+import PasswordInput from "@/components/PasswordInput";
 
 export default function DeleteAccountForm() {
   const [confirming, setConfirming] = useState(false);
@@ -42,13 +40,7 @@ export default function DeleteAccountForm() {
         <span className="font-sans text-sm font-medium text-ink">
           Confirm your password
         </span>
-        <input
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          className={inputClass}
-        />
+        <PasswordInput name="password" autoComplete="current-password" required />
       </label>
 
       {state.status === "error" && (
