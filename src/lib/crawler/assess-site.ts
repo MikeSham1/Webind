@@ -12,6 +12,7 @@ import { crawlDelayFor, isPathAllowed, parseRobotsGroups, productToken } from ".
 import { buildReport } from "../scoring/report";
 import { logInfo } from "../log";
 import type { CrawledPage } from "../scoring/types";
+import { selfScanGateCookie } from "../gate";
 
 /**
  * Site-wide assessment: discover a site's sitemap, score every page it lists,
@@ -272,9 +273,15 @@ export async function assessSite(
       if (wait > 0) await sleep(wait);
     }
     lastStart = Date.now();
-    const { assessment, crawled } = await assessOne(item, (url) =>
-      doCrawl(url, { originProbeCache }),
-    );
+    const { assessment, crawled } = await assessOne(item, async (url) => {
+      // Scanning our own password-gated deployment: carry the gate cookie so
+      // pages are scored, not the /splash screen (see selfScanGateCookie).
+      const gateCookie = await selfScanGateCookie(url);
+      return doCrawl(url, {
+        originProbeCache,
+        cookies: gateCookie ? [gateCookie] : undefined,
+      });
+    });
     if (crawled) {
       seen.add(pageKey(crawled.url));
       if (followLinks) {

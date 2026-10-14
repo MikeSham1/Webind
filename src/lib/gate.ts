@@ -58,3 +58,43 @@ export function safeEqual(a: string, b: string): boolean {
   for (let i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return out === 0;
 }
+
+/**
+ * Cookie to seed into the crawler's browser context so a self-scan of our own
+ * deployment (someone running an AI Readiness Report or Fix Generator against
+ * this very site while it's still gated) sees the real page instead of being
+ * redirected to /splash and silently scoring that instead.
+ *
+ * Only activates when APP_BASE_URL is explicitly configured, and only for a
+ * target whose origin matches it exactly — deliberately NOT compared against
+ * header-derived origins (x-forwarded-host/proto, as getBaseUrl() uses for
+ * non-security-sensitive links). Those headers are attacker-controlled unless
+ * a fronting proxy strips and re-sets them, and the target URL here is
+ * attacker-controlled too (it's whatever the anonymous report form was given)
+ * — trusting a spoofable "this is our own origin" signal would let someone
+ * trick the server into sending this proof-of-password cookie to a URL they
+ * chose. An explicit operator-configured value has no such spoofing surface.
+ */
+export async function selfScanGateCookie(
+  targetUrl: string,
+): Promise<{ name: string; value: string; url: string } | null> {
+  if (isPublicLaunch()) return null;
+
+  const password = sitePassword();
+  if (!password) return null;
+
+  const configuredBase = process.env.APP_BASE_URL?.trim();
+  if (!configuredBase) return null;
+
+  let targetOrigin: string;
+  let selfOrigin: string;
+  try {
+    targetOrigin = new URL(targetUrl).origin;
+    selfOrigin = new URL(configuredBase).origin;
+  } catch {
+    return null;
+  }
+  if (targetOrigin !== selfOrigin) return null;
+
+  return { name: GATE_COOKIE, value: await gateToken(password), url: selfOrigin };
+}

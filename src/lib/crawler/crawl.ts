@@ -138,6 +138,15 @@ export interface CrawlOptions {
    * those files once instead of once per page.
    */
   originProbeCache?: OriginProbeCache;
+  /**
+   * Cookies to seed into the browser context before navigating — currently
+   * used to carry the site's own preview-gate cookie (see
+   * `selfScanGateCookie` in `@/lib/gate`) so a self-scan while the deployment
+   * is password-gated reaches the real page instead of the gate's splash
+   * page. Harmless to pass for any other crawl: Playwright only attaches a
+   * cookie to requests matching its `url`/domain.
+   */
+  cookies?: { name: string; value: string; url: string }[];
 }
 
 /** Per-origin results that don't change from page to page within one run. */
@@ -161,6 +170,7 @@ export async function crawl(url: string, opts: CrawlOptions = {}): Promise<Crawl
   // An injected context means a test harness already owns admission control and
   // browser lifecycle; only the real path takes a slot on the shared browser.
   if (opts.context) {
+    if (opts.cookies?.length) await opts.context.addCookies(opts.cookies);
     return crawlInContext(url, opts.context, isUrlAllowed, fetchImpl, opts.originProbeCache);
   }
 
@@ -183,6 +193,7 @@ export async function crawl(url: string, opts: CrawlOptions = {}): Promise<Crawl
     // reissue requests outside that path. Per Playwright's guidance.
     const context = await browser.newContext({ serviceWorkers: "block" });
     try {
+      if (opts.cookies?.length) await context.addCookies(opts.cookies);
       const page = await crawlInContext(
         url,
         context,
