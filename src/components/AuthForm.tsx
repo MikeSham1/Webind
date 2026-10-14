@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { loginAction, signupAction } from "@/app/account/actions";
 import { initialAuthState } from "@/app/account/state";
+import PasswordInput from "@/components/PasswordInput";
 
 const inputClass =
   "mt-1.5 w-full rounded-lg border border-line-strong bg-paper px-3 py-2.5 font-sans text-[15px] text-ink placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
@@ -23,6 +24,12 @@ export default function AuthForm({
   const [state, formAction, isPending] = useActionState(action, initialAuthState);
 
   const isLogin = mode === "login";
+  // Tracked only to give live feedback while signing up; the inputs stay
+  // uncontrolled and the server re-validates everything.
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const longEnough = password.length >= 8;
+  const matches = confirm.length > 0 && confirm === password;
   const submittedEmail = state.status === "error" ? state.email : undefined;
   const submittedTermsAccepted =
     state.status === "error" ? state.termsAccepted : undefined;
@@ -82,17 +89,18 @@ export default function AuthForm({
               </Link>
             )}
           </div>
-          <input
+          <PasswordInput
             name="password"
-            type="password"
             autoComplete={isLogin ? "current-password" : "new-password"}
             required
             minLength={isLogin ? undefined : 8}
-            className={inputClass}
+            onChange={(e) => setPassword(e.target.value)}
           />
           {!isLogin && (
-            <span className="mt-1 block text-xs text-muted">
-              At least 8 characters.
+            <span
+              className={`mt-1 block text-xs ${longEnough ? "text-good" : "text-muted"}`}
+            >
+              {longEnough ? "✓ " : ""}At least 8 characters.
             </span>
           )}
         </label>
@@ -102,14 +110,21 @@ export default function AuthForm({
             <span className="font-sans text-sm font-medium text-ink">
               Confirm password
             </span>
-            <input
+            <PasswordInput
               name="confirmPassword"
-              type="password"
               autoComplete="new-password"
               required
               minLength={8}
-              className={inputClass}
+              onChange={(e) => setConfirm(e.target.value)}
             />
+            {confirm.length > 0 && (
+              <span
+                aria-live="polite"
+                className={`mt-1 block text-xs ${matches ? "text-good" : "text-bad"}`}
+              >
+                {matches ? "✓ Passwords match." : "Passwords don't match yet."}
+              </span>
+            )}
           </label>
         )}
 

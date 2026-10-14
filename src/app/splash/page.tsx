@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import PasswordInput from "@/components/PasswordInput";
 
 export const metadata: Metadata = {
   title: "WeBind Design — Private preview",
@@ -39,16 +40,15 @@ export default async function SplashPage({
           >
             Access password
           </label>
-          <input
+          <PasswordInput
             id="password"
             name="password"
-            type="password"
             autoComplete="current-password"
             autoFocus
             required
             aria-invalid={error ? "true" : undefined}
             aria-describedby={error ? "pw-error" : undefined}
-            className="mt-2 w-full rounded-lg border border-line-strong bg-paper px-3 py-2.5 text-ink outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent-soft"
+            wrapperClassName="mt-2"
           />
 
           {error ? (
