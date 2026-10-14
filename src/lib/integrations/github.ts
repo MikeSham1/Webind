@@ -136,7 +136,13 @@ export interface FixFile {
    * `merge(existing, content)` instead of a wholesale replace — used for
    * robots.txt so we never wipe a site's sitemaps or other crawler rules.
    */
-  merge?: (existing: string, incoming: string) => string;
+  merge?: (existing: string, incoming: string) => string | null;
+  /**
+   * Only ever modify this file, never create it: skipped when it doesn't exist
+   * on the branch. Used for a site's HTML pages, which must not be invented.
+   * A `merge` returning null likewise means "leave this file alone".
+   */
+  existingOnly?: boolean;
 }
 
 /**
@@ -168,6 +174,29 @@ export function mergeRobotsTxt(existing: string, incoming: string): string {
   if (missing.length === 0) return existing; // already addressed — leave it alone
   const additions = missing.map((bot) => `User-agent: ${bot}\nAllow: /`).join("\n\n");
   return `${existing.trimEnd()}\n\n# Added by WeBind — allow AI answer engines\n${additions}\n`;
+}
+
+/**
+ * The first of `paths` that exists on the repo's default branch, or null. Used
+ * to find which file serves a page (index.html vs public/index.html, …).
+ */
+export async function findExistingPath(
+  creds: GitHubCredentials,
+  paths: string[],
+  opts: { fetchImpl?: typeof fetch } = {},
+): Promise<string | null> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  for (const path of paths) {
+    const res = await call(
+      creds,
+      `/repos/${creds.owner}/${creds.repo}/contents/${path.split("/").map(encodeURIComponent).join("/")}`,
+      {},
+      fetchImpl,
+    );
+    // A directory comes back as an array; only a file counts.
+    if (res.ok && !Array.isArray(res.body) && res.body.type === "file") return path;
+  }
+  return null;
 }
 
 export interface OpenedPullRequest {
@@ -267,13 +296,20 @@ export async function openFixPullRequest(
     const existingSha =
       existing.ok && typeof existing.body.sha === "string" ? existing.body.sha : undefined;
 
-    // Merge into existing content when asked (robots.txt), otherwise replace.
+    if (!existingSha && file.existingOnly) continue;
+
+    // Merge into existing content when asked (robots.txt, HTML heads),
+    // otherwise replace.
     let content = file.content;
     if (existingSha) {
       const rawBase64 =
         existing.ok && typeof existing.body.content === "string" ? existing.body.content : "";
       const decoded = Buffer.from(rawBase64.replace(/\s/g, ""), "base64").toString("utf8");
-      if (file.merge) content = file.merge(decoded, file.content);
+      if (file.merge) {
+        const merged = file.merge(decoded, file.content);
+        if (merged === null) continue; // the merge declined: leave the file alone
+        content = merged;
+      }
       // Skip a write that would produce no change — an empty commit helps nobody.
       if (decoded === content) continue;
     }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { mergeRobotsTxt, openFixPullRequest, type FixFile } from "./github";
+import { findExistingPath, mergeRobotsTxt, openFixPullRequest, type FixFile } from "./github";
 
 const FRAGMENT = "User-agent: GPTBot\nAllow: /";
 
@@ -166,5 +166,38 @@ describe("openFixPullRequest", () => {
     const res = await openFixPullRequest(CREDS, [{ path: "llms.txt", content: "x" }], pr, { fetchImpl: impl });
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error).toMatch(/already open/i);
+  });
+
+  it("never creates an existingOnly file, and leaves a file alone when merge declines", async () => {
+    const puts: string[] = [];
+    const { impl } = ghFetch([
+      ...repoAndBase,
+      { method: "POST", match: /\/git\/refs$/, respond: () => ({ status: 201, body: {} }) },
+      { method: "GET", match: /\/contents\/missing\.html/, respond: () => ({ status: 404, body: {} }) },
+      { method: "GET", match: /\/contents\/partial\.html/, respond: () => ({ status: 200, body: { sha: "s", content: b64("<div>") } }) },
+      { method: "GET", match: /\/contents\/index\.html/, respond: () => ({ status: 200, body: { sha: "s2", content: b64("<head></head>") } }) },
+      { method: "PUT", match: /\/contents\//, respond: ({ url }) => { puts.push(url.split("/contents/")[1]); return { status: 200, body: {} }; } },
+      { method: "POST", match: /\/pulls$/, respond: () => ({ status: 201, body: { number: 3, html_url: "https://github.com/o/r/pull/3" } }) },
+    ]);
+    const files: FixFile[] = [
+      { path: "missing.html", content: "", existingOnly: true, merge: () => "x" },
+      { path: "partial.html", content: "", existingOnly: true, merge: () => null },
+      { path: "index.html", content: "", existingOnly: true, merge: (e) => e.replace("</head>", "<x></head>") },
+    ];
+    const res = await openFixPullRequest(CREDS, files, pr, { fetchImpl: impl });
+    expect(res.ok).toBe(true);
+    expect(puts).toEqual(["index.html"]);
+  });
+});
+
+describe("findExistingPath", () => {
+  it("returns the first candidate that is a file", async () => {
+    const { impl } = ghFetch([
+      { method: "GET", match: /\/contents\/index\.html$/, respond: () => ({ status: 404, body: {} }) },
+      { method: "GET", match: /\/contents\/public$/, respond: () => ({ status: 200, body: [] }) },
+      { method: "GET", match: /\/contents\/public\/index\.html$/, respond: () => ({ status: 200, body: { type: "file" } }) },
+    ]);
+    expect(await findExistingPath(CREDS, ["index.html", "public", "public/index.html"], { fetchImpl: impl })).toBe("public/index.html");
+    expect(await findExistingPath(CREDS, ["index.html"], { fetchImpl: impl })).toBeNull();
   });
 });

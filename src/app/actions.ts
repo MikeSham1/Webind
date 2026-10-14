@@ -27,7 +27,13 @@ import {
   getGitHubCredentials,
 } from "@/lib/integrations/githubConnections";
 import { getPrForReport, recordPrOpened } from "@/lib/integrations/codeFixes";
-import { mergeRobotsTxt, openFixPullRequest, type FixFile } from "@/lib/integrations/github";
+import {
+  findExistingPath,
+  mergeRobotsTxt,
+  openFixPullRequest,
+  type FixFile,
+} from "@/lib/integrations/github";
+import { htmlFileCandidates, patchHtmlHead, type HeadPatches } from "@/lib/integrations/htmlPatch";
 import { checkRateLimit, formatRetryAfter } from "@/lib/rateLimit";
 import { getClientIp } from "@/lib/requestIp";
 import { logInfo, logWarn } from "@/lib/log";
@@ -236,10 +242,13 @@ function hostOf(url: string): string {
 
 /**
  * Open a pull request on the report owner's connected GitHub repo, adding or
- * updating llms.txt and robots.txt — the two ready-to-apply assets that are
- * genuinely standalone files (schema/meta are HTML snippets meant for an
- * unknown template, not something safe to commit blindly). A PR already open
- * for this report is reported as-is rather than opened twice.
+ * updating llms.txt and robots.txt, and, when the page is a plain static HTML
+ * file in that repo, putting the missing schema and meta tags in its <head>
+ * (see integrations/htmlPatch.ts). For any other stack the schema/meta stay
+ * copy-paste snippets: they belong in an unknown template that isn't safe to
+ * edit blindly. Nothing reaches the live site until the owner reviews and
+ * merges the PR. A PR already open for this report is reported as-is rather
+ * than opened twice.
  *
  * Owner-only — deliberately does NOT use the admin bypass that report-viewing
  * pages use (getReportById). An admin can review any report, but writing to a
@@ -284,15 +293,37 @@ export async function openFixPrAction(
       // wipe the site's sitemaps or other crawler rules.
       files.push({ path: "robots.txt", content: asset.content, merge: mergeRobotsTxt });
   }
+  const creds = await getGitHubCredentials(reportRow.userId);
+  if (!creds) return { status: "error", error: "Connect GitHub in Settings before opening a PR." };
+
+  // Schema and meta go into the page's own HTML file, when the repo has one.
+  const patches: HeadPatches = {};
+  for (const asset of reportRow.optimizations?.assets ?? []) {
+    if (asset.key === "schema") patches.schema = asset.content;
+    if (asset.key === "meta") patches.meta = asset.content;
+  }
+  let htmlPath: string | null = null;
+  if (patches.schema || patches.meta) {
+    htmlPath = await findExistingPath(creds, htmlFileCandidates(reportRow.url));
+    if (htmlPath) {
+      files.push({
+        path: htmlPath,
+        content: "",
+        existingOnly: true,
+        merge: (existing) => patchHtmlHead(existing, patches),
+      });
+    }
+  }
+
   if (files.length === 0) {
     return {
       status: "error",
-      error: "Nothing file-shaped to open a PR for — llms.txt and robots.txt already look good.",
+      error:
+        patches.schema || patches.meta
+          ? "This page isn't a plain HTML file in the connected repo, so its schema and meta tags can't be edited automatically. Copy them from the report into your page template instead."
+          : "Nothing file-shaped to open a PR for — llms.txt and robots.txt already look good.",
     };
   }
-
-  const creds = await getGitHubCredentials(reportRow.userId);
-  if (!creds) return { status: "error", error: "Connect GitHub in Settings before opening a PR." };
 
   const host = hostOf(reportRow.url);
   const branchName = `webind/ai-crawlability-${requestId.slice(0, 8)}`;
@@ -302,9 +333,14 @@ export async function openFixPrAction(
       `Opened from a WeBind Authority Report for ${reportRow.url}.`,
       "",
       "Adds or updates:",
-      ...files.map((f) => `- ${f.path}`),
+      ...files.map((f) =>
+        f.path === htmlPath
+          ? `- ${f.path}: ${[patches.schema && "structured data (JSON-LD)", patches.meta && "missing title/description"].filter(Boolean).join(" and ")} in <head>, between <!-- WeBind:… --> markers`
+          : `- ${f.path}`,
+      ),
       "",
       "Review before merging — nothing here is finalized without your approval.",
+      "To undo a <head> change later, delete the lines between its WeBind markers.",
     ].join("\n"),
     branchName,
   });
