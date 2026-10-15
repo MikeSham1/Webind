@@ -14,6 +14,11 @@ export default defineConfig({
     // timeouts, not bugs. A genuine hang still fails, just later.
     testTimeout: 20_000,
     hookTimeout: 60_000,
+    // Many files boot their own in-process Postgres (PGlite) or a Chromium.
+    // One worker per core starts them all at once, and on an already-busy
+    // machine that pile-up stalled every database suite in the same run.
+    // Half the cores measured just as fast (~7-8s) without the spike.
+    maxWorkers: "50%",
   },
   resolve: {
     // Match the "@/*" -> "./src/*" alias used by Next/TypeScript.

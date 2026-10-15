@@ -74,6 +74,10 @@ const SECURITY_HEADERS = [
 ];
 
 const nextConfig: NextConfig = {
+  // The e2e suite sets NEXT_DIST_DIR so its server builds into its own folder.
+  // Next allows one `next dev` per build folder (.next/dev/lock), so sharing
+  // .next meant running the e2e tests had to stop a developer's own server.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   async headers() {
     return [
       {

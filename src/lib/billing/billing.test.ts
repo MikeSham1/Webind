@@ -285,7 +285,11 @@ describe("subscription store (real Postgres via PGlite)", () => {
     expect(applied).toBe("applied");
   });
 
+  // The two event-ordering tests each use their own user: the shared one
+  // keeps the newest event timestamp any earlier test stored, so in a
+  // shuffled order this test's "newer" event could already count as stale.
   it("an event-ordered write is skipped, not applied, when an equal-or-newer event already landed — Stripe does not guarantee delivery order", async () => {
+    const userId = await freshUserId();
     const newer = new Date("2030-01-02T00:00:00Z");
     const older = new Date("2030-01-01T00:00:00Z");
 
@@ -312,6 +316,7 @@ describe("subscription store (real Postgres via PGlite)", () => {
   });
 
   it("a newer event still applies after an older one", async () => {
+    const userId = await freshUserId();
     const older = new Date("2030-02-01T00:00:00Z");
     const newer = new Date("2030-02-02T00:00:00Z");
 

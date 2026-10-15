@@ -23,7 +23,9 @@ describe("checkDatabaseHealth", () => {
     for (const f of readdirSync(dir).filter((x) => x.endsWith(".sql")).sort()) {
       await client.exec(readFileSync(join(dir, f), "utf8"));
     }
-    expect(await checkDatabaseHealth()).toBe("ok");
+    // A generous limit: this database runs in-process, and its first query
+    // can exceed the 3s production limit on a loaded machine.
+    expect(await checkDatabaseHealth({ timeoutMs: 20_000 })).toBe("ok");
   }, 30_000);
 
   it("reports unreachable when the query fails", async () => {
@@ -33,5 +35,10 @@ describe("checkDatabaseHealth", () => {
       },
     });
     expect(await checkDatabaseHealth()).toBe("unreachable");
+  });
+
+  it("reports unreachable when the database never answers in time", async () => {
+    __setTestDb({ execute: () => new Promise(() => {}) });
+    expect(await checkDatabaseHealth({ timeoutMs: 50 })).toBe("unreachable");
   });
 });

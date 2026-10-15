@@ -76,6 +76,9 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       env: {
         ...process.env,
         DATABASE_URL,
+        // Build into .next-e2e, so this server can run alongside a developer's
+        // own `npm run dev` instead of colliding on .next/dev/lock.
+        NEXT_DIST_DIR: ".next-e2e",
         SITE_PUBLIC: "true",
         SEED_ADMIN_EMAIL,
         SEED_ADMIN_PASSWORD,
