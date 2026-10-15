@@ -75,6 +75,10 @@ test.describe("signup", () => {
 
     // Log out, then attempt the same email again with a different password.
     await primaryNav(page).getByRole("button", { name: "Log out" }).click();
+    // Let the logout's redirect land before navigating on. Otherwise, on a slow
+    // runner, /login arrives after signup()'s goto("/signup") and the test types
+    // into the login form, which has no confirm-password field to wait for.
+    await expect(page).toHaveURL(/\/login$/);
     await signup(page, email, "differentpassword1");
 
     await expect(page).toHaveURL(/\/signup/);
