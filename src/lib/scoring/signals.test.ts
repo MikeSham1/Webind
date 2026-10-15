@@ -338,6 +338,32 @@ describe("scoreTopicalAuthority", () => {
     expect(focused.score as number).toBeGreaterThan(scattered.score as number);
     expect(scattered.fix).toMatch(/core topic terms/);
   });
+
+  // Focus is the share of title/H1 terms found in headings and body, so these
+  // compare reasons ("N% topic focus") on pages identical in every other way.
+  const focusOf = (title: string, headingText: string, body: string): number => {
+    const s = scoreTopicalAuthority(
+      makePage({
+        title,
+        headings: [{ level: 2, text: headingText }],
+        renderedText: body,
+        internalLinkCount: 25,
+      }),
+    );
+    return Number(/(\d+)% topic focus/.exec(s.reason)?.[1]);
+  };
+
+  it("matches whole words, not fragments inside other words", () => {
+    // "art", "seo" and "said" hide inside "start", "Seoul" and "said": a
+    // substring check counted all three as present on an unrelated page.
+    expect(focusOf("Art SEO Said", "Start in Seoul", "start seoul")).toBe(0);
+    expect(focusOf("Art SEO", "Art and SEO", "art seo")).toBe(100);
+  });
+
+  it("tolerates singular/plural differences in either direction", () => {
+    expect(focusOf("Plumbing Services", "Our plumbing service", "plumbing service")).toBe(100);
+    expect(focusOf("Plumbing Service", "All plumbing services", "plumbing services")).toBe(100);
+  });
 });
 
 describe("scoreOnPageOptimization", () => {

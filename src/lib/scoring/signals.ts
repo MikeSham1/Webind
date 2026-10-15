@@ -570,10 +570,32 @@ function extractTerms(text: string | null): string[] {
   return out;
 }
 
-/** Loose presence check tolerating a simple singular/plural difference. */
-function termPresent(haystack: string, term: string): boolean {
-  if (haystack.includes(term)) return true;
-  if (term.endsWith("s") && term.length > 3) return haystack.includes(term.slice(0, -1));
+/**
+ * The set of distinct words in `text`, built once so term lookups are O(1).
+ *
+ * This replaced a per-term `haystack.includes(term)` scan, which was both slow
+ * and wrong. Slow because each term re-scanned the whole body — O(terms x text)
+ * per page, doubled by the singular retry, and the site crawler runs this over
+ * every URL in a sitemap. Wrong because `includes` matches substrings: "art"
+ * was found inside "start", "seo" inside "Seoul", "ai" inside "said". A page
+ * that never discusses its title's terms could score as tightly focused, which
+ * is the opposite of what topical focus is supposed to measure.
+ */
+function wordSet(text: string): Set<string> {
+  const set = new Set<string>();
+  for (const w of text.toLowerCase().match(/[a-z0-9]+/g) ?? []) set.add(w);
+  return set;
+}
+
+/**
+ * Whole-word presence, still tolerating a simple singular/plural difference in
+ * either direction — the page may say "services" where the title says
+ * "service", or the reverse.
+ */
+function termPresent(words: Set<string>, term: string): boolean {
+  if (words.has(term)) return true;
+  if (term.endsWith("s") && term.length > 3 && words.has(term.slice(0, -1))) return true;
+  if (!term.endsWith("s") && words.has(`${term}s`)) return true;
   return false;
 }
 
@@ -597,8 +619,10 @@ export function scoreTopicalAuthority(page: CrawledPage): SignalScore {
 
   const h1 = page.headings.find((h) => h.level === 1)?.text ?? null;
   const terms = [...new Set([...extractTerms(page.title), ...extractTerms(h1)])];
-  const headingText = page.headings.map((h) => h.text.toLowerCase()).join(" ");
-  const bodyText = page.renderedText.toLowerCase();
+  // Tokenized once each, then every term is a hash lookup rather than another
+  // pass over the text.
+  const headingWords = wordSet(page.headings.map((h) => h.text).join(" "));
+  const bodyWords = wordSet(page.renderedText);
 
   let focus: number;
   let focusKnown: boolean;
@@ -611,8 +635,8 @@ export function scoreTopicalAuthority(page: CrawledPage): SignalScore {
     focusKnown = false;
   } else {
     const inHeadings =
-      terms.filter((t) => termPresent(headingText, t)).length / terms.length;
-    const inBody = terms.filter((t) => termPresent(bodyText, t)).length / terms.length;
+      terms.filter((t) => termPresent(headingWords, t)).length / terms.length;
+    const inBody = terms.filter((t) => termPresent(bodyWords, t)).length / terms.length;
     focus = 0.6 * inHeadings + 0.4 * inBody;
     focusKnown = true;
   }
