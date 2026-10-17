@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AI_WEIGHTS, TRADITIONAL_WEIGHTS, SCORING_MODEL_VERSION } from "@/lib/scoring/weights";
+import { AI_GATES, TRADITIONAL_GATES } from "@/lib/scoring/gates";
 import { MODEL_META } from "@/lib/model/predict";
 
 export const metadata: Metadata = {
@@ -155,6 +156,45 @@ export default function MethodologyPage() {
           is, so it isn&apos;t penalized for their absence. Articles are still
           held to the full standard. The detected type is shown on every report.
         </p>
+      </section>
+
+      <section className="mt-10 space-y-4">
+        <h2 className="font-display text-lg font-semibold text-ink">
+          Fundamentals can cap the score
+        </h2>
+        <p className="text-[15px] leading-relaxed text-muted">
+          Authority isn&apos;t purely additive. Some failures are disqualifying,
+          not just one weak input among many: a page Googlebot is blocked from
+          can&apos;t rank on Google, and a page every AI search crawler is
+          blocked from can&apos;t be cited by AI search, however good its content
+          is. Averaged in, strong content would hide them. So each fundamental,
+          when it fails, sets a hard <strong className="text-ink">ceiling</strong>{" "}
+          and the score is the lower of the weighted average and that ceiling. A
+          cap only ever lowers a score, a page that clears every fundamental is
+          never touched, and the report names the fundamental that capped it and
+          ranks its fix first. Thin-content checks skip homepages and category
+          pages, whose substance lives on the pages behind them.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {[
+            { title: "AI Readiness", gates: AI_GATES },
+            { title: "Traditional Authority", gates: TRADITIONAL_GATES },
+          ].map(({ title, gates }) => (
+            <div key={title} className="rounded-xl border border-line bg-surface p-4">
+              <p className="font-sans text-sm font-semibold text-ink">{title}</p>
+              <dl>
+                {gates.map((g) => (
+                  <div key={g.id} className="mt-2 flex items-baseline justify-between gap-3">
+                    <dt className="text-sm text-muted">{g.label}</dt>
+                    <dd className="shrink-0 font-mono text-xs text-accent">
+                      max {g.ceiling}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="mt-10 space-y-3">

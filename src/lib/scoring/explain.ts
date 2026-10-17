@@ -1,5 +1,6 @@
-import type { ReportResult } from "./types";
+import type { AppliedCap, ReportResult } from "./types";
 import type { AiProvider } from "@/lib/ai/types";
+import { bindingCap } from "./gates";
 import { generate, selectProvider } from "@/lib/ai/generator";
 
 const EXPLAIN_SYSTEM =
@@ -70,17 +71,27 @@ function pct(coverage: number): string {
   return `${Math.round(coverage * 100)}%`;
 }
 
+/** " — capped at N/100 because …" for a score a failed fundamental capped. */
+function capNote(caps: AppliedCap[] | undefined): string {
+  const cap = bindingCap(caps);
+  return cap
+    ? ` — capped at ${cap.ceiling}/100 because a fundamental fails: ${cap.label.toLowerCase()}`
+    : "";
+}
+
 /** Serialize the report into a compact prompt of facts the model may narrate. */
 function buildPrompt(report: ReportResult): string {
   const lines: string[] = [];
   lines.push(`Website: ${report.url}`);
   lines.push(
     `AI readiness score: ${report.ai.total}/100 ` +
-      `(from ${pct(report.ai.coverage)} of the AI model's signals)`,
+      `(from ${pct(report.ai.coverage)} of the AI model's signals)` +
+      capNote(report.ai.caps),
   );
   lines.push(
     `Traditional (search) authority score: ${report.traditional.total}/100 ` +
-      `(from ${pct(report.traditional.coverage)} of that model's signals)`,
+      `(from ${pct(report.traditional.coverage)} of that model's signals)` +
+      capNote(report.traditional.caps),
   );
   lines.push("");
   lines.push("Signal notes:");

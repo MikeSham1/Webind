@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { CrawledPage, SignalScore } from "./types";
-import { buildReport, fixPriority } from "./report";
+import { buildReport, cappedSignalKeys, compareFixes, fixPriority } from "./report";
 import { daysAgo, makePage } from "./test-fixtures";
 
 // A page with several deficiencies so there are fixes to order.
@@ -15,7 +15,10 @@ const deficientPage: CrawledPage = makePage({
   lastModifiedSource: null,
 });
 
-/** buildReport ranks fixes by expected value (fixPriority), tie-broken by key. */
+/**
+ * buildReport ranks fixes by expected value (fixPriority), tie-broken by key,
+ * once any fix that lifts a cap has gone first.
+ */
 function expectedFixOrder(page: CrawledPage): string[] {
   const r = buildReport(page);
   const withFix = [...r.ai.signals, ...r.traditional.signals].filter(
@@ -23,7 +26,7 @@ function expectedFixOrder(page: CrawledPage): string[] {
       s.fix !== null && s.score !== null,
   );
   return withFix
-    .sort((a, b) => fixPriority(b) - fixPriority(a) || a.key.localeCompare(b.key))
+    .sort(compareFixes(cappedSignalKeys(r)))
     .map((s) => s.fix);
 }
 
@@ -58,6 +61,23 @@ describe("buildReport", () => {
     const cheap = sig("technicalSeo", 50, 0.2);
     const expensive = sig("contentQuality", 50, 0.2);
     expect(fixPriority(cheap)).toBeGreaterThan(fixPriority(expensive));
+  });
+
+  it("puts the fix that lifts a cap first, even over a higher-priority fix", () => {
+    // deficientPage is a JS-only shell, so AI readiness is capped and the AI
+    // Crawlability fix (server-render) is the only thing that can raise it.
+    const r = buildReport(deficientPage);
+    expect(r.ai.caps?.map((c) => c.id)).toEqual(["renderable"]);
+    const crawlFix = r.ai.signals.find((s) => s.key === "aiCrawlability")!.fix;
+    expect(r.prioritizedFixes[0]).toBe(crawlFix);
+  });
+
+  it("gives an uncovered fundamental its own fix, once, ahead of the rest", () => {
+    // A 500 fails "reachable" in both models; no signal's fix says so.
+    const r = buildReport(makePage({ statusCode: 500 }));
+    const reachable = r.prioritizedFixes.filter((f) => f.includes("200 status"));
+    expect(reachable).toHaveLength(1);
+    expect(r.prioritizedFixes[0]).toBe(reachable[0]);
   });
 
   it("never emits a fix for a signal it could not measure", () => {

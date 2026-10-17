@@ -4,7 +4,7 @@ import type {
   ReportResult,
   SignalScore,
 } from "./types";
-import { fixPriority } from "./report";
+import { cappedSignalKeys, compareFixes } from "./report";
 import { classifyPageType } from "./page-type";
 import { generate, selectProvider } from "@/lib/ai/generator";
 
@@ -41,7 +41,7 @@ export function rankedDeficiencies(report: ReportResult): SignalScore[] {
     .filter((s): s is SignalScore & { fix: string; score: number } =>
       s.fix !== null && s.score !== null,
     )
-    .sort((a, b) => fixPriority(b) - fixPriority(a) || a.key.localeCompare(b.key))
+    .sort(compareFixes(cappedSignalKeys(report)))
     .slice(0, MAX_SUGGESTIONS);
 }
 

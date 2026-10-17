@@ -55,16 +55,46 @@ export function fixPriority(s: SignalScore): number {
   return (expectedUplift * e.applicability) / (e.effort * e.risk);
 }
 
+/** Signal keys whose fix would also lift a failed fundamental's cap. */
+export function cappedSignalKeys(report: Pick<ReportResult, "ai" | "traditional">): Set<string> {
+  const caps = [...(report.ai.caps ?? []), ...(report.traditional.caps ?? [])];
+  return new Set(caps.flatMap((c) => (c.signal ? [c.signal] : [])));
+}
+
+/**
+ * Comparator ranking deficient signals best-value first. A signal whose fix
+ * lifts a cap leads: while a fundamental is failing, improving anything else
+ * can't raise the capped total, so nothing else is worth doing first. Then by
+ * priority, with ties broken by key so ordering is deterministic by design
+ * rather than by array insertion order.
+ */
+export function compareFixes(capped: Set<string>) {
+  return (a: SignalScore, b: SignalScore): number =>
+    Number(capped.has(b.key)) - Number(capped.has(a.key)) ||
+    fixPriority(b) - fixPriority(a) ||
+    a.key.localeCompare(b.key);
+}
+
 export function buildReport(page: CrawledPage): ReportResult {
   const ai = scoreAiAuthority(page);
   const traditional = scoreTraditionalAuthority(page);
 
-  const prioritizedFixes = [...ai.signals, ...traditional.signals]
+  const ranked = [...ai.signals, ...traditional.signals]
     .filter((s): s is SignalScore & { fix: string } => s.fix !== null)
-    // Rank by priority; break ties by key so ordering is deterministic by
-    // design rather than by array insertion order.
-    .sort((a, b) => fixPriority(b) - fixPriority(a) || a.key.localeCompare(b.key))
-    .map((s) => s.fix);
+    .sort(compareFixes(cappedSignalKeys({ ai, traditional })));
+
+  // A failed fundamental that no signal's fix covers (a non-200 status, a
+  // blocked Googlebot) gets its own fix ahead of everything else — lowest
+  // ceiling first, and once even when both models fail it.
+  const covered = new Set(ranked.map((s) => s.key));
+  const seen = new Set<string>();
+  const capFixes = [...(ai.caps ?? []), ...(traditional.caps ?? [])]
+    .filter((c) => !c.signal || !covered.has(c.signal))
+    .sort((a, b) => a.ceiling - b.ceiling)
+    .filter((c) => !seen.has(c.id) && seen.add(c.id))
+    .map((c) => c.fix);
+
+  const prioritizedFixes = [...capFixes, ...ranked.map((s) => s.fix)];
 
   return {
     url: page.url,

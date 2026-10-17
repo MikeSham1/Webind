@@ -173,3 +173,47 @@ describe("score range and coverage", () => {
     expect(scoreTraditionalAuthority(page).coverage).toBeCloseTo(0.78);
   });
 });
+
+describe("gating caps on fundamentals", () => {
+  it("leaves a page that clears every fundamental uncapped", () => {
+    expect(scoreAiAuthority(optimizedPage()).caps).toEqual([]);
+    expect(scoreTraditionalAuthority(optimizedPage()).caps).toEqual([]);
+  });
+
+  it("caps an otherwise-excellent page that every AI search crawler is blocked from", () => {
+    // Content signals are all strong, so the weighted score stays high; the
+    // cap is what stops it reading as citable.
+    const page = optimizedPage({
+      robotsAllowsAiBots: false,
+      crawlerAccess: {
+        ...optimizedPage().crawlerAccess,
+        openaiSearch: "blocked",
+        anthropicSearch: "blocked",
+        perplexitySearch: "blocked",
+      },
+    });
+    const ai = scoreAiAuthority(page);
+    expect(ai.total).toBe(40);
+    expect(ai.caps?.map((c) => c.id)).toEqual(["crawlable"]);
+  });
+
+  it("caps a strong page whose Googlebot is blocked on the traditional score", () => {
+    const page = optimizedPage({
+      crawlerAccess: { ...optimizedPage().crawlerAccess, googleSearch: "blocked" },
+    });
+    expect(scoreTraditionalAuthority(page).total).toBe(30);
+    expect(scoreAiAuthority(page).total).toBeGreaterThanOrEqual(90);
+  });
+
+  it("caps a strong page served over plain HTTP on the traditional score", () => {
+    const t = scoreTraditionalAuthority(optimizedPage({ url: "http://example.com/guide-to-widgets" }));
+    expect(t.total).toBe(65);
+    expect(t.caps?.map((c) => c.id)).toEqual(["secure"]);
+  });
+
+  it("doesn't move a broken page that's already below every ceiling", () => {
+    const ai = scoreAiAuthority(brokenPage());
+    expect(ai.caps?.length).toBeGreaterThan(0);
+    expect(ai.total).toBe(composeScore(ai.signals).total);
+  });
+});

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildReport } from "./report";
 import { makePage } from "./test-fixtures";
 import { applyCitations } from "./enrich";
+import { composeScore } from "./authority";
 import type { CitationResult } from "./ai-citations";
 
 // An article page (not the homepage) so the evidence signal keeps its full
@@ -67,6 +68,17 @@ describe("applyCitations", () => {
     applyCitations(baseReport, citationResult(80, true));
     const bm = baseReport.ai.signals.find((s) => s.key === "brandMentions")!;
     expect(bm.score).toBeNull();
+  });
+
+  it("keeps a cap in force when a strong citation result lifts the total", () => {
+    // A JS-only shell is capped at 50; being cited doesn't fix the shell.
+    const capped = buildReport(
+      makePage({ url: "https://example.com/blog/post", hasServerRenderedContent: false }),
+    );
+    const enriched = applyCitations(capped, citationResult(100, true));
+    expect(enriched.ai.caps).toEqual(capped.ai.caps);
+    expect(composeScore(enriched.ai.signals).total).toBeGreaterThan(50);
+    expect(enriched.ai.total).toBe(50);
   });
 
   it("returns the report unchanged when brandMentionScore is null", () => {

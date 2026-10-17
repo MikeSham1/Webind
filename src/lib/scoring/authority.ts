@@ -1,4 +1,5 @@
-import type { AuthorityScore, CrawledPage, SignalScore } from "./types";
+import type { AppliedCap, AuthorityScore, CrawledPage, SignalScore } from "./types";
+import { AI_GATES, TRADITIONAL_GATES, capTotal, failedCaps } from "./gates";
 import {
   scoreAiCrawlability,
   scoreAnswerability,
@@ -41,8 +42,16 @@ export function composeScore(signals: SignalScore[]): AuthorityScore {
   return { total, signals, coverage };
 }
 
+/**
+ * Apply the gating checklist to a composed score: the total can't exceed the
+ * lowest ceiling among the fundamentals this page failed. See gates.ts.
+ */
+export function withCaps(base: AuthorityScore, caps: AppliedCap[]): AuthorityScore {
+  return { ...base, caps, total: capTotal(base.total, caps) };
+}
+
 export function scoreAiAuthority(page: CrawledPage): AuthorityScore {
-  return composeScore([
+  const base = composeScore([
     scoreEeat(page),
     scoreAnswerability(page),
     scoreFactDensity(page),
@@ -51,14 +60,16 @@ export function scoreAiAuthority(page: CrawledPage): AuthorityScore {
     scoreFreshness(page),
     scoreBrandMentions(page),
   ]);
+  return withCaps(base, failedCaps(AI_GATES, page));
 }
 
 export function scoreTraditionalAuthority(page: CrawledPage): AuthorityScore {
-  return composeScore([
+  const base = composeScore([
     scoreContentQuality(page),
     scoreTechnicalSeo(page),
     scoreTopicalAuthority(page),
     scoreOnPageOptimization(page),
     scoreBacklinks(page),
   ]);
+  return withCaps(base, failedCaps(TRADITIONAL_GATES, page));
 }

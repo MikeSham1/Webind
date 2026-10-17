@@ -1,8 +1,9 @@
 import type { AiProvider } from "@/lib/ai/types";
 import { geminiProvider } from "@/lib/ai/gemini";
 import { logWarn } from "@/lib/log";
-import type { CrawledPage, ReportResult, SignalScore } from "./types";
+import type { AppliedCap, CrawledPage, ReportResult, SignalScore } from "./types";
 import { PAGE_TYPE_LABEL } from "./page-type";
+import { bindingCap } from "./gates";
 
 /**
  * LLM score audit — a second opinion on our OWN algorithm.
@@ -58,9 +59,15 @@ function buildAuditPrompt(report: ReportResult, page: CrawledPage): string {
     `External sources linked: ${page.outboundLinks.length}`,
   ].join("\n");
 
+  // Name any cap, so a total held down by a failed fundamental isn't flagged
+  // "too low" against signals that would otherwise justify more.
+  const capped = (caps: AppliedCap[] | undefined) => {
+    const cap = bindingCap(caps);
+    return cap ? ` (capped at ${cap.ceiling} by a failed fundamental: ${cap.label})` : "";
+  };
   const scores = [
-    `AI Readiness total: ${report.ai.total}/100`,
-    `Traditional Authority total: ${report.traditional.total}/100`,
+    `AI Readiness total: ${report.ai.total}/100${capped(report.ai.caps)}`,
+    `Traditional Authority total: ${report.traditional.total}/100${capped(report.traditional.caps)}`,
     ...measuredSignals(report).map((s) => `- ${s.label} [${s.key}]: ${s.score}/100 — ${s.reason}`),
   ].join("\n");
 
