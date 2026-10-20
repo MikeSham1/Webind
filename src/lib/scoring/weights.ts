@@ -30,7 +30,7 @@
  * such dataset — ground-truth "does an AI actually cite this page" labels at
  * scale — exists for us to calibrate against yet).
  */
-export const SCORING_MODEL_VERSION = "2026.6";
+export const SCORING_MODEL_VERSION = "2026.7";
 
 export const AI_WEIGHTS = {
   eeat: 0.2,

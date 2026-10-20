@@ -17,11 +17,14 @@ import { classifyPageType, type PageType } from "./page-type";
  * judge entailment are deferred (they need the crawler + model credits and must
  * not be faked). What we measure here, deterministically and offline:
  *
- *   - CLAIMS: block-level units (paragraphs, list items, cells, quotes) that
- *     assert something externally verifiable — i.e. carry a statistic/figure.
+ *   - CLAIMS: block-level units (paragraphs, list items, quotes, and each data
+ *     table as a whole) that assert something externally verifiable — i.e.
+ *     carry a statistic/figure. Years, dates, phone numbers, and site chrome
+ *     (nav, header, footer) are not claims.
  *   - IN-PLACE CITATION: whether that same block links to an external source, so
  *     the claim is attributable where it's made (the citation-clarity signal).
- *   - SOURCING BREADTH: how many distinct external sources the page cites at all.
+ *   - SOURCING BREADTH: how many distinct external sources the page's content
+ *     cites. Footer social icons and "share this" buttons are not sources.
  *
  * So "add ten more unsourced numbers" no longer helps — each claim has to be
  * backed. The entailment layer can later refine "backed" from "links to a
@@ -31,11 +34,66 @@ import { classifyPageType, type PageType } from "./page-type";
 /** A single verifiable figure: currency, percentage, or a multi-digit number. */
 const STAT_RE = /[$£€]\s?\d[\d,.]*|\d[\d,.]*\s?%|\b\d{2,}(?:[.,]\d+)?\b|\b\d+\.\d+\b/;
 
-/** Block-level elements whose text we treat as one claim-bearing unit. */
-const BLOCK_RE = /<(p|li|td|blockquote)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+/**
+ * Numbers that appear in text without asserting anything verifiable: calendar
+ * dates, phone numbers, reading-time labels, and bare years. They're blanked
+ * before the figure test, so "Since 2019" or a dateline isn't graded as an
+ * uncited statistic, while "grew 40% in 2023" still is. Dates and phone numbers
+ * run first because the year pattern would otherwise leave their other digits
+ * behind. A four-digit number from 1800 to 2099 reads as a year unless it's
+ * money, a percentage, or part of a longer number.
+ */
+const NON_CLAIM_NUMBERS: RegExp[] = [
+  /\b\d{4}-\d{1,2}-\d{1,2}\b/g, // 2026-03-03
+  /\b\d{1,2}[/.]\d{1,2}[/.]\d{2,4}\b/g, // 03/03/2026, 3.3.2026
+  /(?:\+\d{1,3}[\s.-]?)?\(?\b\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/g, // (512) 555-0142
+  /\b\d+\s*min(?:ute)?s?\s+read\b/gi, // 12 min read
+  /(?<![$£€\d.,]|[$£€]\s)\b(?:1[89]|20)\d{2}s?\b(?![.,]?\d|\s?%)/g, // 2019, 1990s
+];
 
-/** External-link href inside a block; capture the host. */
-const HREF_RE = /<a\b[^>]*\bhref=["']https?:\/\/([^"'/?#]+)/gi;
+/**
+ * Site chrome and non-content elements. Their numbers aren't the page's claims
+ * ("Pricing from $19", "© 2026", a street address) and their links aren't its
+ * sources (social icons, partner logos), so both are dropped before analysis.
+ * An article's own <header> (title, byline, dateline) goes too: it carries no
+ * evidence.
+ */
+const BOILERPLATE_RE = /<(nav|header|footer|script|style|noscript|template)\b[^>]*>[\s\S]*?<\/\1>/gi;
+
+/**
+ * An innermost data table, plus the <figcaption> right after it when it sits in
+ * a <figure> (the WordPress table block's markup). A table is attributed as a
+ * whole, by its caption or a source row, so it's ONE claim unit rather than one
+ * per numeric cell.
+ */
+const DATA_TABLE_RE =
+  /(?:<figure\b[^>]*>\s*)?<table\b[^>]*>((?:(?!<\/?table\b)[\s\S])*)<\/table>(?:\s*<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>)?/gi;
+
+/** A table holding paragraphs or lists is page layout, not data. */
+const LAYOUT_TABLE_RE = /<(?:p|li|blockquote)\b/i;
+
+/** Block-level elements whose text we treat as one claim-bearing unit. */
+const BLOCK_RE = /<(p|li|blockquote)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+
+/** An <a href> to an absolute http(s) URL; captures the URL. */
+const HREF_RE = /<a\b[^>]*?\bhref\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
+
+/**
+ * "Share this" buttons link to a social network's composer, not to a source,
+ * so they never count as a citation.
+ */
+const SHARE_INTENT_RE =
+  /^https?:\/\/(?:[\w-]+\.)*(?:(?:twitter|x)\.com\/(?:intent|share)|facebook\.com\/(?:sharer|dialog\/(?:share|feed))|linkedin\.com\/(?:shareArticle|sharing)|pinterest\.[a-z.]+\/pin\/create|reddit\.com\/submit|news\.ycombinator\.com\/submitlink|wa\.me\/|api\.whatsapp\.com\/send|t(?:elegram)?\.me\/share)/i;
+
+/** Named references worth keeping; every other named one becomes a space. */
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&",
+  nbsp: " ",
+  dollar: "$",
+  percnt: "%",
+  pound: "£",
+  euro: "€",
+};
 
 function hostOf(url: string): string | null {
   try {
@@ -45,8 +103,52 @@ function hostOf(url: string): string | null {
   }
 }
 
-function stripTags(html: string): string {
-  return html.replace(/<[^>]+>/g, " ");
+/**
+ * Decode character references. The HTML is the raw response, and WordPress
+ * writes every curly apostrophe, quote, and dash as one ("it&#8217;s"), whose
+ * digits would otherwise read as a statistic in nearly every paragraph.
+ */
+function decodeEntities(text: string): string {
+  return text.replace(/&(#x[\da-f]+|#\d+|[a-z][a-z\d]*);/gi, (_, ref: string) => {
+    if (ref[0] !== "#") return NAMED_ENTITIES[ref.toLowerCase()] ?? " ";
+    const code = ref[1] === "x" || ref[1] === "X" ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10);
+    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : " ";
+  });
+}
+
+/** A unit's visible text, with non-claim numbers blanked out. */
+function claimText(html: string): string {
+  const text = decodeEntities(html.replace(/<[^>]+>/g, " "));
+  return NON_CLAIM_NUMBERS.reduce((t, re) => t.replace(re, " "), text);
+}
+
+/** Distinct external hosts `html` links to, ignoring self-links and share buttons. */
+function sourceHosts(html: string, selfHost: string | null): Set<string> {
+  const hosts = new Set<string>();
+  for (const [, url] of html.matchAll(HREF_RE)) {
+    if (SHARE_INTENT_RE.test(url)) continue;
+    const host = hostOf(url);
+    if (host && host !== selfHost) hosts.add(host);
+  }
+  return hosts;
+}
+
+/**
+ * The page's claim-bearing units, as inner HTML: each data table (with its
+ * caption) once, then each paragraph, list item, and blockquote.
+ */
+function claimUnits(content: string): string[] {
+  const units: string[] = [];
+  const rest = content.replace(
+    DATA_TABLE_RE,
+    (whole: string, table: string, caption: string | undefined) => {
+      if (LAYOUT_TABLE_RE.test(table)) return whole; // its paragraphs are units of their own
+      units.push(caption ? `${table} ${caption}` : table);
+      return " ";
+    },
+  );
+  for (const m of rest.matchAll(BLOCK_RE)) units.push(m[2]);
+  return units;
 }
 
 export interface EvidenceAnalysis {
@@ -56,43 +158,32 @@ export interface EvidenceAnalysis {
   supportedClaims: number;
   /** 0-1 share of claims backed by an in-place citation. */
   coverage: number;
-  /** Distinct external hosts the page cites anywhere. */
+  /** Distinct external hosts the page's content cites (chrome and share links excluded). */
   distinctSources: number;
   /** Whether the page carries a blockquote / long quotation (primary voice). */
   hasQuote: boolean;
 }
 
-/** Pure, deterministic analysis of a page's claim → source support. */
+/**
+ * Pure, deterministic analysis of a page's claim → source support. Claims and
+ * sources are both read from the page's content in the served HTML, which is
+ * what an AI crawler sees. Navigation, header, and footer chrome is excluded
+ * from both.
+ */
 export function analyzeEvidence(page: CrawledPage): EvidenceAnalysis {
   const selfHost = hostOf(page.url);
+  const content = page.html.replace(BOILERPLATE_RE, " ");
 
   let claims = 0;
   let supportedClaims = 0;
-  let m: RegExpExecArray | null;
-  BLOCK_RE.lastIndex = 0;
-  while ((m = BLOCK_RE.exec(page.html)) !== null) {
-    const inner = m[2];
-    const text = stripTags(inner);
-    if (!STAT_RE.test(text)) continue; // not a verifiable claim
+  for (const unit of claimUnits(content)) {
+    if (!STAT_RE.test(claimText(unit))) continue; // not a verifiable claim
     claims += 1;
-
-    // Does this block cite an external source in place?
-    HREF_RE.lastIndex = 0;
-    let cited = false;
-    let h: RegExpExecArray | null;
-    while ((h = HREF_RE.exec(inner)) !== null) {
-      const host = h[1].toLowerCase().replace(/^www\./, "");
-      if (host && host !== selfHost) {
-        cited = true;
-        break;
-      }
-    }
-    if (cited) supportedClaims += 1;
+    // Does this unit cite an external source in place?
+    if (sourceHosts(unit, selfHost).size > 0) supportedClaims += 1;
   }
 
-  const distinctSources = new Set(
-    page.outboundLinks.map(hostOf).filter((h): h is string => Boolean(h) && h !== selfHost),
-  ).size;
+  const distinctSources = sourceHosts(content, selfHost).size;
 
   const hasQuote =
     page.blockquoteCount > 0 || /[“"][^“”"]{15,}[”"]/.test(page.renderedText);
