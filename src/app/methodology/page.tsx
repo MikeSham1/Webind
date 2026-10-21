@@ -32,7 +32,7 @@ const AI_LABELS: Record<keyof typeof AI_WEIGHTS, { label: string; note: string }
   },
   freshness: {
     label: "Content Freshness",
-    note: "A machine-readable last-modified date. How much recency matters is topic-dependent, so we decay gently and never all the way to zero.",
+    note: "A machine-readable last-modified date. How much recency matters is topic-dependent, so we decay gently and never all the way to zero. A homepage, product, or category page isn't time-sensitive, so there an old date scores the same as no date and showing one never costs points.",
   },
   brandMentions: {
     label: "Brand Mentions (off-page)",

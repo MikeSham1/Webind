@@ -178,6 +178,13 @@ const DATE_SOURCE_LABEL = {
  */
 const NO_DATE_SCORE = 40;
 
+/**
+ * Freshness for a page type that isn't time-sensitive (a homepage, product, or
+ * category page). It's both the undated score and the floor for a dated one,
+ * so publishing a date never scores lower than hiding it.
+ */
+const NOT_TIME_SENSITIVE_SCORE = 70;
+
 export function scoreFreshness(page: CrawledPage): SignalScore {
   const age = ageInDays(page.lastModified);
   // A visible "last updated" date is what an article or news page lives or dies
@@ -190,7 +197,7 @@ export function scoreFreshness(page: CrawledPage): SignalScore {
     return {
       key: "freshness",
       label: "Content Freshness",
-      score: futureDate ? NO_DATE_SCORE : dateMatters ? NO_DATE_SCORE : 70,
+      score: futureDate || dateMatters ? NO_DATE_SCORE : NOT_TIME_SENSITIVE_SCORE,
       weight: AI_WEIGHTS.freshness,
       reason: futureDate
         ? "The page's stated update date is in the future, so it can't be trusted."
@@ -230,6 +237,13 @@ export function scoreFreshness(page: CrawledPage): SignalScore {
     reason = `Last updated over 2 years ago${via}.`;
   }
 
+  // Where recency isn't the page's job, an old date is no worse than no date:
+  // otherwise removing the date would be the way to raise the score.
+  if (!dateMatters && score < 100) {
+    score = Math.max(score, NOT_TIME_SENSITIVE_SCORE);
+    reason += " That's fine for this page type, which isn't time-sensitive the way an article is.";
+  }
+
   return {
     key: "freshness",
     label: "Content Freshness",
@@ -237,7 +251,7 @@ export function scoreFreshness(page: CrawledPage): SignalScore {
     weight: AI_WEIGHTS.freshness,
     reason,
     fix:
-      score < 100
+      dateMatters && score < 100
         ? "If the topic changes over time, refresh the page and its update date; for evergreen topics a stable date is fine."
         : null,
   };

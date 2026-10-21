@@ -60,12 +60,32 @@ describe("scoreAiCrawlability", () => {
 });
 
 describe("scoreFreshness", () => {
-  it("decays gently by age and never floors to zero", () => {
-    expect(scoreFreshness(makePage({ lastModified: daysAgo(10) })).score).toBe(100);
-    expect(scoreFreshness(makePage({ lastModified: daysAgo(120) })).score).toBe(100);
-    expect(scoreFreshness(makePage({ lastModified: daysAgo(300) })).score).toBe(75);
-    expect(scoreFreshness(makePage({ lastModified: daysAgo(500) })).score).toBe(55);
-    expect(scoreFreshness(makePage({ lastModified: daysAgo(900) })).score).toBe(40);
+  it("decays an article gently by age and never floors to zero", () => {
+    const article = (days: number) =>
+      scoreFreshness(makePage({ url: "https://example.com/blog/x", lastModified: daysAgo(days) }));
+    expect(article(10).score).toBe(100);
+    expect(article(120).score).toBe(100);
+    expect(article(300).score).toBe(75);
+    expect(article(500).score).toBe(55);
+    expect(article(900).score).toBe(40);
+    expect(article(900).fix).toMatch(/refresh the page/);
+  });
+
+  it("never scores a dated non-article page below an undated one", () => {
+    // Otherwise removing the date would be the way to raise the score.
+    const undated = scoreFreshness(
+      makePage({ url: "https://example.com/", lastModified: null, lastModifiedSource: null }),
+    ).score;
+    for (const url of ["https://example.com/", "https://example.com/products/widget"]) {
+      for (const days of [10, 300, 500, 900]) {
+        const r = scoreFreshness(makePage({ url, lastModified: daysAgo(days) }));
+        expect(r.score).toBeGreaterThanOrEqual(undated!);
+        expect(r.fix).toBeNull(); // no "refresh the page" nag where recency isn't its job
+      }
+    }
+    const old = scoreFreshness(makePage({ url: "https://example.com/", lastModified: daysAgo(900) }));
+    expect(old.score).toBe(70);
+    expect(old.reason).toMatch(/over 2 years ago.*isn't time-sensitive/);
   });
 
   it("penalizes a missing date on an article, but not on a homepage", () => {
