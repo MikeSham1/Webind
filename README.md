@@ -1,5 +1,11 @@
 # WeBind
 
+> **Status: finished — no longer active.** WeBind was built by
+> [Michael Shamoyan](https://github.com/MikeSham1) and
+> [Almodre](https://github.com/Almodre) from July to October 2026. It is no
+> longer maintained or deployed; this repository is kept as an archive of the
+> project. Unmerged work-in-progress lives on the other branches.
+
 An AI-era authority platform. The front door is a free **AI Readiness Report**:
 enter a URL and get two 0–100 scores (AI Readiness + Traditional Authority) with
 plain-English explanations and a prioritized fix list. It's a heuristic
